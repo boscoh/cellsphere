@@ -79,7 +79,6 @@ function updateGeometry(cell, length) {
 function updateColor(cell, length) {
   const { color } = computeCellColor(length)
   applyCellColor(cell, color)
-  cell.userData.nucleusColorDirty = true
 }
 
 function setCellAppearance(cell, length) {
@@ -141,7 +140,6 @@ export function createCell(index, pos, heading, length) {
     maxLength: length * 2,
     mass: length * length * 0.25,
     color: new THREE.Color(),
-    nucleusColorDirty: true,
     pos,
     vel: heading.clone().multiplyScalar(0.3),
     heading,
@@ -240,26 +238,6 @@ export function setTailColor(sim, cell) {
   if (sim.tailMesh.instanceColor) {
     sim.tailMesh.instanceColor.needsUpdate = true
   }
-}
-
-export function updateNuclei(sim) {
-  const mesh = sim.nucleusMesh
-  if (!mesh) return
-  let colorDirty = false
-  for (const cell of sim.cells) {
-    const d = cell.userData
-    const nscale = sim._v6.set(d.radius * 0.62, WIDTH * 0.5, WIDTH * 0.5)
-    if (d.sideHidden) nscale.set(0, 0, 0)
-    sim._m.compose(cell.position, cell.quaternion, nscale)
-    mesh.setMatrixAt(d.index, sim._m)
-    if (d.nucleusColorDirty) {
-      mesh.setColorAt(d.index, d.color)
-      d.nucleusColorDirty = false
-      colorDirty = true
-    }
-  }
-  mesh.instanceMatrix.needsUpdate = true
-  if (colorDirty) mesh.instanceColor.needsUpdate = true
 }
 
 export function clearTail(sim, cell) {

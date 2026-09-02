@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 
-export const unitOuterGeo = new THREE.SphereGeometry(1, 12, 8)
 export const foodGeo = new THREE.SphereGeometry(0.05, 6, 6)
 export const tailGeo = new THREE.SphereGeometry(0.008, 4, 4)
 
@@ -18,18 +17,9 @@ export const tailMat = new THREE.MeshStandardMaterial({
   roughness: 0.5,
 })
 
-export const nucleusMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff,
-  roughness: 0.3,
-  emissive: 0x123c2a,
-  emissiveIntensity: 0.4,
-})
-
 export function disposeSharedMaterials() {
-  unitOuterGeo.dispose()
   foodGeo.dispose()
   tailGeo.dispose()
   foodMat.dispose()
   tailMat.dispose()
-  nucleusMat.dispose()
 }
