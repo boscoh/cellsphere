@@ -2,7 +2,7 @@ import * as THREE from 'three'
 
 export const unitOuterGeo = new THREE.SphereGeometry(1, 12, 8)
 export const foodGeo = new THREE.SphereGeometry(0.05, 6, 6)
-export const tailGeo = new THREE.SphereGeometry(0.004, 4, 4)
+export const tailGeo = new THREE.SphereGeometry(0.008, 4, 4)
 
 export const foodMat = new THREE.MeshStandardMaterial({
   color: 0x9a917e,

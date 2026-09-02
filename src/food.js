@@ -22,12 +22,12 @@ export function placeFood(sim, food) {
 }
 
 export function generateClumps(sim) {
-  const n = 18 + Math.floor(Math.random() * 14)
+  const n = 12 + Math.floor(Math.random() * 8)
   for (let i = 0; i < n; i++) {
     sim.clumps.push({
       center: randomUnitVector(),
       radius: 0.3 + Math.random() * 0.9,
-      theta: (0.14 + Math.random() * 0.5) / SURFACE,
+      theta: (0.2 + Math.random() * 0.6) / SURFACE,
     })
   }
 }
@@ -49,7 +49,7 @@ function clumpPos(sim) {
 }
 
 export function makeFood(sim) {
-  const r = 0.004 + Math.random() * 0.006
+  const r = 0.008 + Math.random() * 0.012
   const food = {
     pos: clumpPos(sim),
     r,
