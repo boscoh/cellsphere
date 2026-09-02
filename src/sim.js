@@ -89,16 +89,24 @@ function applyCellColor(cell, color) {
   u.nucleus.material.color.copy(color.clone().offsetHSL(0, 0, 0.1))
 }
 
-function setCellAppearance(cell, length) {
+function updateGeometry(cell, length) {
   const u = cell.userData
   u.radius = length
   u.mass = Math.max(length * length * 0.25, 0.05)
   u.outer.geometry.dispose()
   u.outer.geometry = makeBodyGeo(length)
   u.nucleus.scale.set(length * 0.62, WIDTH * 0.5, WIDTH * 0.5)
+}
+
+function updateColor(cell, length) {
   const { color, emissive } = computeCellColor(length)
   applyCellColor(cell, color)
-  u.nucleus.material.emissive.copy(emissive)
+  cell.userData.nucleus.material.emissive.copy(emissive)
+}
+
+function setCellAppearance(cell, length) {
+  updateGeometry(cell, length)
+  updateColor(cell, length)
 }
 
 function placeMitoChild(m, cell, dist) {
