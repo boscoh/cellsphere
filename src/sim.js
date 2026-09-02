@@ -364,16 +364,21 @@ export class Simulation {
     this.scene.add(front)
   }
 
+  clearTail(cell) {
+    const d = cell.userData
+    this._dummy.position.set(0, 0, 0)
+    this._dummy.rotation.set(0, 0, 0)
+    this._dummy.scale.set(0, 0, 0)
+    this._dummy.updateMatrix()
+    for (let i = 0; i < TAIL_SEGMENTS; i++) {
+      this.tailMesh.setMatrixAt(d.tailStart + i, this._dummy.matrix)
+    }
+  }
+
   placeTail(cell) {
     const d = cell.userData
     if (d.sideHidden) {
-      this._dummy.position.set(0, 0, 0)
-      this._dummy.rotation.set(0, 0, 0)
-      this._dummy.scale.set(0, 0, 0)
-      this._dummy.updateMatrix()
-      for (let i = 0; i < TAIL_SEGMENTS; i++) {
-        this.tailMesh.setMatrixAt(d.tailStart + i, this._dummy.matrix)
-      }
+      this.clearTail(cell)
       return
     }
     const grow = d.tailGrow
@@ -491,13 +496,7 @@ export class Simulation {
     this.scene.remove(cell)
     disposeObject3D(cell)
     const d = cell.userData
-    this._dummy.position.set(0, 0, 0)
-    this._dummy.scale.set(0, 0, 0)
-    this._dummy.rotation.set(0, 0, 0)
-    this._dummy.updateMatrix()
-    for (let i = 0; i < TAIL_SEGMENTS; i++) {
-      this.tailMesh.setMatrixAt(d.tailStart + i, this._dummy.matrix)
-    }
+    this.clearTail(cell)
     this.tailMesh.instanceMatrix.needsUpdate = true
     if (!d.tailTransfer) this.freeTailIndices.push(d.index)
   }
