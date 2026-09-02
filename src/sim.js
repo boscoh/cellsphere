@@ -389,15 +389,20 @@ export class Simulation {
       const normal = this._v1.copy(d.pos).normalize()
 
       d.heading.addScaledVector(normal, -d.heading.dot(normal)).normalize()
-      const slowFrac = smoothstep(
-        THREE.MathUtils.clamp(
-          (d.radius - d.maxLength * MITO_SLOW_FRAC) /
-            (d.maxLength * (1 - MITO_SLOW_FRAC)),
-          0,
-          1,
-        ),
-      )
-      d.drive = d.slow * (1 - slowFrac)
+      if (d.rest > 0) {
+        d.rest -= dt
+        d.drive = 0
+      } else {
+        const slowFrac = smoothstep(
+          THREE.MathUtils.clamp(
+            (d.radius - d.maxLength * MITO_SLOW_FRAC) /
+              (d.maxLength * (1 - MITO_SLOW_FRAC)),
+            0,
+            1,
+          ),
+        )
+        d.drive = d.slow * (1 - slowFrac)
+      }
 
       if (d.foodAmt > 0.01 && d.foodPeak > PEAK_MIN) {
         const ang = this.signedAngleTo(d, d.foodDir)

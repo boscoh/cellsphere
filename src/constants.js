@@ -20,6 +20,7 @@ export const MITO_FADE = 0.4
 export const MITO_NEAR = 2.1
 export const MITO_SEP = 2.8
 export const MITO_SLOW_FRAC = 0.6
+export const MITO_REST = 4
 
 export const WIDTH = 0.0425
 export const TAIL_SEGMENTS = 24

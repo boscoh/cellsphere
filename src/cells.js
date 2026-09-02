@@ -10,6 +10,7 @@ import {
   MITO_FADE,
   MITO_NEAR,
   MITO_SEP,
+  MITO_REST,
   WIDTH,
   TAIL_SEGMENTS,
   TAIL_LEN,
@@ -161,6 +162,7 @@ export function createCell(index, pos, heading, length) {
     dead: false,
     sideHidden: false,
     tailGrow: 1,
+    rest: 0,
     index,
     tailStart: index * TAIL_SEGMENTS,
   }
@@ -204,8 +206,8 @@ export function mitose(sim, parent) {
   const backPos = snap(startPos.clone().addScaledVector(headBack, -half * MITO_NEAR))
   const frontPos = snap(startPos.clone().addScaledVector(headBack, half * MITO_NEAR))
 
-  const back = createCell(allocTailIndex(sim), backPos, headBack, childLen)
-  const front = createCell(d.index, frontPos, headFront, childLen)
+  const back = createCell(allocTailIndex(sim), backPos, headFront, childLen)
+  const front = createCell(d.index, frontPos, headBack, childLen)
   back.userData.splitting = true
   front.userData.splitting = true
   back.userData.tailGrow = 0
@@ -374,5 +376,7 @@ function finalizeMito(cell, m) {
   cell.userData.mito = null
   m.back.userData.splitting = false
   m.front.userData.splitting = false
+  m.back.userData.rest = MITO_REST
+  m.front.userData.rest = MITO_REST
   m.parent.userData.dead = true
 }
