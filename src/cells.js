@@ -206,8 +206,8 @@ export function mitose(sim, parent) {
   const backPos = snap(startPos.clone().addScaledVector(headBack, -half * MITO_NEAR))
   const frontPos = snap(startPos.clone().addScaledVector(headBack, half * MITO_NEAR))
 
-  const back = createCell(allocTailIndex(sim), backPos, headFront, childLen)
-  const front = createCell(d.index, frontPos, headBack, childLen)
+  const back = createCell(allocTailIndex(sim), backPos, headBack, childLen)
+  const front = createCell(d.index, frontPos, headFront, childLen)
   back.userData.splitting = true
   front.userData.splitting = true
   back.userData.tailGrow = 0
