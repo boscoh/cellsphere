@@ -75,3 +75,23 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 _Add your project-specific conventions here_
+
+## Subagents (opencode)
+
+Use the `task` tool to run subagents for work the orchestrator can delegate. Each
+subagent runs in a fresh context and returns one message; the orchestrator merges
+results and shows only the combined output.
+
+### Types
+
+- `explore` — fast codebase search: find files, grep, answer "how does X work".
+  Use for broad sweeps (e.g. "find every place we write the tail matrix").
+- `general` — multi-step research or execution for complex questions.
+
+### Patterns
+
+- Launch several independent subagents in ONE message (parallel) for independent
+  sweeps, then wait for their results.
+- Give each a precise task AND the exact value to return (no guesswork).
+- Delegate research/search; do the implementation yourself in the shared context.
+- Verify subagent findings — they can't see this session's state.
