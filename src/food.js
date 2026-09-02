@@ -49,7 +49,7 @@ function clumpPos(sim) {
 }
 
 export function makeFood(sim) {
-  const r = 0.008 + Math.random() * 0.012
+  const r = 0.016 + Math.random() * 0.024
   const food = {
     pos: clumpPos(sim),
     r,
