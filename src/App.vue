@@ -7,6 +7,8 @@ const canvasHolder = ref(null)
 const tailsActive = ref(true)
 const simRate = ref(15)
 const fps = ref(0)
+const bacteriaCount = ref(0)
+const foodCount = ref(0)
 const MAX_SIM_RATE = MAX_STEPS
 const MAX_BACKLOG = MAX_STEPS * FIXED_DT
 
@@ -45,6 +47,9 @@ onMounted(() => {
       fps.value = Math.round(fpsCount / fpsTime)
       fpsCount = 0
       fpsTime = 0
+      bacteriaCount.value = sim.cells.length
+      foodCount.value = 0
+      for (const f of sim.foods) if (f.visible) foodCount.value++
     }
   }
   tick()
@@ -64,6 +69,10 @@ onBeforeUnmount(() => {
   <div class="overlay">
     <h1>Cell</h1>
     <p>render <span class="rate">{{ fps }} fps</span> · drag to orbit · scroll to zoom</p>
+    <p class="counts">
+      bacteria <span class="count">{{ bacteriaCount }}</span> · food
+      <span class="count">{{ foodCount }}</span>
+    </p>
     <div class="control">
       <label for="speed">sim rate</label>
       <input
@@ -117,6 +126,15 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 13px;
   color: #8a93a6;
+}
+
+.overlay .counts {
+  margin-top: 4px;
+}
+
+.overlay .counts .count {
+  color: #b7c2d4;
+  font-variant-numeric: tabular-nums;
 }
 
 .overlay .rate {
