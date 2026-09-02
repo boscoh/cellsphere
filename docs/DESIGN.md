@@ -12,10 +12,12 @@ food specks arranged in **clumps**; bacteria sense food, slow down, turn toward
 concentration, eat to grow, and eventually **mitose**.
 
 `src/App.vue` is a thin Vue shell (lifecycle, reactive UI overlay, frame
-timing). The simulation lives in `src/sim.js` (`Simulation` class: cells,
-food, collision, mitosis, tails); tuning constants in `src/constants.js`;
-scene/renderer in `src/sceneSetup.js`; shared geos/materials in
-`src/materials.js`; pure helpers in `src/math.js`.
+timing). The simulation is split into modules: `src/sim.js` (`Simulation`
+orchestrator: collision, physics loop, render lifecycle), `src/cells.js`
+(cell domain — create/grow/mitose/tails), `src/food.js` (food grid, eating +
+sensing, clumps); tuning constants in `src/constants.js`; scene/renderer in
+`src/sceneSetup.js`; shared geos/materials in `src/materials.js`; pure helpers
+in `src/math.js`.
 
 ## How it works (architecture)
 

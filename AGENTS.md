@@ -15,7 +15,9 @@ viscosity-controlled simulation.
 ## Project Structure
 
 - `src/App.vue` — thin Vue shell: lifecycle, reactive overlay UI, frame timing
-- `src/sim.js` — `Simulation` class: cells, food, collision, mitosis, tails
+- `src/sim.js` — `Simulation` orchestrator: collision, physics loop, render lifecycle
+- `src/cells.js` — cell domain: create, grow, mitosis, tails
+- `src/food.js` — food domain: spatial grid, eating + sensing, clumps
 - `src/constants.js` — all tuning constants
 - `src/sceneSetup.js` — Three.js scene / renderer / camera / controls / sphere
 - `src/materials.js` — shared geometries & materials
