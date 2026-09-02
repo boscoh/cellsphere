@@ -366,10 +366,6 @@ export function updateMito(sim, cell, simDt) {
   const pd = m.parent.userData
   pd.outer.material.depthWrite = false
   pd.outer.material.opacity = 0.75 * (1 - fadeK)
-  pd.nucleus.material.transparent = true
-  pd.nucleus.material.depthWrite = false
-  pd.nucleus.material.needsUpdate = true
-  pd.nucleus.material.opacity = 1 - fadeK
 
   if (m.t >= m.dur) finalizeMito(cell, m)
 }

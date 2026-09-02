@@ -182,6 +182,14 @@ export class Simulation {
     const d = cell.userData
     clearTail(this, cell)
     this.tailMesh.instanceMatrix.needsUpdate = true
+    if (this.nucleusMesh) {
+      this._dummy.position.set(0, 0, 0)
+      this._dummy.rotation.set(0, 0, 0)
+      this._dummy.scale.set(0, 0, 0)
+      this._dummy.updateMatrix()
+      this.nucleusMesh.setMatrixAt(d.index, this._dummy.matrix)
+      this.nucleusMesh.instanceMatrix.needsUpdate = true
+    }
     if (!d.tailTransfer) this.freeTailIndices.push(d.index)
   }
 
