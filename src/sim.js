@@ -156,6 +156,7 @@ export class Simulation {
     this._m = new THREE.Matrix4()
     this._dummy = new THREE.Object3D()
     this._col = { dist: 0, x: 0, y: 0, z: 0 }
+    this._fd = { rx: 0, ry: 0, rz: 0 }
   }
 
   attach(container) {
@@ -584,6 +585,23 @@ export class Simulation {
     }
   }
 
+  foodDist(d, food, halfLen) {
+    const ax = d.heading
+    const rx = food.pos.x - d.pos.x
+    const ry = food.pos.y - d.pos.y
+    const rz = food.pos.z - d.pos.z
+    let t = rx * ax.x + ry * ax.y + rz * ax.z
+    if (t > halfLen) t = halfLen
+    else if (t < -halfLen) t = -halfLen
+    const ex = rx - ax.x * t
+    const ey = ry - ax.y * t
+    const ez = rz - ax.z * t
+    this._fd.rx = rx
+    this._fd.ry = ry
+    this._fd.rz = rz
+    return Math.sqrt(ex * ex + ey * ey + ez * ez)
+  }
+
   eatAndRespawn(simDt) {
     let dirty = false
     for (let i = this.respawning.length - 1; i >= 0; i--) {
@@ -604,7 +622,6 @@ export class Simulation {
     for (const cell of this.cells) {
       const d = cell.userData
       if (d.mito || d.splitting || d.split) continue
-      const ax = d.heading
       const halfLen = Math.max(d.radius - WIDTH, 0)
       let ate = 0
       const cx = Math.floor(d.pos.x / GRID)
@@ -619,20 +636,7 @@ export class Simulation {
               const foodIndex = bucket[k]
               const food = this.foods[foodIndex]
               if (!food.visible) continue
-              const rx = food.pos.x - d.pos.x
-              const ry = food.pos.y - d.pos.y
-              const rz = food.pos.z - d.pos.z
-              let t = rx * ax.x + ry * ax.y + rz * ax.z
-              if (t > halfLen) t = halfLen
-              else if (t < -halfLen) t = -halfLen
-              const px = d.pos.x + ax.x * t
-              const py = d.pos.y + ax.y * t
-              const pz = d.pos.z + ax.z * t
-              const ex = food.pos.x - px
-              const ey = food.pos.y - py
-              const ez = food.pos.z - pz
-              const dd = Math.sqrt(ex * ex + ey * ey + ez * ez)
-              if (dd < WIDTH + food.r) {
+              if (this.foodDist(d, food, halfLen) < WIDTH + food.r) {
                 this.growCell(cell, GROWTH_PER_FOOD)
                 food.respawn = 2.5 + Math.random() * 8
                 food.visible = false
@@ -659,7 +663,6 @@ export class Simulation {
       let fx = 0
       let fy = 0
       let fz = 0
-      const ax = d.heading
       const halfLen = Math.max(d.radius - WIDTH, 0)
       const sense = WIDTH + SENSE_BOOST
       const cx = Math.floor(d.pos.x / GRID)
@@ -673,25 +676,13 @@ export class Simulation {
             for (let k = 0; k < bucket.length; k++) {
               const food = this.foods[bucket[k]]
               if (!food.visible) continue
-              const rx = food.pos.x - d.pos.x
-              const ry = food.pos.y - d.pos.y
-              const rz = food.pos.z - d.pos.z
-              let t = rx * ax.x + ry * ax.y + rz * ax.z
-              if (t > halfLen) t = halfLen
-              else if (t < -halfLen) t = -halfLen
-              const px = d.pos.x + ax.x * t
-              const py = d.pos.y + ax.y * t
-              const pz = d.pos.z + ax.z * t
-              const ex = food.pos.x - px
-              const ey = food.pos.y - py
-              const ez = food.pos.z - pz
-              const dd = Math.sqrt(ex * ex + ey * ey + ez * ez)
+              const dd = this.foodDist(d, food, halfLen)
               if (dd < sense) {
                 const w = 1 - dd / sense
                 sum += w
-                fx += rx * w
-                fy += ry * w
-                fz += rz * w
+                fx += this._fd.rx * w
+                fy += this._fd.ry * w
+                fz += this._fd.rz * w
               }
             }
           }
