@@ -83,11 +83,11 @@ in `src/math.js`.
 |---|---|---|
 | `SPHERE_RADIUS` / `SURFACE` | 5 / 5.06 | sphere radius / surface offset |
 | `CELL_COUNT` / `MAX_CELLS` | 120 / 500 | initial / max population |
-| `FOOD_COUNT` | 14000 | food specks |
-| `GRID` / `CELL_GRID` | 0.35 / 0.5 | food spatial-hash cell size / cell collision-hash cell size |
+| `FOOD_COUNT` | 7000 | food specks |
+| `GRID` / `CELL_GRID` | 0.35 / 1.0 | food spatial-hash cell size / cell collision-hash cell size |
 | `SPRING` | 22 | cell–cell stiffness |
 | `FIXED_DT` / `MAX_STEPS` | 1/60 / 200 | stable physics substep / hard per-frame substep ceiling |
-| `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.05 / 0.185 / 0.065 | color/length gradient |
+| `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.10 / 0.37 / 0.13 | color/length gradient |
 | `GROWTH_PER_FOOD` | 0.0005 | length gained per food |
 | `ABSORB_CAP` | 3 | max foods absorbed per cell/frame |
 | `MITO_TIME` | 90 | mitosis animation duration (sim-s) |
@@ -95,8 +95,8 @@ in `src/math.js`.
 | `MITO_NEAR` / `MITO_SEP` | 2.1 / 2.8 | child spread when held (head-to-head in parent) / after parent gone |
 | `MITO_SLOW_FRAC` | 0.6 | fraction of max length where a cell starts decelerating into mitosis |
 | `MITO_REST` | 4 | post-mitosis coast (s) with drive=0 so daughters drift apart, no thrust |
-| `WIDTH` | 0.0425 | body width (fixed; only length grows) |
-| `TAIL_SEGMENTS` / `TAIL_LEN` / `TAIL_AMP` | 24 / 0.30 / 0.05 | tail shape |
+| `WIDTH` | 0.085 | body width; only length grows |
+| `TAIL_SEGMENTS` / `TAIL_LEN` / `TAIL_AMP` | 24 / 0.60 / 0.10 | tail shape |
 | `TAIL_FREQ` / `TAIL_WAVE` | 24.0 / 24.0 | tail beat rate / spatial waves |
 | `TAIL_LAG_RATE` / `TAIL_HELIX` | 3.5 / 1.0 | how fast the tail axis chases `-heading` (lower = more trailing) / planar→helical blend |
 | `AGITATE_UP` / `AGITATE_DOWN` / `GO_THRESH` | 6.0 / 2.0 / 0.6 | agitation attack / release rate / "move decision" drive threshold |
