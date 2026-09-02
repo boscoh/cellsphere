@@ -28,6 +28,8 @@ import {
   foodMat,
   tailGeo,
   tailMat,
+  nucleusMat,
+  unitOuterGeo,
   disposeSharedMaterials,
 } from './materials'
 import {
@@ -38,7 +40,9 @@ import {
   placeTail,
   updateTailState,
   updateMito,
+  updateNuclei,
   disposeObject3D,
+  disposeBodyGeos,
 } from './cells'
 import {
   generateClumps,
@@ -120,6 +124,21 @@ export class Simulation {
     this.scene.add(this.tailMesh)
     for (const c of this.cells) setTailColor(this, c)
     this.tailMesh.instanceColor.needsUpdate = true
+
+    this.nucleusMesh = new THREE.InstancedMesh(
+      unitOuterGeo,
+      nucleusMat,
+      MAX_CELLS,
+    )
+    this.nucleusMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    this._dummy.position.set(0, 0, 0)
+    this._dummy.rotation.set(0, 0, 0)
+    this._dummy.scale.set(0, 0, 0)
+    this._dummy.updateMatrix()
+    for (let i = 0; i < MAX_CELLS; i++) {
+      this.nucleusMesh.setMatrixAt(i, this._dummy.matrix)
+    }
+    this.scene.add(this.nucleusMesh)
   }
 
   reset() {
@@ -127,7 +146,7 @@ export class Simulation {
       this.scene.remove(cell)
       disposeObject3D(cell)
     }
-    for (const mesh of [this.foodMesh, this.tailMesh]) {
+    for (const mesh of [this.foodMesh, this.tailMesh, this.nucleusMesh]) {
       if (mesh) {
         this.scene.remove(mesh)
         mesh.dispose()
@@ -146,6 +165,7 @@ export class Simulation {
     this.senseAccum = 0
     this.foodMesh = null
     this.tailMesh = null
+    this.nucleusMesh = null
     this.buildWorld()
   }
 
@@ -460,6 +480,7 @@ export class Simulation {
   render(tailScale) {
     this.tailScale = tailScale
     this.updateVisibility()
+    updateNuclei(this)
     this.renderTails()
     if (this.controls) this.controls.update()
     if (this.renderer) this.renderer.render(this.scene, this.camera)
@@ -480,12 +501,14 @@ export class Simulation {
     if (this.controls) this.controls.dispose()
     if (this.renderer) this.renderer.dispose()
     disposeSharedMaterials()
+    disposeBodyGeos()
     if (this.sphereShell) {
       this.sphereShell.geometry.dispose()
       this.sphereShell.material.dispose()
     }
     if (this.foodMesh) this.foodMesh.dispose()
     if (this.tailMesh) this.tailMesh.dispose()
+    if (this.nucleusMesh) this.nucleusMesh.dispose()
     this.cells.forEach((c) => disposeObject3D(c))
     if (this.renderer) this.renderer.domElement.remove()
   }

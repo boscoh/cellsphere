@@ -25,15 +25,30 @@ import {
   WHIP_TAU,
 } from './constants'
 import { randomSurfacePoint, randomTangent, smoothstep } from './math'
-import { unitOuterGeo } from './materials'
 
 const GEO_STEP = 0.01
+const bodyGeoCache = new Map()
 
 export function makeBodyGeo(length) {
   const cylLen = Math.max(2 * (length - WIDTH), 0.001)
-  const geo = new THREE.CapsuleGeometry(WIDTH, cylLen, 8, 20)
+  const geo = new THREE.CapsuleGeometry(WIDTH, cylLen, 6, 12)
   geo.rotateZ(Math.PI / 2)
   return geo
+}
+
+function bodyGeoFor(length) {
+  const bucket = Math.round(length / GEO_STEP)
+  let geo = bodyGeoCache.get(bucket)
+  if (!geo) {
+    geo = makeBodyGeo(length)
+    bodyGeoCache.set(bucket, geo)
+  }
+  return geo
+}
+
+export function disposeBodyGeos() {
+  for (const geo of bodyGeoCache.values()) geo.dispose()
+  bodyGeoCache.clear()
 }
 
 function computeCellColor(length) {
@@ -51,26 +66,19 @@ function applyCellColor(cell, color) {
   const u = cell.userData
   u.color.copy(color)
   u.outer.material.color.copy(color)
-  u.nucleus.material.color.copy(color.clone().offsetHSL(0, 0, 0.1))
 }
 
 function updateGeometry(cell, length) {
   const u = cell.userData
   u.radius = length
   u.mass = Math.max(length * length * 0.25, 0.05)
-  const bucket = Math.round(length / GEO_STEP)
-  if (bucket !== u.geoBucket) {
-    u.outer.geometry.dispose()
-    u.outer.geometry = makeBodyGeo(length)
-    u.geoBucket = bucket
-  }
-  u.nucleus.scale.set(length * 0.62, WIDTH * 0.5, WIDTH * 0.5)
+  u.outer.geometry = bodyGeoFor(length)
 }
 
 function updateColor(cell, length) {
-  const { color, emissive } = computeCellColor(length)
+  const { color } = computeCellColor(length)
   applyCellColor(cell, color)
-  cell.userData.nucleus.material.emissive.copy(emissive)
+  cell.userData.nucleusColorDirty = true
 }
 
 function setCellAppearance(cell, length) {
@@ -97,7 +105,6 @@ function placeMitoChild(m, cell, dist) {
 
 export function disposeObject3D(obj) {
   obj.traverse((o) => {
-    o.geometry?.dispose()
     if (o.material) {
       Array.isArray(o.material)
         ? o.material.forEach((m) => m.dispose())
@@ -115,7 +122,7 @@ export function allocTailIndex(sim) {
 
 export function createCell(index, pos, heading, length) {
   const outer = new THREE.Mesh(
-    makeBodyGeo(length),
+    bodyGeoFor(length),
     new THREE.MeshStandardMaterial({
       color: 0xffffff,
       roughness: 0.25,
@@ -125,24 +132,15 @@ export function createCell(index, pos, heading, length) {
     }),
   )
 
-  const nucleus = new THREE.Mesh(
-    unitOuterGeo,
-    new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.3,
-    }),
-  )
-
   const group = new THREE.Group()
   group.add(outer)
-  group.add(nucleus)
 
   group.userData = {
     radius: length,
     maxLength: length * 2,
-    geoBucket: -1,
     mass: length * length * 0.25,
     color: new THREE.Color(),
+    nucleusColorDirty: true,
     pos,
     vel: heading.clone().multiplyScalar(0.3),
     heading,
@@ -167,7 +165,6 @@ export function createCell(index, pos, heading, length) {
     tailStart: index * TAIL_SEGMENTS,
   }
   group.userData.outer = outer
-  group.userData.nucleus = nucleus
   setCellAppearance(group, length)
   return group
 }
@@ -241,6 +238,26 @@ export function setTailColor(sim, cell) {
   if (sim.tailMesh.instanceColor) {
     sim.tailMesh.instanceColor.needsUpdate = true
   }
+}
+
+export function updateNuclei(sim) {
+  const mesh = sim.nucleusMesh
+  if (!mesh) return
+  let colorDirty = false
+  for (const cell of sim.cells) {
+    const d = cell.userData
+    const nscale = sim._v6.set(d.radius * 0.62, WIDTH * 0.5, WIDTH * 0.5)
+    if (d.sideHidden) nscale.set(0, 0, 0)
+    sim._m.compose(cell.position, cell.quaternion, nscale)
+    mesh.setMatrixAt(d.index, sim._m)
+    if (d.nucleusColorDirty) {
+      mesh.setColorAt(d.index, d.color)
+      d.nucleusColorDirty = false
+      colorDirty = true
+    }
+  }
+  mesh.instanceMatrix.needsUpdate = true
+  if (colorDirty) mesh.instanceColor.needsUpdate = true
 }
 
 export function clearTail(sim, cell) {

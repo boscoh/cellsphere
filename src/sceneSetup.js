@@ -34,7 +34,7 @@ export function createScene(container) {
   scene.add(rim)
 
   const sphereShell = new THREE.Mesh(
-    new THREE.SphereGeometry(SPHERE_RADIUS, 64, 32),
+    new THREE.SphereGeometry(SPHERE_RADIUS, 32, 16),
     new THREE.MeshBasicMaterial({
       color: 0x131a2a,
       side: THREE.FrontSide,
