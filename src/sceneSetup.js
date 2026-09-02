@@ -19,7 +19,6 @@ export function createScene(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.shadowMap.enabled = true
   container.appendChild(renderer.domElement)
 
   const controls = new OrbitControls(camera, renderer.domElement)
