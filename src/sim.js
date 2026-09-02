@@ -150,6 +150,7 @@ export class Simulation {
     this._v2 = new THREE.Vector3()
     this._v3 = new THREE.Vector3()
     this._v4 = new THREE.Vector3()
+    this._v5 = new THREE.Vector3()
     this._v6 = new THREE.Vector3()
     this._q = new THREE.Quaternion()
     this._m = new THREE.Matrix4()
@@ -868,7 +869,7 @@ export class Simulation {
               )
               this.deflectHeading(
                 b,
-                this._v6.set(nx, ny, nz),
+                this._v5.set(nx, ny, nz),
                 Math.min(overlap * 8, 1),
               )
 
@@ -934,7 +935,7 @@ export class Simulation {
       d.pos.setLength(SURFACE)
       cell.position.copy(d.pos)
 
-      const normal2 = this._v1.copy(d.pos).normalize()
+      const normal2 = this._v5.copy(d.pos).normalize()
       const fwd = d.heading
         .clone()
         .addScaledVector(normal2, -d.heading.dot(normal2))
