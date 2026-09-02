@@ -64,6 +64,8 @@ import {
 } from './materials'
 import { createScene } from './sceneSetup'
 
+const GEO_STEP = 0.01
+
 function makeBodyGeo(length) {
   const cylLen = Math.max(2 * (length - WIDTH), 0.001)
   const geo = new THREE.CapsuleGeometry(WIDTH, cylLen, 8, 20)
@@ -93,8 +95,12 @@ function updateGeometry(cell, length) {
   const u = cell.userData
   u.radius = length
   u.mass = Math.max(length * length * 0.25, 0.05)
-  u.outer.geometry.dispose()
-  u.outer.geometry = makeBodyGeo(length)
+  const bucket = Math.round(length / GEO_STEP)
+  if (bucket !== u.geoBucket) {
+    u.outer.geometry.dispose()
+    u.outer.geometry = makeBodyGeo(length)
+    u.geoBucket = bucket
+  }
   u.nucleus.scale.set(length * 0.62, WIDTH * 0.5, WIDTH * 0.5)
 }
 
@@ -281,6 +287,7 @@ export class Simulation {
     group.userData = {
       radius: length,
       maxLength: length * 2,
+      geoBucket: -1,
       mass: length * length * 0.25,
       color: new THREE.Color(),
       pos,
