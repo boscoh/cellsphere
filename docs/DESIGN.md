@@ -94,6 +94,7 @@ in `src/math.js`.
 | `MITO_HOLD` / `MITO_FADE` | 0.2 / 0.4 | fraction parent stays fully visible / then fades (children held overlapped until fade ends) |
 | `MITO_NEAR` / `MITO_SEP` | 2.1 / 2.8 | child spread when held (head-to-head in parent) / after parent gone |
 | `MITO_SLOW_FRAC` | 0.6 | fraction of max length where a cell starts decelerating into mitosis |
+| `MITO_REST` | 4 | post-mitosis coast (s) with drive=0 so daughters drift apart, no thrust |
 | `WIDTH` | 0.0425 | body width (fixed; only length grows) |
 | `TAIL_SEGMENTS` / `TAIL_LEN` / `TAIL_AMP` | 24 / 0.30 / 0.05 | tail shape |
 | `TAIL_FREQ` / `TAIL_WAVE` | 24.0 / 24.0 | tail beat rate / spatial waves |
@@ -136,13 +137,15 @@ can't choose a rate the sim can't be asked to run.
   the same spatial-hash scan.
 - **`GROWTH_PER_FOOD`** is tiny and `ABSORB_CAP` bounds per-frame growth.
 - **Mitosis**: two daughters each `fullLen * 0.45`, facing 180° apart (heads
-  toward the parent center). They spawn overlapping the parent (held, head-to-head
-  inside its body), the parent stays fully visible then fades, and only after the
-  parent is completely gone do the daughters separate apart. Children's position
-  + quaternion are synced every frame (splitting cells skip the physics loop, so
-  without this they'd render at the world origin). To see the children inside,
-  the fading parent uses **`depthWrite=false`** and lower opacity (`0.75*(1-fadeK)`)
-  so it never occludes the held daughters.
+  toward the parent center, tails pointing outward). They spawn overlapping the
+  parent (held), the parent stays fully visible then fades, then the daughters
+  separate apart (spread `MITO_NEAR→MITO_SEP`). Children's position + quaternion
+  are synced every frame (splitting cells skip the physics loop, so without this
+  they'd render at the world origin). After finalize each daughter gets a
+  **`MITO_REST` coast (`drive=0`)**, so they drift apart with no thrust instead
+  of propelling into each other; they resume normal swimming after the rest. To
+  see the children inside, the fading parent uses **`depthWrite=false`** and
+  lower opacity (`0.75*(1-fadeK)`) so it never occludes the held daughters.
 - The **tails checkbox** hides tails by scaling tail instances to 0 (not just
   stopping the wave).
 - `MAX_CELLS` preallocates tail instances; unused ones are zeroed at init;
