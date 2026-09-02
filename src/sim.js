@@ -602,6 +602,23 @@ export class Simulation {
     return Math.sqrt(ex * ex + ey * ey + ez * ez)
   }
 
+  forEachNearbyFood(cx, cy, cz, r, cb) {
+    for (let ox = -r; ox <= r; ox++) {
+      for (let oy = -r; oy <= r; oy++) {
+        for (let oz = -r; oz <= r; oz++) {
+          const bucket = this.foodGrid.get(cellIndex(cx + ox, cy + oy, cz + oz))
+          if (!bucket) continue
+          for (let k = 0; k < bucket.length; k++) {
+            const foodIndex = bucket[k]
+            const food = this.foods[foodIndex]
+            if (!food.visible) continue
+            if (cb(foodIndex, food) === false) return
+          }
+        }
+      }
+    }
+  }
+
   eatAndRespawn(simDt) {
     let dirty = false
     for (let i = this.respawning.length - 1; i >= 0; i--) {
@@ -627,29 +644,18 @@ export class Simulation {
       const cx = Math.floor(d.pos.x / GRID)
       const cy = Math.floor(d.pos.y / GRID)
       const cz = Math.floor(d.pos.z / GRID)
-      scan: for (let ox = -1; ox <= 1; ox++) {
-        for (let oy = -1; oy <= 1; oy++) {
-          for (let oz = -1; oz <= 1; oz++) {
-            const bucket = this.foodGrid.get(cellIndex(cx + ox, cy + oy, cz + oz))
-            if (!bucket) continue
-            for (let k = 0; k < bucket.length; k++) {
-              const foodIndex = bucket[k]
-              const food = this.foods[foodIndex]
-              if (!food.visible) continue
-              if (this.foodDist(d, food, halfLen) < WIDTH + food.r) {
-                this.growCell(cell, GROWTH_PER_FOOD)
-                food.respawn = 2.5 + Math.random() * 8
-                food.visible = false
-                this.removeFoodFromGrid(foodIndex)
-                this.respawning.push(foodIndex)
-                this.placeFood(food)
-                dirty = true
-                if (++ate >= ABSORB_CAP) break scan
-              }
-            }
-          }
+      this.forEachNearbyFood(cx, cy, cz, 1, (foodIndex, food) => {
+        if (this.foodDist(d, food, halfLen) < WIDTH + food.r) {
+          this.growCell(cell, GROWTH_PER_FOOD)
+          food.respawn = 2.5 + Math.random() * 8
+          food.visible = false
+          this.removeFoodFromGrid(foodIndex)
+          this.respawning.push(foodIndex)
+          this.placeFood(food)
+          dirty = true
+          if (++ate >= ABSORB_CAP) return false
         }
-      }
+      })
     }
 
     if (dirty) this.foodMesh.instanceMatrix.needsUpdate = true
@@ -668,26 +674,16 @@ export class Simulation {
       const cx = Math.floor(d.pos.x / GRID)
       const cy = Math.floor(d.pos.y / GRID)
       const cz = Math.floor(d.pos.z / GRID)
-      for (let ox = -2; ox <= 2; ox++) {
-        for (let oy = -2; oy <= 2; oy++) {
-          for (let oz = -2; oz <= 2; oz++) {
-            const bucket = this.foodGrid.get(cellIndex(cx + ox, cy + oy, cz + oz))
-            if (!bucket) continue
-            for (let k = 0; k < bucket.length; k++) {
-              const food = this.foods[bucket[k]]
-              if (!food.visible) continue
-              const dd = this.foodDist(d, food, halfLen)
-              if (dd < sense) {
-                const w = 1 - dd / sense
-                sum += w
-                fx += this._fd.rx * w
-                fy += this._fd.ry * w
-                fz += this._fd.rz * w
-              }
-            }
-          }
+      this.forEachNearbyFood(cx, cy, cz, 2, (foodIndex, food) => {
+        const dd = this.foodDist(d, food, halfLen)
+        if (dd < sense) {
+          const w = 1 - dd / sense
+          sum += w
+          fx += this._fd.rx * w
+          fy += this._fd.ry * w
+          fz += this._fd.rz * w
         }
-      }
+      })
       d.slow = 1 + (GRAZE_RATE - 1) * (1 - Math.exp(-sum * GRAZE_GAIN))
       d.foodAmt = Math.min(sum, 1)
       const fb = Math.sqrt(fx * fx + fy * fy + fz * fz)
