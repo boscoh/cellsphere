@@ -1,14 +1,21 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Simulation } from './sim'
+import { MAX_STEPS, FIXED_DT } from './constants'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
-const simSpeed = ref(1500)
+const simRate = ref(15)
+const fps = ref(0)
+const MAX_SIM_RATE = MAX_STEPS
+const MAX_BACKLOG = MAX_STEPS * FIXED_DT
 
 let sim
 let animationId
 let lastTime = performance.now()
+let accumulator = 0
+let fpsCount = 0
+let fpsTime = 0
 const handleResize = () => sim.onResize()
 
 onMounted(() => {
@@ -21,8 +28,24 @@ onMounted(() => {
     const now = performance.now()
     const rawDt = Math.min((now - lastTime) / 1000, 0.05)
     lastTime = now
-    const timeScale = simSpeed.value / 100
-    sim.frame(rawDt * timeScale, tailsActive.value ? 1 : 0.0001)
+
+    accumulator = Math.min(
+      accumulator + rawDt * Math.min(simRate.value, MAX_SIM_RATE),
+      MAX_BACKLOG,
+    )
+    if (accumulator > 0) {
+      sim.step(accumulator)
+      accumulator = 0
+    }
+    sim.render(tailsActive.value ? 1 : 0.0001)
+
+    fpsCount++
+    fpsTime += rawDt
+    if (fpsTime >= 0.5) {
+      fps.value = Math.round(fpsCount / fpsTime)
+      fpsCount = 0
+      fpsTime = 0
+    }
   }
   tick()
 
@@ -40,23 +63,27 @@ onBeforeUnmount(() => {
   <div ref="canvasHolder" class="canvas-holder"></div>
   <div class="overlay">
     <h1>Cell</h1>
-    <p>bacteria graze the sphere · drag to orbit · scroll to zoom</p>
+    <p>render <span class="rate">{{ fps }} fps</span> · drag to orbit · scroll to zoom</p>
     <div class="control">
-      <label for="speed">sim speed</label>
+      <label for="speed">sim rate</label>
       <input
         id="speed"
         type="range"
         min="0"
-        max="3000"
-        step="20"
-        v-model.number="simSpeed"
+        :max="MAX_SIM_RATE"
+        step="2"
+        v-model.number="simRate"
       />
-      <span class="readout">{{ simSpeed }}%</span>
+      <span class="readout">{{ simRate }}×</span>
+      <span class="readout muted">max {{ MAX_SIM_RATE }}×</span>
     </div>
     <div class="control">
       <label for="tails">tails</label>
       <input id="tails" type="checkbox" v-model="tailsActive" />
       <span class="readout">{{ tailsActive ? 'on' : 'off' }}</span>
+    </div>
+    <div class="control">
+      <button type="button" class="restart" @click="sim.reset()">restart</button>
     </div>
   </div>
 </template>
@@ -92,6 +119,11 @@ onBeforeUnmount(() => {
   color: #8a93a6;
 }
 
+.overlay .rate {
+  color: #b7c2d4;
+  font-variant-numeric: tabular-nums;
+}
+
 .control {
   margin-top: 22px;
   display: flex;
@@ -118,5 +150,26 @@ onBeforeUnmount(() => {
   min-width: 36px;
   color: #b7c2d4;
   font-variant-numeric: tabular-nums;
+}
+
+.control .readout.muted {
+  color: #6b7484;
+}
+
+.control .restart {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #b7c2d4;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.control .restart:hover {
+  color: #e8ecf3;
+  background: rgba(255, 255, 255, 0.12);
 }
 </style>

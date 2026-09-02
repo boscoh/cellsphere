@@ -18,12 +18,20 @@ import {
   MITO_FADE,
   MITO_NEAR,
   MITO_SEP,
+  MITO_SLOW_FRAC,
   WIDTH,
   TAIL_SEGMENTS,
   TAIL_LEN,
   TAIL_AMP,
   TAIL_FREQ,
   TAIL_WAVE,
+  TAIL_LAG_RATE,
+  TAIL_HELIX,
+  AGITATE_UP,
+  AGITATE_DOWN,
+  GO_THRESH,
+  WHIP_GAIN,
+  WHIP_TAU,
   THRUST,
   DRAG,
   GRAZE_RATE,
@@ -35,6 +43,9 @@ import {
   MAX_SPIN,
   PEAK_MIN,
   SENSE_BOOST,
+  SENSE_PERIOD,
+  CULL_COS,
+  CELL_GRID,
 } from './constants'
 import {
   randomUnitVector,
@@ -120,9 +131,11 @@ function disposeObject3D(obj) {
 
 export class Simulation {
   constructor() {
+    this.scene = new THREE.Scene()
     this.cells = []
     this.foods = []
     this.foodGrid = new Map()
+    this.cellGrid = new Map()
     this.clumps = []
     this.foodMesh = null
     this.tailMesh = null
@@ -130,6 +143,8 @@ export class Simulation {
     this.tailScale = 1
     this.nextTailIndex = 0
     this.freeTailIndices = []
+    this.respawning = []
+    this.senseAccum = 0
 
     this._v1 = new THREE.Vector3()
     this._v2 = new THREE.Vector3()
@@ -152,8 +167,7 @@ export class Simulation {
     this.sphereShell = sphereShell
   }
 
-  buildWorld() {
-    for (let i = 0; i < CELL_COUNT; i++) {
+  buildWorld() {    for (let i = 0; i < CELL_COUNT; i++) {
       const cell = this.makeCell()
       this.cells.push(cell)
       this.scene.add(cell)
@@ -164,6 +178,7 @@ export class Simulation {
     this.scene.add(this.foodMesh)
     this.generateClumps()
     for (let i = 0; i < FOOD_COUNT; i++) this.makeFood()
+    this.buildFoodGrid()
     this.foodMesh.instanceMatrix.needsUpdate = true
 
     this.tailMesh = new THREE.InstancedMesh(
@@ -182,6 +197,33 @@ export class Simulation {
     this.scene.add(this.tailMesh)
     for (const c of this.cells) this.setTailColor(c)
     this.tailMesh.instanceColor.needsUpdate = true
+  }
+
+  reset() {
+    for (const cell of this.cells) {
+      this.scene.remove(cell)
+      disposeObject3D(cell)
+    }
+    for (const mesh of [this.foodMesh, this.tailMesh]) {
+      if (mesh) {
+        this.scene.remove(mesh)
+        mesh.dispose()
+      }
+    }
+    this.cells = []
+    this.foods = []
+    this.foodGrid = new Map()
+    this.cellGrid = new Map()
+    this.clumps = []
+    this.respawning = []
+    this.simTime = 0
+    this.tailScale = 1
+    this.nextTailIndex = 0
+    this.freeTailIndices = []
+    this.senseAccum = 0
+    this.foodMesh = null
+    this.tailMesh = null
+    this.buildWorld()
   }
 
   setTailColor(cell) {
@@ -205,11 +247,10 @@ export class Simulation {
   createCell(index, pos, heading, length) {
     const outer = new THREE.Mesh(
       makeBodyGeo(length),
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        roughness: 0.2,
-        transmission: 0.5,
-        thickness: 0.4,
+        roughness: 0.25,
+        metalness: 0,
         transparent: true,
         opacity: 0.9,
       }),
@@ -235,8 +276,12 @@ export class Simulation {
       pos,
       vel: heading.clone().multiplyScalar(0.3),
       heading,
+      tailDir: heading.clone().negate().normalize(),
       phase: Math.random() * Math.PI * 2,
       slow: 1,
+      agitate: 0,
+      whipT: 99,
+      goPrev: 1,
       foodDir: new THREE.Vector3(),
       foodAmt: 0,
       foodPeak: 0,
@@ -246,6 +291,7 @@ export class Simulation {
       mito: null,
       splitting: false,
       dead: false,
+      sideHidden: false,
       tailGrow: 1,
       index,
       tailStart: index * TAIL_SEGMENTS,
@@ -318,26 +364,75 @@ export class Simulation {
 
   placeTail(cell) {
     const d = cell.userData
+    if (d.sideHidden) {
+      this._dummy.position.set(0, 0, 0)
+      this._dummy.rotation.set(0, 0, 0)
+      this._dummy.scale.set(0, 0, 0)
+      this._dummy.updateMatrix()
+      for (let i = 0; i < TAIL_SEGMENTS; i++) {
+        this.tailMesh.setMatrixAt(d.tailStart + i, this._dummy.matrix)
+      }
+      return
+    }
     const grow = d.tailGrow
     const step = TAIL_LEN / TAIL_SEGMENTS
-    const base = -d.radius
+    const n = this._v1.copy(d.pos).normalize()
+    const base = this._v2.copy(d.pos).addScaledVector(d.heading, -d.radius)
+    const tailDir = d.tailDir
+    const side = this._v3.crossVectors(n, tailDir)
+    if (side.lengthSq() < 1e-8) {
+      side.set(0, 0, 1).addScaledVector(n, -n.z).normalize()
+    } else {
+      side.normalize()
+    }
+    const up = this._v4.crossVectors(tailDir, side).normalize()
+    const whip = Math.exp(-d.whipT / WHIP_TAU)
+    const amp =
+      TAIL_AMP * Math.max(d.agitate, 0.1) * (1 + WHIP_GAIN * whip) * grow
+    const freq = TAIL_FREQ * (0.3 + 0.7 * d.agitate)
+    const helix = TAIL_HELIX * smoothstep(d.agitate)
     for (let i = 0; i < TAIL_SEGMENTS; i++) {
-      const x = base - i * step * grow
+      const dist = i * step * grow
       const t = i / TAIL_SEGMENTS
-      const z =
-        Math.sin(this.simTime * TAIL_FREQ * d.drive - x * TAIL_WAVE + d.phase) *
-        TAIL_AMP *
-        (t * t) *
-        d.drive *
-        grow
-      this._v2.set(x, 0, z).applyQuaternion(cell.quaternion).add(cell.position)
-      this._dummy.position.copy(this._v2)
+      const taper = t * t
+      const ph = this.simTime * freq + dist * TAIL_WAVE + d.phase
+      const a = Math.sin(ph) * amp * taper
+      const b = Math.cos(ph) * amp * taper * helix
+      this._dummy.position
+        .copy(base)
+        .addScaledVector(tailDir, dist)
+        .addScaledVector(side, a)
+        .addScaledVector(up, b)
       const ts = this.tailScale
       this._dummy.scale.set(ts, ts, ts)
       this._dummy.rotation.set(0, 0, 0)
       this._dummy.updateMatrix()
       this.tailMesh.setMatrixAt(d.tailStart + i, this._dummy.matrix)
     }
+  }
+
+  updateTailState(d, dt) {
+    const n = this._v1.copy(d.pos).normalize()
+    const behind = this._v3.copy(d.heading).negate()
+    behind.addScaledVector(n, -behind.dot(n))
+    if (behind.lengthSq() > 1e-8) {
+      behind.normalize()
+      d.tailDir.addScaledVector(
+        this._v2.copy(behind).sub(d.tailDir),
+        TAIL_LAG_RATE * dt,
+      )
+      d.tailDir.addScaledVector(n, -d.tailDir.dot(n))
+      d.tailDir.normalize()
+    }
+    const target = d.drive
+    const up = target > d.agitate
+    const rate = up ? AGITATE_UP : AGITATE_DOWN
+    d.agitate += (target - d.agitate) * (1 - Math.exp(-rate * dt))
+    d.agitate = THREE.MathUtils.clamp(d.agitate, 0, 1)
+    if (!up && d.agitate < 0.02) d.agitate = 0
+    if (target > GO_THRESH && d.goPrev <= GO_THRESH) d.whipT = 0
+    d.whipT += dt
+    d.goPrev = target
   }
 
   updateMito(cell, simDt) {
@@ -362,16 +457,15 @@ export class Simulation {
       THREE.MathUtils.clamp((frac - MITO_HOLD) / MITO_FADE, 0, 1),
     )
     m.back.userData.tailGrow = tailGrow
-    m.back.userData.drive = sep
-    m.front.userData.drive = sep
+    m.back.userData.drive = 0
+    m.front.userData.drive = 0
 
     const pd = m.parent.userData
-    if (pd.outer.material.transmission !== 0) {
-      pd.outer.material.transmission = 0
-      pd.outer.material.needsUpdate = true
-    }
-    pd.outer.material.opacity = 0.9 * (1 - fadeK)
+    pd.outer.material.depthWrite = false
+    pd.outer.material.opacity = 0.75 * (1 - fadeK)
     pd.nucleus.material.transparent = true
+    pd.nucleus.material.depthWrite = false
+    pd.nucleus.material.needsUpdate = true
     pd.nucleus.material.opacity = 1 - fadeK
 
     if (m.t >= m.dur) this.finalizeMito(cell, m)
@@ -416,12 +510,12 @@ export class Simulation {
   }
 
   generateClumps() {
-    const n = 9 + Math.floor(Math.random() * 8)
+    const n = 18 + Math.floor(Math.random() * 14)
     for (let i = 0; i < n; i++) {
       this.clumps.push({
         center: randomUnitVector(),
-        radius: 0.3 + Math.random() * 1.1,
-        theta: (0.3 + Math.random() * 1.1) / SURFACE,
+        radius: 0.3 + Math.random() * 0.9,
+        theta: (0.14 + Math.random() * 0.5) / SURFACE,
       })
     }
   }
@@ -451,6 +545,7 @@ export class Simulation {
       respawn: 0,
       visible: true,
       index: this.foods.length,
+      gridKey: null,
     }
     this.foods.push(food)
     this.placeFood(food)
@@ -464,32 +559,98 @@ export class Simulation {
       Math.floor(food.pos.y / GRID),
       Math.floor(food.pos.z / GRID),
     )
+    food.gridKey = key
     const bucket = this.foodGrid.get(key)
     if (bucket) bucket.push(i)
     else this.foodGrid.set(key, [i])
   }
 
-  buildFoodGrid() {
-    this.foodGrid.clear()
-    for (const food of this.foods) {
-      if (food.visible) this.addFoodToGrid(food.index)
-      this.placeFood(food)
+  removeFoodFromGrid(i) {
+    const food = this.foods[i]
+    if (food.gridKey == null) return
+    const bucket = this.foodGrid.get(food.gridKey)
+    if (bucket) {
+      const pos = bucket.indexOf(i)
+      if (pos !== -1) bucket.splice(pos, 1)
     }
-    this.foodMesh.instanceMatrix.needsUpdate = true
+    food.gridKey = null
   }
 
-  senseAndAbsorb(simDt) {
-    for (const food of this.foods) {
-      if (food.respawn > 0) {
-        food.respawn -= simDt
-        if (food.respawn <= 0) {
-          food.pos = this.clumpPos()
-          food.visible = true
-          this.placeFood(food)
+  buildFoodGrid() {
+    this.foodGrid.clear()
+    for (let i = 0; i < this.foods.length; i++) {
+      if (this.foods[i].visible) this.addFoodToGrid(i)
+    }
+  }
+
+  eatAndRespawn(simDt) {
+    let dirty = false
+    for (let i = this.respawning.length - 1; i >= 0; i--) {
+      const foodIndex = this.respawning[i]
+      const food = this.foods[foodIndex]
+      food.respawn -= simDt
+      if (food.respawn <= 0) {
+        this.respawning.splice(i, 1)
+        this.removeFoodFromGrid(foodIndex)
+        food.pos = this.clumpPos()
+        food.visible = true
+        this.addFoodToGrid(foodIndex)
+        this.placeFood(food)
+        dirty = true
+      }
+    }
+
+    for (const cell of this.cells) {
+      const d = cell.userData
+      if (d.mito || d.splitting || d.split) continue
+      const ax = d.heading
+      const halfLen = Math.max(d.radius - WIDTH, 0)
+      let ate = 0
+      const cx = Math.floor(d.pos.x / GRID)
+      const cy = Math.floor(d.pos.y / GRID)
+      const cz = Math.floor(d.pos.z / GRID)
+      scan: for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let oz = -1; oz <= 1; oz++) {
+            const bucket = this.foodGrid.get(cellIndex(cx + ox, cy + oy, cz + oz))
+            if (!bucket) continue
+            for (let k = 0; k < bucket.length; k++) {
+              const foodIndex = bucket[k]
+              const food = this.foods[foodIndex]
+              if (!food.visible) continue
+              const rx = food.pos.x - d.pos.x
+              const ry = food.pos.y - d.pos.y
+              const rz = food.pos.z - d.pos.z
+              let t = rx * ax.x + ry * ax.y + rz * ax.z
+              if (t > halfLen) t = halfLen
+              else if (t < -halfLen) t = -halfLen
+              const px = d.pos.x + ax.x * t
+              const py = d.pos.y + ax.y * t
+              const pz = d.pos.z + ax.z * t
+              const ex = food.pos.x - px
+              const ey = food.pos.y - py
+              const ez = food.pos.z - pz
+              const dd = Math.sqrt(ex * ex + ey * ey + ez * ez)
+              if (dd < WIDTH + food.r) {
+                this.growCell(cell, GROWTH_PER_FOOD)
+                food.respawn = 2.5 + Math.random() * 8
+                food.visible = false
+                this.removeFoodFromGrid(foodIndex)
+                this.respawning.push(foodIndex)
+                this.placeFood(food)
+                dirty = true
+                if (++ate >= ABSORB_CAP) break scan
+              }
+            }
+          }
         }
       }
     }
 
+    if (dirty) this.foodMesh.instanceMatrix.needsUpdate = true
+  }
+
+  concentration() {
     for (const cell of this.cells) {
       const d = cell.userData
       if (d.mito || d.splitting || d.split) continue
@@ -500,11 +661,10 @@ export class Simulation {
       const ax = d.heading
       const halfLen = Math.max(d.radius - WIDTH, 0)
       const sense = WIDTH + SENSE_BOOST
-      let ate = 0
       const cx = Math.floor(d.pos.x / GRID)
       const cy = Math.floor(d.pos.y / GRID)
       const cz = Math.floor(d.pos.z / GRID)
-      scan: for (let ox = -2; ox <= 2; ox++) {
+      for (let ox = -2; ox <= 2; ox++) {
         for (let oy = -2; oy <= 2; oy++) {
           for (let oz = -2; oz <= 2; oz++) {
             const bucket = this.foodGrid.get(cellIndex(cx + ox, cy + oy, cz + oz))
@@ -532,13 +692,6 @@ export class Simulation {
                 fy += ry * w
                 fz += rz * w
               }
-              if (dd < WIDTH + food.r) {
-                this.growCell(cell, GROWTH_PER_FOOD)
-                food.respawn = 2.5 + Math.random() * 8
-                food.visible = false
-                this.placeFood(food)
-                if (++ate >= ABSORB_CAP) break scan
-              }
             }
           }
         }
@@ -549,8 +702,6 @@ export class Simulation {
       d.foodPeak = sum > 0 ? fb / sum / sense : 0
       d.foodDir.set(fx, fy, fz)
     }
-
-    this.foodMesh.instanceMatrix.needsUpdate = true
   }
 
   signedAngleTo(d, target) {
@@ -653,48 +804,86 @@ export class Simulation {
 
   solveCollisions(simDt) {
     const n = this.cells.length
+    this.cellGrid.clear()
+    for (let i = 0; i < n; i++) {
+      const d = this.cells[i].userData
+      if (d.mito || d.splitting) continue
+      const key = cellIndex(
+        Math.floor(d.pos.x / CELL_GRID),
+        Math.floor(d.pos.y / CELL_GRID),
+        Math.floor(d.pos.z / CELL_GRID),
+      )
+      const bucket = this.cellGrid.get(key)
+      if (bucket) bucket.push(i)
+      else this.cellGrid.set(key, [i])
+    }
+
     for (let i = 0; i < n; i++) {
       const a = this.cells[i].userData
-      for (let j = i + 1; j < n; j++) {
-        const b = this.cells[j].userData
-        if (a.mito || a.splitting || b.mito || b.splitting) continue
-        const cdx = b.pos.x - a.pos.x
-        const cdy = b.pos.y - a.pos.y
-        const cdz = b.pos.z - a.pos.z
-        const bound = a.radius + b.radius + 2 * WIDTH
-        if (cdx * cdx + cdy * cdy + cdz * cdz >= bound * bound) continue
+      if (a.mito || a.splitting) continue
+      const cx = Math.floor(a.pos.x / CELL_GRID)
+      const cy = Math.floor(a.pos.y / CELL_GRID)
+      const cz = Math.floor(a.pos.z / CELL_GRID)
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let oz = -1; oz <= 1; oz++) {
+            const bucket = this.cellGrid.get(
+              cellIndex(cx + ox, cy + oy, cz + oz),
+            )
+            if (!bucket) continue
+            for (let k = 0; k < bucket.length; k++) {
+              const j = bucket[k]
+              if (j <= i) continue
+              const b = this.cells[j].userData
+              if (b.mito || b.splitting) continue
+              const cdx = b.pos.x - a.pos.x
+              const cdy = b.pos.y - a.pos.y
+              const cdz = b.pos.z - a.pos.z
+              const bound = a.radius + b.radius + 2 * WIDTH
+              if (cdx * cdx + cdy * cdy + cdz * cdz >= bound * bound) continue
 
-        this.capsuleDist(a, b)
-        const contact = 2 * WIDTH
-        if (this._col.dist >= contact) continue
-        const overlap = contact - this._col.dist
-        const nx = this._col.x
-        const ny = this._col.y
-        const nz = this._col.z
-        const invA = 1 / a.mass
-        const invB = 1 / b.mass
-        const invSum = invA + invB
+              this.capsuleDist(a, b)
+              const contact = 2 * WIDTH
+              if (this._col.dist >= contact) continue
+              const overlap = contact - this._col.dist
+              const nx = this._col.x
+              const ny = this._col.y
+              const nz = this._col.z
+              const invA = 1 / a.mass
+              const invB = 1 / b.mass
+              const invSum = invA + invB
 
-        const impulse = (overlap * SPRING) / invSum
-        a.vel.x -= nx * impulse * invA * simDt
-        a.vel.y -= ny * impulse * invA * simDt
-        a.vel.z -= nz * impulse * invA * simDt
-        b.vel.x += nx * impulse * invB * simDt
-        b.vel.y += ny * impulse * invB * simDt
-        b.vel.z += nz * impulse * invB * simDt
+              const impulse = (overlap * SPRING) / invSum
+              a.vel.x -= nx * impulse * invA * simDt
+              a.vel.y -= ny * impulse * invA * simDt
+              a.vel.z -= nz * impulse * invA * simDt
+              b.vel.x += nx * impulse * invB * simDt
+              b.vel.y += ny * impulse * invB * simDt
+              b.vel.z += nz * impulse * invB * simDt
 
-        this.deflectHeading(a, this._v6.set(-nx, -ny, -nz), Math.min(overlap * 8, 1))
-        this.deflectHeading(b, this._v6.set(nx, ny, nz), Math.min(overlap * 8, 1))
+              this.deflectHeading(
+                a,
+                this._v6.set(-nx, -ny, -nz),
+                Math.min(overlap * 8, 1),
+              )
+              this.deflectHeading(
+                b,
+                this._v6.set(nx, ny, nz),
+                Math.min(overlap * 8, 1),
+              )
 
-        const corr = (overlap * 0.5 * simDt) / invSum
-        a.pos.x -= nx * corr * invA
-        a.pos.y -= ny * corr * invA
-        a.pos.z -= nz * corr * invA
-        b.pos.x += nx * corr * invB
-        b.pos.y += ny * corr * invB
-        b.pos.z += nz * corr * invB
-        a.pos.setLength(SURFACE)
-        b.pos.setLength(SURFACE)
+              const corr = (overlap * 0.5 * simDt) / invSum
+              a.pos.x -= nx * corr * invA
+              a.pos.y -= ny * corr * invA
+              a.pos.z -= nz * corr * invA
+              b.pos.x += nx * corr * invB
+              b.pos.y += ny * corr * invB
+              b.pos.z += nz * corr * invB
+              a.pos.setLength(SURFACE)
+              b.pos.setLength(SURFACE)
+            }
+          }
+        }
       }
     }
   }
@@ -705,13 +894,21 @@ export class Simulation {
     for (const cell of this.cells) {
       const d = cell.userData
       if (d.mito || d.splitting) {
-        d.drive = 1
+        d.drive = 0
         continue
       }
       const normal = this._v1.copy(d.pos).normalize()
 
       d.heading.addScaledVector(normal, -d.heading.dot(normal)).normalize()
-      d.drive = d.slow
+      const slowFrac = smoothstep(
+        THREE.MathUtils.clamp(
+          (d.radius - d.maxLength * MITO_SLOW_FRAC) /
+            (d.maxLength * (1 - MITO_SLOW_FRAC)),
+          0,
+          1,
+        ),
+      )
+      d.drive = d.slow * (1 - slowFrac)
 
       if (d.foodAmt > 0.01 && d.foodPeak > PEAK_MIN) {
         const ang = this.signedAngleTo(d, d.foodDir)
@@ -753,9 +950,15 @@ export class Simulation {
     }
 
     this.solveCollisions(dt)
-    this.senseAndAbsorb(dt)
+    this.eatAndRespawn(dt)
+    this.senseAccum += dt
+    if (this.senseAccum >= SENSE_PERIOD) {
+      this.concentration()
+      this.senseAccum = 0
+    }
     this.processSplits()
     for (const cell of this.cells) this.updateMito(cell, dt)
+    for (const cell of this.cells) this.updateTailState(cell.userData, dt)
     for (let i = this.cells.length - 1; i >= 0; i--) {
       if (this.cells[i].userData.dead) {
         this.removeCell(this.cells[i])
@@ -769,17 +972,41 @@ export class Simulation {
     this.tailMesh.instanceMatrix.needsUpdate = true
   }
 
-  frame(simDt, tailScale) {
-    this.tailScale = tailScale
+  updateVisibility() {
+    if (!this.camera) return
+    const cam = this.camera.position
+    const len = cam.length() || 1
+    const cx = cam.x / len
+    const cy = cam.y / len
+    const cz = cam.z / len
+    for (const cell of this.cells) {
+      const d = cell.userData
+      const cos = (d.pos.x * cx + d.pos.y * cy + d.pos.z * cz) / SURFACE
+      const visible = cos > CULL_COS
+      cell.visible = visible
+      d.sideHidden = !visible
+    }
+  }
+
+  step(simDt) {
     if (simDt > 0) {
       const steps = Math.min(Math.max(Math.ceil(simDt / FIXED_DT), 1), MAX_STEPS)
       const dt = simDt / steps
-      this.buildFoodGrid()
       for (let i = 0; i < steps; i++) this.advance(dt)
     }
+  }
+
+  render(tailScale) {
+    this.tailScale = tailScale
+    this.updateVisibility()
     this.renderTails()
-    this.controls.update()
-    this.renderer.render(this.scene, this.camera)
+    if (this.controls) this.controls.update()
+    if (this.renderer) this.renderer.render(this.scene, this.camera)
+  }
+
+  frame(simDt, tailScale) {
+    this.step(simDt)
+    this.render(tailScale)
   }
 
   onResize() {
@@ -789,14 +1016,16 @@ export class Simulation {
   }
 
   dispose() {
-    this.controls.dispose()
-    this.renderer.dispose()
+    if (this.controls) this.controls.dispose()
+    if (this.renderer) this.renderer.dispose()
     disposeSharedMaterials()
-    this.sphereShell.geometry.dispose()
-    this.sphereShell.material.dispose()
+    if (this.sphereShell) {
+      this.sphereShell.geometry.dispose()
+      this.sphereShell.material.dispose()
+    }
     this.foodMesh.dispose()
     this.tailMesh.dispose()
     this.cells.forEach((c) => disposeObject3D(c))
-    this.renderer.domElement.remove()
+    if (this.renderer) this.renderer.domElement.remove()
   }
 }

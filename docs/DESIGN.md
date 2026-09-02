@@ -31,8 +31,24 @@ scene/renderer in `src/sceneSetup.js`; shared geos/materials in
   into `clamp(ceil(simDt / FIXED_DT), 1, MAX_STEPS)` equal physics substeps
   (`advance(dt)`), so `simSpeed` is a **linear time multiplier** and stays
   stable at high speed (single big steps earlier over-damped the
-  `exp(-DRAG*simDt)` integration and paradoxically slowed the sim). Food grid +
-  tail matrices are rebuilt once per frame (`buildFoodGrid`, `renderTails`).
+  `exp(-DRAG*simDt)` integration and paradoxically slowed the sim). **Time-driven**:
+  `App.vue` measures real elapsed time each frame and banks it in an
+  **accumulator** (`sim.step(simDt) × simSpeed`, capped by `MAX_BACKLOG`), so
+  sim time tracks wall-clock × speed across uneven frame times but never
+  spirals during slow frames. **Headless**: the physics is split into
+  `step(simDt)` (substeps only, no rendering) and `render()` (tail matrices +
+  controls + `renderer.render`); `frame()` calls both. `sim.buildWorld()` works
+  without `attach()` — a bare `THREE.Scene` is used and no WebGL context is
+  created, so you can run pure physics via `sim.step(simDt)` (verified: 120
+  cells/14k food, 30 s, no renderer, slow range 0.02→1.0, cells grow).
+  **Perf**: the food **spatial hash** is built once at init and maintained
+  **incrementally** (`addFoodToGrid`/`removeFoodFromGrid`) so respawns/absorbs
+  update only affected buckets. Sensing is **split**: `eatAndRespawn` runs
+  **per-substep** with a tight 3×3×3 scan (foods within eat range only) and
+  tracks respawning foods in a list; the wide 5×5×5 **concentration** scan
+  (`slow`/`foodAmt`/`foodPeak`/`foodDir`) runs only every `SENSE_PERIOD`
+  (0.05) sim-sec via an accumulator — cuts the dominant scan cost while
+  preserving eating and the slow ramp.
 - **Rotation (viscous)**: `headingRate` accumulates torque from **collision
   kicks** and **chemotaxis**, then is damped by `ANG_DRAG` and integrated about
   the surface normal. No self-steering.
@@ -41,44 +57,73 @@ scene/renderer in `src/sceneSetup.js`; shared geos/materials in
   distance. Concentration drives a **graduated slowdown** (`slow`) and a
   **chemotaxis** turn (only when the gradient is strongly peaked).
 - **Cell–cell collision**: true capsule–capsule min distance; soft spring +
-  positional correction; contact also kicks `headingRate`.
+  positional correction; contact also kicks `headingRate`. Pairs are
+  limited by a **cell spatial-hash** (`CELL_GRID`, ±1 bucket) instead of an
+  O(n²) scan; mito/splitting cells are excluded from the grid.
 - **Growth/mitosis**: eating grows length to `maxLength = 2× start`.
   On full, `mitose()` spawns **two daughters** (each half the mother's length,
   placed to tile the parent's footprint), the **parent phases out**, then the
   daughters rest and are released.
+- **Tail (trailing + agitation)**: each cell keeps a surface-tangent `tailDir`
+  (the flagellum axis) that chases `-heading` with a first-order lag
+  (`TAIL_LAG_RATE`), so the tail drags through the medium and bends around
+  turns instead of snapping to the body frame. A discrete `agitate` decision
+  (attack/release, `AGITATE_UP/DOWN`) is fed by `drive`/`slow`; crossing
+  `GO_THRESH` fires a decaying **whip** (`WHIP_GAIN`, `WHIP_TAU`) that briefly
+  spikes amplitude, and the beat blends from a limp planar wave into a
+  **helical corkscrew** (`TAIL_HELIX`) under agitation = "swivel to generate
+  thrust." Drawn per frame in `placeTail` (base sits at the rear of the body;
+  the wave travels outward along `tailDir`).
 
 ## Current tuning constants (`src/constants.js`)
 
 | Constant | Value | Role |
 |---|---|---|
 | `SPHERE_RADIUS` / `SURFACE` | 5 / 5.06 | sphere radius / surface offset |
-| `CELL_COUNT` / `MAX_CELLS` | 225 / 500 | initial / max population |
-| `FOOD_COUNT` | 26000 | food specks |
-| `GRID` | 0.35 | food spatial-hash cell size |
+| `CELL_COUNT` / `MAX_CELLS` | 120 / 500 | initial / max population |
+| `FOOD_COUNT` | 14000 | food specks |
+| `GRID` / `CELL_GRID` | 0.35 / 0.5 | food spatial-hash cell size / cell collision-hash cell size |
 | `SPRING` | 22 | cell–cell stiffness |
-| `FIXED_DT` / `MAX_STEPS` | 1/60 / 40 | stable physics substep / cap per frame |
-| `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.07 / 0.26 / 0.09 | color/length gradient |
+| `FIXED_DT` / `MAX_STEPS` | 1/60 / 200 | stable physics substep / hard per-frame substep ceiling |
+| `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.05 / 0.185 / 0.065 | color/length gradient |
 | `GROWTH_PER_FOOD` | 0.0005 | length gained per food |
 | `ABSORB_CAP` | 3 | max foods absorbed per cell/frame |
-| `MITO_TIME` | 18 | mitosis animation duration (sim-s) |
+| `MITO_TIME` | 90 | mitosis animation duration (sim-s) |
 | `MITO_HOLD` / `MITO_FADE` | 0.2 / 0.4 | fraction parent stays fully visible / then fades (children held overlapped until fade ends) |
 | `MITO_NEAR` / `MITO_SEP` | 2.1 / 2.8 | child spread when held (head-to-head in parent) / after parent gone |
-| `WIDTH` | 0.06 | body width (fixed; only length grows) |
-| `TAIL_SEGMENTS` / `TAIL_LEN` / `TAIL_AMP` | 24 / 0.15 / 0.1 | tail shape |
+| `MITO_SLOW_FRAC` | 0.6 | fraction of max length where a cell starts decelerating into mitosis |
+| `WIDTH` | 0.0425 | body width (fixed; only length grows) |
+| `TAIL_SEGMENTS` / `TAIL_LEN` / `TAIL_AMP` | 24 / 0.30 / 0.05 | tail shape |
 | `TAIL_FREQ` / `TAIL_WAVE` | 24.0 / 24.0 | tail beat rate / spatial waves |
+| `TAIL_LAG_RATE` / `TAIL_HELIX` | 3.5 / 1.0 | how fast the tail axis chases `-heading` (lower = more trailing) / planar→helical blend |
+| `AGITATE_UP` / `AGITATE_DOWN` / `GO_THRESH` | 6.0 / 2.0 / 0.6 | agitation attack / release rate / "move decision" drive threshold |
+| `WHIP_GAIN` / `WHIP_TAU` | 1.2 / 0.35 | transient amplitude boom on "go" / its decay |
 | `THRUST` / `DRAG` | 12 / 22 | linear propulsion / damping |
-| `GRAZE_RATE` / `GRAZE_GAIN` | 0.02 / 1.8 | graduated slowdown floor / gain |
+| `GRAZE_RATE` / `GRAZE_GAIN` | 0.01 / 6.0 | graduated slowdown floor / gain |
 | `ANG_DRAG` / `MAX_SPIN` | 12 / 2.0 | angular damping / rate limit |
 | `CHEMO_ACCEL` / `MAX_ACCEL` / `PEAK_MIN` | 3.5 / 1.2 / 0.18 | chemotaxis torque / cap / min-peak |
 | `COLLISION_KICK` | 0.5 | contact → angular kick |
+| `PEAK_MIN` | 0.18 | min concentration peak for chemotaxis |
 | `SENSE_BOOST` | 0.25 | food sensing radius for concentration |
+| `SENSE_PERIOD` | 0.05 | sim-sec between concentration scans (throttle) |
+| `CULL_COS` | -0.06 | cos(normal, camDir) below which a cell/tail is culled |
 
-Reactive UI: `simSpeed` (default 1500, 0–3000%), `tailsActive`.
+Reactive UI: `simRate` (default 15, 0–`MAX_SIM_RATE`=MAX_STEPS, step 2, shown as
+`×` — sim-time per real-time, i.e. sim seconds per real second; also shows
+`max MAX_SIM_RATE×`), `tailsActive`. The fps readout is tagged `render`.
+`MAX_SIM_RATE` and `MAX_BACKLOG` are derived from the sim constants
+(`MAX_STEPS`, `MAX_BACKLOG = MAX_STEPS*FIXED_DT`) so the slider's top is exactly
+the sim's per-frame physics ceiling and the request is clamped to it — you
+can't choose a rate the sim can't be asked to run.
 
 ## Key decisions & gotchas
 
 - **Opaque sphere** uses `side: THREE.FrontSide`; bacteria/food on the *near*
-  hemisphere are visible, far side is occluded. This is intentional.
+  hemisphere are visible, far side is occluded. This is intentional. Body uses
+  `MeshStandardMaterial` (translucent, no `transmission` — removed for perf).
+  Cells/tails on the occluded far side are **culled** (`updateVisibility`,
+  `CULL_COS`) to save draw calls + transmission/transparent cost; `shadowMap`
+  is off.
 - Entities sit at `SURFACE` (not `SPHERE_RADIUS`) to avoid z-fighting with the
   shell.
 - **Cell–cell collision** must use capsule–capsule distance; a single big
@@ -93,7 +138,9 @@ Reactive UI: `simSpeed` (default 1500, 0–3000%), `tailsActive`.
   inside its body), the parent stays fully visible then fades, and only after the
   parent is completely gone do the daughters separate apart. Children's position
   + quaternion are synced every frame (splitting cells skip the physics loop, so
-  without this they'd render at the world origin).
+  without this they'd render at the world origin). To see the children inside,
+  the fading parent uses **`depthWrite=false`** and lower opacity (`0.75*(1-fadeK)`)
+  so it never occludes the held daughters.
 - The **tails checkbox** hides tails by scaling tail instances to 0 (not just
   stopping the wave).
 - `MAX_CELLS` preallocates tail instances; unused ones are zeroed at init;
@@ -101,6 +148,13 @@ Reactive UI: `simSpeed` (default 1500, 0–3000%), `tailsActive`.
 - **Tail slots** are allocated via `allocTailIndex()` (monotonic + free-list)
   since cells are spliced out of `cells`; a naive `cells.length`/loop-counter
   index gets reused and collides with a live cell's tail instances → "lost tails".
+- **Tail state ordering**: `updateTailState` must run as a separate pass *after*
+  the `updateMito` pass in `advance()`. `updateMito` sets splitting children's
+  `drive = sep` so propulsion/tails ramp with separation; if the tail state is
+  computed inside the physics loop (where the mito/splitting branch forces
+  `drive`), the children's tails read full-strength drive and screw into a
+  full helical corkscrew for the whole separation. The mito/splitting branch
+  sets `d.drive = d.slow` (calm fading parent) rather than `1`.
 
 ## Workflow
 
