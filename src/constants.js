@@ -1,6 +1,6 @@
 export const SPHERE_RADIUS = 5
 export const SURFACE = SPHERE_RADIUS + 0.06
-export const CELL_COUNT = 120
+export const CELL_COUNT = 100
 export const MAX_CELLS = 500
 export const FOOD_COUNT = 7000
 export const GRID = 0.35
