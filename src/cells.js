@@ -322,16 +322,12 @@ export function mitose(sim, parent) {
     half,
   }
   d.splitting = true
-  setTailColor(sim, back)
-  setTailColor(sim, front)
+  d.mitoParent = true
   sim.cells.push(back)
   sim.cells.push(front)
-  sim.scene.add(back)
-  sim.scene.add(front)
 }
 
-export function setTailColor(sim, cell) {
-  const d = cell.userData
+export function setTailColor(sim, d) {
   if (!sim.tailMesh || !d.color) return
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
     sim.tailMesh.setColorAt(d.tailStart + i, d.color)
@@ -441,28 +437,63 @@ export function updateMito(sim, d, simDt) {
   const spread = MITO_NEAR + (MITO_SEP - MITO_NEAR) * sep
   const dist = m.half * spread
 
+  const pd = m.parent
+  pd.pos.copy(m.startPos)
   placeMitoChild(m, m.back, -dist)
   placeMitoChild(m, m.front, dist)
 
   const tailGrow = smoothstep(
     THREE.MathUtils.clamp((frac - MITO_HOLD) / MITO_FADE, 0, 1),
   )
-  m.back.userData.tailGrow = tailGrow
-  m.back.userData.drive = 0
-  m.front.userData.drive = 0
+  m.back.tailGrow = tailGrow
+  m.back.drive = 0
+  m.front.drive = 0
 
-  const pd = m.parent.userData
-  pd.outer.material.depthWrite = false
-  pd.outer.material.opacity = 0.75 * (1 - fadeK)
+  const opac = 1 - fadeK
+  if (!m.fadeOn && opac < 1) {
+    m.fadeOn = true
+    activeFades++
+    bodyMat.depthWrite = false
+  }
+  if (opac <= 0) {
+    if (!m.fadeDone) {
+      m.fadeDone = true
+      if (m.fadeOn) {
+        m.fadeOn = false
+        activeFades--
+        if (activeFades === 0) bodyMat.depthWrite = true
+      }
+      removeBody(sim, pd)
+      clearTail(sim, pd)
+    }
+  } else {
+    setBodyOpacity(sim, pd, opac)
+  }
 
-  if (m.t >= m.dur) finalizeMito(cell, m)
+  if (m.t >= m.dur) finalizeMito(d, m)
 }
 
-function finalizeMito(cell, m) {
-  cell.userData.mito = null
-  m.back.userData.splitting = false
-  m.front.userData.splitting = false
-  m.back.userData.rest = MITO_REST
-  m.front.userData.rest = MITO_REST
-  m.parent.userData.dead = true
+function finalizeMito(d, m) {
+  d.mito = null
+  m.back.splitting = false
+  m.front.splitting = false
+  m.back.rest = MITO_REST
+  m.front.rest = MITO_REST
+  m.parent.dead = true
+}
+
+function placeMitoChild(m, cell, dist) {
+  const d = cell
+  d.pos.copy(m.startPos).addScaledVector(m.headBack, dist)
+  d.pos.setLength(SURFACE)
+  const n = d.pos.clone().normalize()
+  const fwd = d.heading.clone().addScaledVector(n, -d.heading.dot(n)).normalize()
+  const right = new THREE.Vector3().crossVectors(fwd, n)
+  if (right.lengthSq() < 1e-6) {
+    right.set(0, 1, 0).addScaledVector(n, -n.y).normalize()
+  } else {
+    right.normalize()
+  }
+  const mtx = new THREE.Matrix4().makeBasis(fwd, n, right)
+  d.quat.setFromRotationMatrix(mtx)
 }

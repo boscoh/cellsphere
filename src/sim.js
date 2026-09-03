@@ -267,8 +267,8 @@ export class Simulation {
     const n = this.cells.length
     this.cellGrid.clear()
     for (let i = 0; i < n; i++) {
-      const d = this.cells[i].userData
-      if (d.mito || d.splitting) continue
+      const d = this.cells[i]
+      if ((d.mito || d.splitting) && !d.mitoParent) continue
       const key = cellIndex(
         Math.floor(d.pos.x / CELL_GRID),
         Math.floor(d.pos.y / CELL_GRID),
@@ -280,8 +280,8 @@ export class Simulation {
     }
 
     for (let i = 0; i < n; i++) {
-      const a = this.cells[i].userData
-      if (a.mito || a.splitting) continue
+      const a = this.cells[i]
+      if ((a.mito || a.splitting) && !a.mitoParent) continue
       const cx = Math.floor(a.pos.x / CELL_GRID)
       const cy = Math.floor(a.pos.y / CELL_GRID)
       const cz = Math.floor(a.pos.z / CELL_GRID)
@@ -295,8 +295,8 @@ export class Simulation {
             for (let k = 0; k < bucket.length; k++) {
               const j = bucket[k]
               if (j <= i) continue
-              const b = this.cells[j].userData
-              if (b.mito || b.splitting) continue
+              const b = this.cells[j]
+              if ((b.mito || b.splitting) && !b.mitoParent) continue
               const cdx = b.pos.x - a.pos.x
               const cdy = b.pos.y - a.pos.y
               const cdz = b.pos.z - a.pos.z
@@ -310,9 +310,10 @@ export class Simulation {
               const nx = this._col.x
               const ny = this._col.y
               const nz = this._col.z
-              const invA = 1 / a.mass
-              const invB = 1 / b.mass
+              const invA = a.mitoParent ? 0 : 1 / a.mass
+              const invB = b.mitoParent ? 0 : 1 / b.mass
               const invSum = invA + invB
+              if (invSum <= 0) continue
 
               const impulse = (overlap * SPRING) / invSum
               a.vel.x -= nx * impulse * invA * simDt
@@ -322,16 +323,20 @@ export class Simulation {
               b.vel.y += ny * impulse * invB * simDt
               b.vel.z += nz * impulse * invB * simDt
 
-              this.deflectHeading(
-                a,
-                this._v6.set(-nx, -ny, -nz),
-                Math.min(overlap * 8, 1),
-              )
-              this.deflectHeading(
-                b,
-                this._v5.set(nx, ny, nz),
-                Math.min(overlap * 8, 1),
-              )
+              if (!a.mitoParent) {
+                this.deflectHeading(
+                  a,
+                  this._v6.set(-nx, -ny, -nz),
+                  Math.min(overlap * 8, 1),
+                )
+              }
+              if (!b.mitoParent) {
+                this.deflectHeading(
+                  b,
+                  this._v5.set(nx, ny, nz),
+                  Math.min(overlap * 8, 1),
+                )
+              }
 
               const corr = (overlap * 0.5 * simDt) / invSum
               a.pos.x -= nx * corr * invA
