@@ -435,6 +435,7 @@ export class Simulation {
   }
 
   renderTails() {
+    if (this.tailsHidden) return
     for (const cell of this.cells) placeTail(this, cell)
     this.tailMesh.instanceMatrix.needsUpdate = true
   }

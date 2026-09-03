@@ -14,22 +14,23 @@ import {
   MITO_REST,
   WIDTH,
   TAIL_SEGMENTS,
-  TAIL_LEN,
-  TAIL_AMP,
-  TAIL_FREQ,
-  TAIL_WAVE,
-  TAIL_LAG_RATE,
-  TAIL_HELIX,
-  AGITATE_UP,
-  AGITATE_DOWN,
-  GO_THRESH,
-  WHIP_GAIN,
-  WHIP_TAU,
+  TAIL_LINK,
+  TAIL_LINK_FILL,
+  TAIL_BASE_RATE,
+  TAIL_JOINT_RATE,
+  TAIL_OSC_FREQ,
+  TAIL_OSC_AMP,
+  TAIL_OSC_WAVE,
 } from './constants'
 import { randomSurfacePoint, randomTangent, smoothstep } from './math'
+import { bodyMat } from './materials'
 
 const GEO_STEP = 0.01
+const POOL_CAP = MAX_CELLS
+const BREED_BLUE = 0
+const BREED_RED = 1
 const bodyGeoCache = new Map()
+let activeFades = 0
 
 export function makeBodyGeo(length) {
   const cylLen = Math.max(2 * (length - WIDTH), 0.001)
@@ -340,86 +341,93 @@ export function setTailColor(sim, cell) {
   }
 }
 
-export function clearTail(sim, cell) {
-  const d = cell.userData
-  sim._dummy.position.set(0, 0, 0)
-  sim._dummy.rotation.set(0, 0, 0)
-  sim._dummy.scale.set(0, 0, 0)
-  sim._dummy.updateMatrix()
+export function clearTail(sim, d) {
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
-    sim.tailMesh.setMatrixAt(d.tailStart + i, sim._dummy.matrix)
+    zeroMatrix(sim, sim.tailMesh, d.tailStart + i)
   }
 }
 
-export function placeTail(sim, cell) {
-  const d = cell.userData
+export function placeTail(sim, d) {
   if (d.sideHidden) {
-    clearTail(sim, cell)
+    clearTail(sim, d)
     return
   }
-  const grow = d.tailGrow
-  const step = TAIL_LEN / TAIL_SEGMENTS
-  const n = sim._v1.copy(d.pos).normalize()
-  const base = sim._v2.copy(d.pos).addScaledVector(d.heading, -d.radius)
-  const tailDir = d.tailDir
-  const side = sim._v3.crossVectors(n, tailDir)
-  if (side.lengthSq() < 1e-8) {
-    side.set(0, 0, 1).addScaledVector(n, -n.z).normalize()
-  } else {
-    side.normalize()
-  }
-  const up = sim._v4.crossVectors(tailDir, side).normalize()
-  const whip = Math.exp(-d.whipT / WHIP_TAU)
-  const amp =
-    TAIL_AMP * Math.max(d.agitate, 0.1) * (1 + WHIP_GAIN * whip) * grow
-  const freq = TAIL_FREQ * (0.3 + 0.7 * d.agitate)
-  const helix = TAIL_HELIX * smoothstep(d.agitate)
+  const dirs = d.tailDirs
+  const pitch = TAIL_LINK * d.tailGrow
+  const draw = pitch * TAIL_LINK_FILL
+  const ts = sim.tailScale
+  const a = sim._v1.copy(d.pos).addScaledVector(d.heading, -d.radius)
+  a.setLength(SURFACE)
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
-    const dist = i * step * grow
-    const t = i / TAIL_SEGMENTS
-    const taper = t * t
-    const ph = sim.simTime * freq + dist * TAIL_WAVE + d.phase
-    const a = Math.sin(ph) * amp * taper
-    const b = Math.cos(ph) * amp * taper * helix
-    sim._dummy.position
-      .copy(base)
-      .addScaledVector(tailDir, dist)
-      .addScaledVector(side, a)
-      .addScaledVector(up, b)
-    const ts = sim.tailScale
-    sim._dummy.scale.set(ts, ts, ts)
-    sim._dummy.rotation.set(0, 0, 0)
+    const b = sim._v2.copy(a).addScaledVector(dirs[i], pitch)
+    b.setLength(SURFACE)
+    const x = sim._v3.subVectors(b, a).normalize()
+    const ref = Math.abs(x.x) < 0.9 ? sim._v5.set(1, 0, 0) : sim._v5.set(0, 1, 0)
+    const y = sim._v4.crossVectors(x, ref).normalize()
+    const z = sim._v6.crossVectors(x, y)
+    sim._m.makeBasis(x, y, z)
+    sim._q.setFromRotationMatrix(sim._m)
+    sim._dummy.quaternion.copy(sim._q)
+    sim._dummy.position.copy(a).add(b).multiplyScalar(0.5)
+    sim._dummy.scale.set(draw, ts, ts)
     sim._dummy.updateMatrix()
     sim.tailMesh.setMatrixAt(d.tailStart + i, sim._dummy.matrix)
+    a.copy(b)
   }
 }
 
 export function updateTailState(sim, d, dt) {
-  const n = sim._v1.copy(d.pos).normalize()
+  const dirs = d.tailDirs
+  const n0 = sim._v1.copy(d.pos).normalize()
   const behind = sim._v3.copy(d.heading).negate()
-  behind.addScaledVector(n, -behind.dot(n))
-  if (behind.lengthSq() > 1e-8) {
-    behind.normalize()
-    d.tailDir.addScaledVector(
-      sim._v2.copy(behind).sub(d.tailDir),
-      TAIL_LAG_RATE * dt,
-    )
-    d.tailDir.addScaledVector(n, -d.tailDir.dot(n))
-    d.tailDir.normalize()
+  behind.addScaledVector(n0, -behind.dot(n0))
+  if (behind.lengthSq() < 1e-8) return
+  behind.normalize()
+  const k0 = 1 - Math.exp(-TAIL_BASE_RATE * dt)
+  dirs[0].addScaledVector(sim._v2.copy(behind).sub(dirs[0]), k0)
+  dirs[0].addScaledVector(n0, -dirs[0].dot(n0))
+  if (dirs[0].lengthSq() < 1e-8) dirs[0].copy(behind)
+  else dirs[0].normalize()
+  const pitch = TAIL_LINK * d.tailGrow
+  if (pitch < 1e-6) return
+  const moving = d.drive > 0.02
+  if (moving) d.tailPhase += dt * TAIL_OSC_FREQ
+  const amp = TAIL_OSC_AMP * THREE.MathUtils.clamp(d.drive, 0, 1)
+  const k = 1 - Math.exp(-TAIL_JOINT_RATE * dt)
+  const a = sim._v2.copy(d.pos).addScaledVector(d.heading, -d.radius)
+  a.setLength(SURFACE)
+  for (let i = 1; i < TAIL_SEGMENTS; i++) {
+    a.addScaledVector(dirs[i - 1], pitch)
+    a.setLength(SURFACE)
+    const na = sim._v4.copy(a).normalize()
+    const t = sim._v5.copy(dirs[i - 1])
+    t.addScaledVector(na, -t.dot(na))
+    if (t.lengthSq() < 1e-8) {
+      dirs[i].copy(dirs[i - 1])
+      continue
+    }
+    t.normalize()
+    dirs[i].addScaledVector(sim._v6.copy(t).sub(dirs[i]), k)
+    dirs[i].addScaledVector(na, -dirs[i].dot(na))
+    if (dirs[i].lengthSq() < 1e-8) {
+      dirs[i].copy(t)
+      continue
+    }
+    dirs[i].normalize()
+    if (amp > 1e-3) {
+      const th = amp * Math.sin(d.tailPhase - TAIL_OSC_WAVE * i)
+      if (Math.abs(th) > 1e-4) {
+        const c = Math.cos(th)
+        const s = Math.sin(th)
+        const cr = sim._v6.crossVectors(na, dirs[i])
+        dirs[i].multiplyScalar(c).addScaledVector(cr, s)
+      }
+    }
   }
-  const target = d.drive
-  const up = target > d.agitate
-  const rate = up ? AGITATE_UP : AGITATE_DOWN
-  d.agitate += (target - d.agitate) * (1 - Math.exp(-rate * dt))
-  d.agitate = THREE.MathUtils.clamp(d.agitate, 0, 1)
-  if (!up && d.agitate < 0.02) d.agitate = 0
-  if (target > GO_THRESH && d.goPrev <= GO_THRESH) d.whipT = 0
-  d.whipT += dt
-  d.goPrev = target
 }
 
-export function updateMito(sim, cell, simDt) {
-  const m = cell.userData.mito
+export function updateMito(sim, d, simDt) {
+  const m = d.mito
   if (!m) return
   m.t += simDt
   const frac = THREE.MathUtils.clamp(m.t / m.dur, 0, 1)
