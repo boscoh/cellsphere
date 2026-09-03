@@ -68,12 +68,13 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   length for all body sizes) drawn as capsule segments (`TAIL_LINK_FILL` of each
   pitch → small joint gaps). Joint directions live on the sphere: `placeTail`
   walks nodes by projecting each step back to `SURFACE`, so the tail follows the
-  sphere's curvature. `updateTailState`: base link chases behind-heading with a
-  slow lag (`TAIL_BASE_RATE` — the tail swings out and "drives" food turns),
-  outer links chase with `TAIL_JOINT_RATE`, and while moving
-  (`drive > 0.02`) a traveling sine (`TAIL_OSC_FREQ/AMP/WAVE`) is injected per
-  link so the tail undulates; amplitude scales with `drive`, so it stops when
-  grazing/resting.
+  sphere's curvature. `updateTailState`: the base axis (`dirs[0]`) is pinned to
+  behind-heading; the **second link is driven** — it sweeps across the pinned
+  body axis with `TAIL_OSC_AMP·sin(tailPhase)` while moving
+  (`drive > 0.02`), plus a **rudder bias** `TAIL_RUDDER_GAIN·(headingRate/MAX_SPIN)`
+  that deflects the sweep into the turn (the tail visibly generates rotation).
+  The remaining links follow passively at `TAIL_JOINT_RATE`. Amplitude scales
+  with `drive`, so the sweep stops when grazing/resting.
 
 ## Current tuning constants (`src/constants.js`)
 
@@ -93,9 +94,10 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 | `WIDTH` | 0.085 | body width (only length grows) |
 | `TAIL_SEGMENTS` / `TAIL_LINK` | 8 / 0.11 | links per tail / link pitch (fixed for all sizes; total ≈0.88) |
 | `TAIL_LINK_FILL` | 0.9 | drawn fraction of each pitch (gaps ≈0.1 → jointed look) |
-| `TAIL_BASE_RATE` | 1.6 | base-link lag toward behind-heading (turn "drive") |
-| `TAIL_JOINT_RATE` | 2.0 | outer-link straightening viscosity |
-| `TAIL_OSC_FREQ` / `TAIL_OSC_AMP` / `TAIL_OSC_WAVE` | 7 / 0.5 / 0.9 | traveling sine speed / amplitude / wavelength per link |
+| `TAIL_DRIVE_RATE` | 12 | how fast the driven second link tracks its sweep target |
+| `TAIL_JOINT_RATE` | 14 | passive outer-link straightening rate |
+| `TAIL_OSC_FREQ` / `TAIL_OSC_AMP` | 7 / 0.9 | driven-link sweep speed / amplitude (scaled by drive) |
+| `TAIL_RUDDER_GAIN` | 1.0 | sweep deflection per unit `headingRate/MAX_SPIN` (tail drives turns) |
 | `THRUST` / `DRAG` | 12 / 22 | linear propulsion / damping |
 | `GRAZE_RATE` / `GRAZE_GAIN` | 0.01 / 6.0 | slowdown floor / gain |
 | `ANG_DRAG` / `MAX_SPIN` | 12 / 2.0 | angular damping / rate cap |

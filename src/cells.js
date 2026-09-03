@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { bodyMat } from './materials'
 import {
   SURFACE,
   MAX_CELLS,
@@ -13,14 +12,15 @@ import {
   MITO_SEP,
   MITO_REST,
   WIDTH,
+  MAX_SPIN,
   TAIL_SEGMENTS,
   TAIL_LINK,
   TAIL_LINK_FILL,
-  TAIL_BASE_RATE,
+  TAIL_DRIVE_RATE,
   TAIL_JOINT_RATE,
   TAIL_OSC_FREQ,
   TAIL_OSC_AMP,
-  TAIL_OSC_WAVE,
+  TAIL_RUDDER_GAIN,
 } from './constants'
 import { randomSurfacePoint, randomTangent, smoothstep } from './math'
 import { bodyMat } from './materials'
@@ -379,46 +379,57 @@ export function updateTailState(sim, d, dt) {
   behind.addScaledVector(n0, -behind.dot(n0))
   if (behind.lengthSq() < 1e-8) return
   behind.normalize()
-  const k0 = 1 - Math.exp(-TAIL_BASE_RATE * dt)
-  dirs[0].addScaledVector(sim._v2.copy(behind).sub(dirs[0]), k0)
-  dirs[0].addScaledVector(n0, -dirs[0].dot(n0))
-  if (dirs[0].lengthSq() < 1e-8) dirs[0].copy(behind)
-  else dirs[0].normalize()
+  dirs[0].copy(behind)
+
   const pitch = TAIL_LINK * d.tailGrow
   if (pitch < 1e-6) return
+
   const moving = d.drive > 0.02
   if (moving) d.tailPhase += dt * TAIL_OSC_FREQ
-  const amp = TAIL_OSC_AMP * THREE.MathUtils.clamp(d.drive, 0, 1)
-  const k = 1 - Math.exp(-TAIL_JOINT_RATE * dt)
+  const kDrive = 1 - Math.exp(-TAIL_DRIVE_RATE * dt)
+  const kJoin = 1 - Math.exp(-TAIL_JOINT_RATE * dt)
+
+  const oscAmp = TAIL_OSC_AMP * THREE.MathUtils.clamp(d.drive, 0, 1)
+  const steer = THREE.MathUtils.clamp(d.headingRate / MAX_SPIN, -1, 1)
+
   const a = sim._v2.copy(d.pos).addScaledVector(d.heading, -d.radius)
   a.setLength(SURFACE)
-  for (let i = 1; i < TAIL_SEGMENTS; i++) {
+
+  // driven joint: the second tail link sweeps in the sphere-tangent plane
+  // across the pinned body axis (dirs[0]); turning adds a rudder bias that
+  // deflects the sweep toward the inside of the turn.
+  a.addScaledVector(dirs[0], pitch)
+  a.setLength(SURFACE)
+  const na = sim._v4.copy(a).normalize()
+  const ang = oscAmp * Math.sin(d.tailPhase) - TAIL_RUDDER_GAIN * steer
+  const c = Math.cos(ang)
+  const s = Math.sin(ang)
+  const target = sim._v6.copy(dirs[0]).multiplyScalar(c)
+  target.addScaledVector(sim._v5.crossVectors(na, dirs[0]), s)
+  target.addScaledVector(na, -target.dot(na))
+  if (target.lengthSq() < 1e-8) target.copy(behind)
+  else target.normalize()
+  dirs[1].multiplyScalar(1 - kDrive).addScaledVector(target, kDrive)
+  dirs[1].addScaledVector(na, -dirs[1].dot(na))
+  if (dirs[1].lengthSq() < 1e-8) dirs[1].copy(target)
+  else dirs[1].normalize()
+
+  // the rest of the chain responds passively to the driven base
+  for (let i = 2; i < TAIL_SEGMENTS; i++) {
     a.addScaledVector(dirs[i - 1], pitch)
     a.setLength(SURFACE)
-    const na = sim._v4.copy(a).normalize()
+    const nai = sim._v4.copy(a).normalize()
     const t = sim._v5.copy(dirs[i - 1])
-    t.addScaledVector(na, -t.dot(na))
+    t.addScaledVector(nai, -t.dot(nai))
     if (t.lengthSq() < 1e-8) {
       dirs[i].copy(dirs[i - 1])
       continue
     }
     t.normalize()
-    dirs[i].addScaledVector(sim._v6.copy(t).sub(dirs[i]), k)
-    dirs[i].addScaledVector(na, -dirs[i].dot(na))
-    if (dirs[i].lengthSq() < 1e-8) {
-      dirs[i].copy(t)
-      continue
-    }
-    dirs[i].normalize()
-    if (amp > 1e-3) {
-      const th = amp * Math.sin(d.tailPhase - TAIL_OSC_WAVE * i)
-      if (Math.abs(th) > 1e-4) {
-        const c = Math.cos(th)
-        const s = Math.sin(th)
-        const cr = sim._v6.crossVectors(na, dirs[i])
-        dirs[i].multiplyScalar(c).addScaledVector(cr, s)
-      }
-    }
+    dirs[i].multiplyScalar(1 - kJoin).addScaledVector(t, kJoin)
+    dirs[i].addScaledVector(nai, -dirs[i].dot(nai))
+    if (dirs[i].lengthSq() < 1e-8) dirs[i].copy(t)
+    else dirs[i].normalize()
   }
 }
 
