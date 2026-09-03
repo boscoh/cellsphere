@@ -4,8 +4,8 @@ import { SPHERE_RADIUS } from './constants'
 
 export function createScene(container) {
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x0a0d14)
-  scene.fog = new THREE.Fog(0x0a0d14, 18, 34)
+  scene.background = new THREE.Color(0x0e110b)
+  scene.fog = new THREE.Fog(0x0e110b, 18, 34)
 
   const camera = new THREE.PerspectiveCamera(
     55,
@@ -25,18 +25,22 @@ export function createScene(container) {
   controls.enableDamping = true
   controls.dampingFactor = 0.06
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.45))
-  const point = new THREE.PointLight(0x8ab6ff, 30, 40)
-  point.position.set(0, 4, 6)
-  scene.add(point)
-  const rim = new THREE.PointLight(0xff8ab6, 14, 40)
-  rim.position.set(-6, -3, -4)
-  scene.add(rim)
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5))
+
+  // Key light hangs top-left and behind the viewer (directional, so zoom and
+  // orbit do not change brightness), with a soft opposite fill for shape.
+  scene.add(camera)
+  const key = new THREE.DirectionalLight(0xe6eeff, 1.2)
+  key.position.set(-8, 6, 12)
+  camera.add(key)
+  const rim = new THREE.DirectionalLight(0xffc6d8, 0.35)
+  rim.position.set(7, -5, 10)
+  camera.add(rim)
 
   const sphereShell = new THREE.Mesh(
     new THREE.SphereGeometry(SPHERE_RADIUS, 32, 16),
     new THREE.MeshBasicMaterial({
-      color: 0x131a2a,
+      color: 0x1c2316,
       side: THREE.FrontSide,
     }),
   )
