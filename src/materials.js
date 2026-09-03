@@ -1,19 +1,47 @@
 import * as THREE from 'three'
 
 export const foodGeo = new THREE.SphereGeometry(0.05, 6, 6)
-export const tailGeo = new THREE.SphereGeometry(0.008, 4, 4)
+export const tailGeo = (() => {
+  const geo = new THREE.CapsuleGeometry(0.014, 0.972, 2, 6)
+  geo.rotateZ(Math.PI / 2)
+  return geo
+})()
+
+export const bodyMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  roughness: 0.25,
+  metalness: 0,
+  transparent: true,
+  opacity: 0.9,
+})
+
+bodyMat.onBeforeCompile = (shader) => {
+  shader.vertexShader =
+    'attribute highp float instanceOpacity;\nvarying highp float vInstanceOpacity;\n' +
+    shader.vertexShader
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <project_vertex>',
+    '#include <project_vertex>\n\tvInstanceOpacity = instanceOpacity;'
+  )
+  shader.fragmentShader =
+    'varying highp float vInstanceOpacity;\n' + shader.fragmentShader
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <color_fragment>',
+    '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;'
+  )
+}
 
 export const foodMat = new THREE.MeshStandardMaterial({
-  color: 0x9a917e,
-  emissive: 0x504b3e,
-  emissiveIntensity: 0.3,
+  color: 0x56613c,
+  emissive: 0x343d26,
+  emissiveIntensity: 0.35,
   roughness: 0.7,
 })
 
 export const tailMat = new THREE.MeshStandardMaterial({
-  color: 0x8ae8c0,
-  emissive: 0x1f8a5f,
-  emissiveIntensity: 0.7,
+  color: 0xffffff,
+  emissive: 0x1a1a24,
+  emissiveIntensity: 0.6,
   roughness: 0.5,
 })
 

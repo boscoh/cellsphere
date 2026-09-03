@@ -33,12 +33,15 @@ import {
 import {
   makeCell,
   mitose,
-  setTailColor,
   clearTail,
   placeTail,
   updateTailState,
   updateMito,
-  disposeObject3D,
+  initBodyPools,
+  renderBodies,
+  removeBody,
+  zeroMatrix,
+  disposeBodyPools,
   disposeBodyGeos,
 } from './cells'
 import {
@@ -62,6 +65,7 @@ export class Simulation {
     this.tailMesh = null
     this.simTime = 0
     this.tailScale = 1
+    this.tailsHidden = false
     this.nextTailIndex = 0
     this.freeTailIndices = []
     this.respawning = []
@@ -78,6 +82,8 @@ export class Simulation {
     this._dummy = new THREE.Object3D()
     this._col = { dist: 0, x: 0, y: 0, z: 0 }
     this._fd = { rx: 0, ry: 0, rz: 0 }
+    this._one = new THREE.Vector3(1, 1, 1)
+    initBodyPools(this)
   }
 
   attach(container) {
@@ -91,10 +97,22 @@ export class Simulation {
   }
 
   buildWorld() {
+    this.tailMesh = new THREE.InstancedMesh(
+      tailGeo,
+      tailMat,
+      MAX_CELLS * TAIL_SEGMENTS,
+    )
+    this.tailMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    this.tailMesh.setColorAt(0, new THREE.Color(1, 1, 1))
+    this.tailMesh.instanceColor.needsUpdate = true
+    for (let i = 0; i < MAX_CELLS * TAIL_SEGMENTS; i++) {
+      zeroMatrix(this, this.tailMesh, i)
+    }
+    this.scene.add(this.tailMesh)
+
     for (let i = 0; i < CELL_COUNT; i++) {
       const cell = makeCell(this)
       this.cells.push(cell)
-      this.scene.add(cell)
     }
 
     this.foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, FOOD_COUNT)
@@ -104,30 +122,10 @@ export class Simulation {
     for (let i = 0; i < FOOD_COUNT; i++) makeFood(this)
     buildFoodGrid(this)
     this.foodMesh.instanceMatrix.needsUpdate = true
-
-    this.tailMesh = new THREE.InstancedMesh(
-      tailGeo,
-      tailMat,
-      MAX_CELLS * TAIL_SEGMENTS,
-    )
-    this.tailMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    this._dummy.position.set(0, 0, 0)
-    this._dummy.rotation.set(0, 0, 0)
-    this._dummy.scale.set(0, 0, 0)
-    this._dummy.updateMatrix()
-    for (let i = 0; i < MAX_CELLS * TAIL_SEGMENTS; i++) {
-      this.tailMesh.setMatrixAt(i, this._dummy.matrix)
-    }
-    this.scene.add(this.tailMesh)
-    for (const c of this.cells) setTailColor(this, c)
-    this.tailMesh.instanceColor.needsUpdate = true
   }
 
   reset() {
-    for (const cell of this.cells) {
-      this.scene.remove(cell)
-      disposeObject3D(cell)
-    }
+    disposeBodyPools(this)
     for (const mesh of [this.foodMesh, this.tailMesh]) {
       if (mesh) {
         this.scene.remove(mesh)
@@ -142,26 +140,27 @@ export class Simulation {
     this.respawning = []
     this.simTime = 0
     this.tailScale = 1
+    this.tailsHidden = false
     this.nextTailIndex = 0
     this.freeTailIndices = []
     this.senseAccum = 0
     this.foodMesh = null
     this.tailMesh = null
+    initBodyPools(this)
     this.buildWorld()
   }
 
   processSplits() {
     const snapshot = this.cells.slice()
     for (const cell of snapshot) {
-      if (cell.userData.split) mitose(this, cell)
+      if (cell.split) mitose(this, cell)
     }
   }
 
   removeCell(cell) {
-    this.scene.remove(cell)
-    disposeObject3D(cell)
-    const d = cell.userData
-    clearTail(this, cell)
+    const d = cell
+    removeBody(this, d)
+    clearTail(this, d)
     this.tailMesh.instanceMatrix.needsUpdate = true
     if (!d.tailTransfer) this.freeTailIndices.push(d.index)
   }
@@ -354,7 +353,7 @@ export class Simulation {
     this.simTime += dt
 
     for (const cell of this.cells) {
-      const d = cell.userData
+      const d = cell
       if (d.mito || d.splitting) {
         d.drive = 0
         continue
@@ -399,7 +398,6 @@ export class Simulation {
 
       d.pos.addScaledVector(d.vel, dt)
       d.pos.setLength(SURFACE)
-      cell.position.copy(d.pos)
 
       const normal2 = this._v5.copy(d.pos).normalize()
       const fwd = d.heading
@@ -413,7 +411,7 @@ export class Simulation {
         right.normalize()
       }
       this._m.makeBasis(fwd, normal2, right)
-      cell.quaternion.setFromRotationMatrix(this._m)
+      d.quat.setFromRotationMatrix(this._m)
     }
 
     this.solveCollisions(dt)
@@ -425,9 +423,11 @@ export class Simulation {
     }
     this.processSplits()
     for (const cell of this.cells) updateMito(this, cell, dt)
-    for (const cell of this.cells) updateTailState(this, cell.userData, dt)
+    if (!this.tailsHidden) {
+      for (const cell of this.cells) updateTailState(this, cell, dt)
+    }
     for (let i = this.cells.length - 1; i >= 0; i--) {
-      if (this.cells[i].userData.dead) {
+      if (this.cells[i].dead) {
         this.removeCell(this.cells[i])
         this.cells.splice(i, 1)
       }
@@ -447,11 +447,9 @@ export class Simulation {
     const cy = cam.y / len
     const cz = cam.z / len
     for (const cell of this.cells) {
-      const d = cell.userData
+      const d = cell
       const cos = (d.pos.x * cx + d.pos.y * cy + d.pos.z * cz) / SURFACE
-      const visible = cos > CULL_COS
-      cell.visible = visible
-      d.sideHidden = !visible
+      d.sideHidden = cos <= CULL_COS
     }
   }
 
@@ -465,7 +463,10 @@ export class Simulation {
 
   render(tailScale) {
     this.tailScale = tailScale
+    this.tailsHidden = tailScale < 0.5
+    if (this.tailMesh) this.tailMesh.visible = !this.tailsHidden
     this.updateVisibility()
+    renderBodies(this)
     this.renderTails()
     if (this.controls) this.controls.update()
     if (this.renderer) this.renderer.render(this.scene, this.camera)
@@ -486,6 +487,7 @@ export class Simulation {
     if (this.controls) this.controls.dispose()
     if (this.renderer) this.renderer.dispose()
     disposeSharedMaterials()
+    disposeBodyPools(this)
     disposeBodyGeos()
     if (this.sphereShell) {
       this.sphereShell.geometry.dispose()
@@ -493,7 +495,6 @@ export class Simulation {
     }
     if (this.foodMesh) this.foodMesh.dispose()
     if (this.tailMesh) this.tailMesh.dispose()
-    this.cells.forEach((c) => disposeObject3D(c))
     if (this.renderer) this.renderer.domElement.remove()
   }
 }

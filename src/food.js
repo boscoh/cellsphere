@@ -147,7 +147,7 @@ export function eatAndRespawn(sim, simDt) {
   }
 
   for (const cell of sim.cells) {
-    const d = cell.userData
+    const d = cell
     if (d.mito || d.splitting || d.split) continue
     const halfLen = Math.max(d.radius - WIDTH, 0)
     let ate = 0
@@ -156,7 +156,7 @@ export function eatAndRespawn(sim, simDt) {
     const cz = Math.floor(d.pos.z / GRID)
     forEachNearbyFood(sim, cx, cy, cz, 1, (foodIndex, food) => {
       if (foodDist(sim, d, food, halfLen) < WIDTH + food.r) {
-        growCell(cell, GROWTH_PER_FOOD)
+        growCell(sim, d, GROWTH_PER_FOOD)
         food.respawn = 2.5 + Math.random() * 8
         food.visible = false
         removeFoodFromGrid(sim, foodIndex)
@@ -173,7 +173,7 @@ export function eatAndRespawn(sim, simDt) {
 
 export function concentration(sim) {
   for (const cell of sim.cells) {
-    const d = cell.userData
+    const d = cell
     if (d.mito || d.splitting || d.split) continue
     let sum = 0
     let fx = 0

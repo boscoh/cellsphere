@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { bodyMat } from './materials'
 import {
   SURFACE,
   MAX_CELLS,
@@ -37,7 +38,7 @@ export function makeBodyGeo(length) {
   return geo
 }
 
-function bodyGeoFor(length) {
+export function bodyGeoFor(length) {
   const bucket = Math.round(length / GEO_STEP)
   let geo = bodyGeoCache.get(bucket)
   if (!geo) {
@@ -47,70 +48,169 @@ function bodyGeoFor(length) {
   return geo
 }
 
-export function disposeBodyGeos() {
-  for (const geo of bodyGeoCache.values()) geo.dispose()
-  bodyGeoCache.clear()
+export function bodyBucket(length) {
+  return Math.round(length / GEO_STEP)
 }
 
-function computeCellColor(length) {
+export function disposeBodyGeos() {
+  const cache = bodyGeoCache
+  for (const geo of cache.values()) geo.dispose()
+  cache.clear()
+}
+
+export function initBodyPools(sim) {
+  sim.bodyPools = new Map()
+}
+
+function computeCellColor(length, breed) {
   const t = THREE.MathUtils.clamp(
     (length - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS),
     0,
     1,
   )
-  const color = new THREE.Color().setHSL(0.55 - t * 0.32, 0.55 + t * 0.4, 0.62)
-  const emissive = color.clone().multiplyScalar(0.25 + t * 0.4)
-  return { color, emissive }
-}
-
-function applyCellColor(cell, color) {
-  const u = cell.userData
-  u.color.copy(color)
-  u.outer.material.color.copy(color)
-}
-
-function updateGeometry(cell, length) {
-  const u = cell.userData
-  u.radius = length
-  u.mass = Math.max(length * length * 0.25, 0.05)
-  u.outer.geometry = bodyGeoFor(length)
-}
-
-function updateColor(cell, length) {
-  const { color } = computeCellColor(length)
-  applyCellColor(cell, color)
-}
-
-function setCellAppearance(cell, length) {
-  updateGeometry(cell, length)
-  updateColor(cell, length)
-}
-
-function placeMitoChild(m, cell, dist) {
-  const d = cell.userData
-  d.pos.copy(m.startPos).addScaledVector(m.headBack, dist)
-  d.pos.setLength(SURFACE)
-  cell.position.copy(d.pos)
-  const n = d.pos.clone().normalize()
-  const fwd = d.heading.clone().addScaledVector(n, -d.heading.dot(n)).normalize()
-  const right = new THREE.Vector3().crossVectors(fwd, n)
-  if (right.lengthSq() < 1e-6) {
-    right.set(0, 1, 0).addScaledVector(n, -n.y).normalize()
-  } else {
-    right.normalize()
+  const s = smoothstep(t)
+  if (breed === BREED_RED) {
+    return new THREE.Color().setHSL(
+      0.005 + t * 0.06,
+      0.72 + t * 0.15,
+      0.34 + 0.4 * s,
+    )
   }
-  const mtx = new THREE.Matrix4().makeBasis(fwd, n, right)
-  cell.quaternion.setFromRotationMatrix(mtx)
+  return new THREE.Color().setHSL(
+    0.56 + t * 0.08,
+    0.55 + t * 0.4,
+    0.34 + 0.46 * s,
+  )
 }
 
-export function disposeObject3D(obj) {
-  obj.traverse((o) => {
-    if (o.material) {
-      Array.isArray(o.material)
-        ? o.material.forEach((m) => m.dispose())
-        : o.material.dispose()
+function setCellColor(d, length) {
+  d.color.copy(computeCellColor(length, d.breed))
+}
+
+function getPool(sim, length) {
+  const bucket = bodyBucket(length)
+  let entry = sim.bodyPools.get(bucket)
+  if (!entry) {
+    entry = { bucket, mesh: null, free: [], live: 0, count: 0 }
+    sim.bodyPools.set(bucket, entry)
+  }
+  if (!entry.mesh) {
+    const geo = bodyGeoFor(length)
+    entry.mesh = new THREE.InstancedMesh(geo, bodyMat, POOL_CAP)
+    entry.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    entry.mesh.instanceMatrix.needsUpdate = true
+    const opacity = new THREE.InstancedBufferAttribute(
+      new Float32Array(POOL_CAP).fill(1),
+      1,
+    )
+    opacity.setUsage(THREE.DynamicDrawUsage)
+    entry.mesh.geometry.setAttribute('instanceOpacity', opacity)
+    entry.opacity = opacity
+    sim.scene.add(entry.mesh)
+  }
+  return entry
+}
+
+export function zeroMatrix(sim, mesh, slot) {
+  const o = sim._dummy
+  o.position.set(0, 0, 0)
+  o.rotation.set(0, 0, 0)
+  o.scale.set(0, 0, 0)
+  o.updateMatrix()
+  mesh.setMatrixAt(slot, o.matrix)
+}
+
+export function addBody(sim, d, length) {
+  const entry = getPool(sim, length)
+  const bucket = entry.bucket
+  const slot = entry.free.length ? entry.free.pop() : entry.count++
+  entry.live++
+  entry.mesh.count = entry.count
+  d.bodyBucket = bucket
+  d.bodySlot = slot
+  if (entry.opacity) entry.opacity.setX(slot, 1)
+  setBodyColor(sim, d, d.color)
+  entry.mesh.instanceMatrix.needsUpdate = true
+}
+
+export function setBodyColor(sim, d, color) {
+  if (d.bodyBucket == null) return
+  const entry = sim.bodyPools.get(d.bodyBucket)
+  if (!entry || !entry.mesh) return
+  entry.mesh.setColorAt(d.bodySlot, color)
+  if (entry.mesh.instanceColor) entry.mesh.instanceColor.needsUpdate = true
+}
+
+export function setInstanceColor(sim, d) {
+  setBodyColor(sim, d, d.color)
+}
+
+export function setBodyOpacity(sim, d, opacity) {
+  if (d.bodyBucket == null) return
+  const entry = sim.bodyPools.get(d.bodyBucket)
+  if (!entry || !entry.mesh || !entry.opacity) return
+  entry.opacity.setX(d.bodySlot, opacity)
+  entry.opacity.needsUpdate = true
+}
+
+export function removeBody(sim, d) {
+  if (d.bodyBucket == null) return
+  const entry = sim.bodyPools.get(d.bodyBucket)
+  if (entry && entry.mesh) {
+    zeroMatrix(sim, entry.mesh, d.bodySlot)
+    entry.free.push(d.bodySlot)
+    entry.live--
+    if (entry.live === 0) {
+      sim.scene.remove(entry.mesh)
+      entry.mesh = null
+      entry.free = []
+      entry.count = 0
+    } else {
+      entry.mesh.instanceMatrix.needsUpdate = true
     }
-  })
+  }
+  d.bodyBucket = null
+  d.bodySlot = null
+}
+
+export function rehomeBody(sim, d, newLength) {
+  const nb = bodyBucket(newLength)
+  if (d.bodyBucket == null) {
+    addBody(sim, d, newLength)
+    return
+  }
+  if (nb === d.bodyBucket) return
+  removeBody(sim, d)
+  addBody(sim, d, newLength)
+}
+
+export function renderBodies(sim) {
+  for (const d of sim.cells) {
+    if (d.bodyBucket == null) continue
+    const entry = sim.bodyPools.get(d.bodyBucket)
+    if (!entry || !entry.mesh) continue
+    const mesh = entry.mesh
+    if (d.sideHidden) {
+      zeroMatrix(sim, mesh, d.bodySlot)
+    } else {
+      sim._m.compose(d.pos, d.quat, sim._one)
+      mesh.setMatrixAt(d.bodySlot, sim._m)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+  }
+}
+
+export function disposeBodyPools(sim) {
+  activeFades = 0
+  bodyMat.depthWrite = true
+  for (const entry of sim.bodyPools.values()) {
+    if (entry.mesh) {
+      sim.scene.remove(entry.mesh)
+      entry.mesh.dispose()
+      entry.mesh = null
+    }
+  }
+  sim.bodyPools.clear()
 }
 
 export function allocTailIndex(sim) {
@@ -120,35 +220,26 @@ export function allocTailIndex(sim) {
   return idx
 }
 
-export function createCell(index, pos, heading, length) {
-  const outer = new THREE.Mesh(
-    bodyGeoFor(length),
-    new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.25,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.9,
-    }),
-  )
+function makeTailDirs(heading) {
+  const back = heading.clone().negate().normalize()
+  const dirs = []
+  for (let i = 0; i < TAIL_SEGMENTS; i++) dirs.push(back.clone())
+  return dirs
+}
 
-  const group = new THREE.Group()
-  group.add(outer)
-
-  group.userData = {
+export function createCell(sim, index, pos, heading, length, breed = Math.random() < 0.5 ? BREED_BLUE : BREED_RED) {
+  const d = {
     radius: length,
     maxLength: length * 2,
     mass: length * length * 0.25,
     color: new THREE.Color(),
+    breed,
     pos,
     vel: heading.clone().multiplyScalar(0.3),
     heading,
-    tailDir: heading.clone().negate().normalize(),
-    phase: Math.random() * Math.PI * 2,
+    tailDirs: makeTailDirs(heading),
+    tailPhase: 0,
     slow: 1,
-    agitate: 0,
-    whipT: 99,
-    goPrev: 1,
     foodDir: new THREE.Vector3(),
     foodAmt: 0,
     foodPeak: 0,
@@ -163,10 +254,14 @@ export function createCell(index, pos, heading, length) {
     rest: 0,
     index,
     tailStart: index * TAIL_SEGMENTS,
+    bodyBucket: null,
+    bodySlot: null,
+    quat: new THREE.Quaternion(),
   }
-  group.userData.outer = outer
-  setCellAppearance(group, length)
-  return group
+  setCellColor(d, length)
+  addBody(sim, d, length)
+  setTailColor(sim, d)
+  return d
 }
 
 export function makeCell(sim) {
@@ -174,19 +269,24 @@ export function makeCell(sim) {
   const pos = randomSurfacePoint()
   const normal = pos.clone().normalize()
   const heading = randomTangent(normal)
-  return createCell(allocTailIndex(sim), pos, heading, length)
+  return createCell(sim, allocTailIndex(sim), pos, heading, length)
 }
 
-export function growCell(cell, amount) {
-  const d = cell.userData
+export function growCell(sim, cell, amount) {
+  const d = cell
   const next = Math.min(d.radius + amount, d.maxLength)
-  setCellAppearance(cell, next)
+  d.radius = next
+  d.mass = Math.max(next * next * 0.25, 0.05)
+  setCellColor(d, next)
+  rehomeBody(sim, d, next)
+  setInstanceColor(sim, d)
+  setTailColor(sim, d)
   if (next >= d.maxLength - 1e-6) d.split = true
 }
 
 export function mitose(sim, parent) {
   if (sim.cells.length + 2 > MAX_CELLS) return
-  const d = parent.userData
+  const d = parent
   d.split = false
   const fullLen = d.radius
   const childLen = fullLen * 0.45
@@ -204,13 +304,13 @@ export function mitose(sim, parent) {
   const backPos = snap(startPos.clone().addScaledVector(headBack, -half * MITO_NEAR))
   const frontPos = snap(startPos.clone().addScaledVector(headBack, half * MITO_NEAR))
 
-  const back = createCell(allocTailIndex(sim), backPos, headBack, childLen)
-  const front = createCell(d.index, frontPos, headFront, childLen)
-  back.userData.splitting = true
-  front.userData.splitting = true
-  back.userData.tailGrow = 0
+  const back = createCell(sim, allocTailIndex(sim), backPos, headBack, childLen, d.breed)
+  const front = createCell(sim, d.index, frontPos, headFront, childLen, d.breed)
+  back.splitting = true
+  front.splitting = true
+  back.tailGrow = 0
   d.tailTransfer = true
-  front.userData.mito = {
+  front.mito = {
     t: 0,
     dur: MITO_TIME,
     parent,
