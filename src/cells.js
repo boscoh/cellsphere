@@ -205,7 +205,8 @@ export function renderBodies(sim) {
     if (d.sideHidden) {
       zeroMatrix(sim, mesh, d.bodySlot)
     } else {
-      sim._m.compose(d.pos, d.quat, sim._one)
+      const sc = d.fade >= 1 ? sim._one : sim._v9.set(d.fade, d.fade, d.fade)
+      sim._m.compose(d.pos, d.quat, sc)
       mesh.setMatrixAt(d.bodySlot, sim._m)
     }
     mesh.instanceMatrix.needsUpdate = true
@@ -218,7 +219,7 @@ export function renderNuclei(sim) {
   for (const d of sim.cells) {
     if (d.bodyBucket == null) continue
     const scale = sim._v6.set(d.radius * 0.62, WIDTH * 0.5, WIDTH * 0.5)
-    if (d.sideHidden || d.dying) scale.set(0, 0, 0)
+    if (d.sideHidden || d.dying || d.splitting) scale.set(0, 0, 0)
     sim._m.compose(d.pos, d.quat, scale)
     mesh.setMatrixAt(d.index, sim._m)
   }
@@ -307,6 +308,7 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     lastMeal: sim.simTime,
     sideHidden: false,
     tailGrow: 1,
+    fade: 1,
     rest: 0,
     index,
     tailStart: index * TAIL_SEGMENTS,
@@ -400,6 +402,7 @@ export function mitose(sim, parent) {
   const front = createCell(sim, d.index, frontPos, headFront, childLen, d.breed)
   back.splitting = true
   front.splitting = true
+  back.tailGrow = 0
   d.tailTransfer = true
   front.mito = {
     t: 0,
@@ -696,18 +699,18 @@ export function updateMito(sim, d, simDt) {
   placeMitoChild(m, m.back, -dist)
   placeMitoChild(m, m.front, dist)
 
+  m.back.tailGrow = fadeK
   m.back.drive = 0
   m.front.drive = 0
 
   const opac = 1 - fadeK
+  pd.fade = Math.max(opac, 0)
   if (opac <= 0) {
     if (!m.fadeDone) {
       m.fadeDone = true
       removeBody(sim, pd)
       clearTail(sim, pd)
     }
-  } else {
-    setBodyOpacity(sim, pd, opac)
   }
 
   if (m.t >= m.dur) {

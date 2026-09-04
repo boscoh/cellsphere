@@ -29,7 +29,7 @@ bodyMat.onBeforeCompile = (shader) => {
     'varying highp float vInstanceOpacity;\n' + shader.fragmentShader
   shader.fragmentShader = shader.fragmentShader.replace(
     '#include <color_fragment>',
-    '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;\n\tif (diffuseColor.a < 0.01) discard;'
+    '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;\n\tif (diffuseColor.a < 0.1) discard;'
   )
 }
 

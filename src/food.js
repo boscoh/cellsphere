@@ -60,7 +60,7 @@ export function makeFood(sim) {
       ? Math.floor(Math.random() * sim.clumps.length)
       : -1
   const food = {
-    pos: pointForClump(sim, clump),
+    pos: foodSpot(sim, clump, r),
     clump,
     r,
     scale: r / 0.05,
@@ -142,19 +142,27 @@ export function forEachNearbyFood(sim, cx, cy, cz, r, cb) {
 function overlapsAnyCell(sim, pos, r) {
   for (const cell of sim.cells) {
     const d = cell
-    if (d.mito || d.splitting || d.split || d.dead) continue
+    if (d.dead) continue
     const halfLen = Math.max(d.radius - WIDTH, 0)
     if (foodDist(sim, d, { pos, r }, halfLen) < WIDTH + r) return true
   }
   return false
 }
 
-function respawnSpot(sim, food) {
+function foodSpot(sim, clump, r) {
   for (let t = 0; t < 16; t++) {
-    const p = pointForClump(sim, food.clump)
-    if (!overlapsAnyCell(sim, p, food.r)) return p
+    const p = pointForClump(sim, clump)
+    if (!overlapsAnyCell(sim, p, r)) return p
   }
-  return pointForClump(sim, food.clump)
+  for (let t = 0; t < 16; t++) {
+    const p = randomSurfacePoint()
+    if (!overlapsAnyCell(sim, p, r)) return p
+  }
+  return randomSurfacePoint()
+}
+
+function respawnSpot(sim, food) {
+  return foodSpot(sim, food.clump, food.r)
 }
 
 export function eatAndRespawn(sim, simDt) {

@@ -81,7 +81,7 @@ onBeforeUnmount(() => {
       <div class="row"><span class="num">{{ fps }}</span></div>
     </div>
     <div class="cell">
-      <span class="ctl">Bacteria</span>
+      <span class="ctl">Cell</span>
       <div class="row"><span class="num">{{ bacteriaCount }}</span></div>
     </div>
     <div class="cell">
@@ -107,19 +107,13 @@ onBeforeUnmount(() => {
     <div class="cell">
       <span class="ctl">Tails</span>
       <div class="row">
-        <button
-          type="button"
-          class="switch"
-          :class="tailsActive ? 'on' : 'off'"
-          role="switch"
-          :aria-checked="String(tailsActive)"
-          :aria-label="'tails ' + (tailsActive ? 'on' : 'off')"
-          @click="tailsActive = !tailsActive"
-        >
-          <span class="sw-opt off">off</span>
-          <span class="sw-thumb"></span>
-          <span class="sw-opt on">on</span>
-        </button>
+        <input
+          type="checkbox"
+          class="checkbox"
+          :checked="tailsActive"
+          aria-label="Tails"
+          @change="tailsActive = $event.target.checked"
+        />
       </div>
     </div>
     <span class="sep"></span>
@@ -244,7 +238,7 @@ onBeforeUnmount(() => {
 }
 
 .tune-btn,
-.switch {
+.checkbox {
   pointer-events: auto;
 }
 
@@ -257,60 +251,42 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.switch {
+.checkbox {
   position: relative;
-  width: 66px;
-  height: 24px;
-  padding: 0;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.sw-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 30px;
-  height: 18px;
-  border-radius: 999px;
+.checkbox:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.checkbox:checked {
   background: #6fa8ff;
-  transition: transform 0.18s ease;
+  border-color: #6fa8ff;
 }
 
-.switch.on .sw-thumb {
-  transform: translateX(30px);
-}
-
-.sw-opt {
+.checkbox:checked::after {
+  content: '';
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #7c8698;
-  pointer-events: none;
-  transition: color 0.15s ease;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #10141c;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
-.sw-opt.off {
-  left: 7px;
-}
-
-.sw-opt.on {
-  right: 7px;
-}
-
-.switch.on .sw-opt.on,
-.switch.off .sw-opt.off {
-  color: #10141c;
-  font-weight: 700;
-}
-
-.switch:focus-visible {
+.checkbox:focus-visible {
   outline: 2px solid rgba(111, 168, 255, 0.7);
   outline-offset: 2px;
 }

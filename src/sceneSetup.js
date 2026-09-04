@@ -7,14 +7,25 @@ export function createScene(container) {
   scene.background = new THREE.Color(0x0e110b)
   scene.fog = new THREE.Fog(0x0e110b, 18, 34)
 
+  // Frame the shell in the viewport area below the HUD bar: pull back far
+  // enough that the whole sphere fits, and pivot slightly above its centre so
+  // the silhouette sits below the top strip instead of under the HUD.
+  const CAM_DIST = 14
+  const CAM_ELEV = 0.55
+  const PIVOT_Y = 0.7
+
   const camera = new THREE.PerspectiveCamera(
     55,
     window.innerWidth / window.innerHeight,
     0.1,
     100,
   )
-  camera.position.set(0, 5.5, 9)
-  camera.lookAt(0, 0, 0)
+  camera.position.set(
+    0,
+    Math.sin(CAM_ELEV) * CAM_DIST,
+    Math.cos(CAM_ELEV) * CAM_DIST,
+  )
+  camera.lookAt(0, PIVOT_Y, 0)
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -24,6 +35,8 @@ export function createScene(container) {
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.06
+  controls.target.set(0, PIVOT_Y, 0)
+  controls.update()
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.5))
 
