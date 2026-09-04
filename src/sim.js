@@ -18,7 +18,6 @@ import {
   MAX_SPIN,
   PEAK_MIN,
   SENSE_PERIOD,
-  CULL_COS,
   CELL_GRID,
   TAIL_SEGMENTS,
 } from './constants'
@@ -39,7 +38,6 @@ import {
   updateMito,
   updateStarvation,
   initBodyPools,
-  renderBodies,
   removeBody,
   zeroMatrix,
   disposeBodyPools,
@@ -53,6 +51,7 @@ import {
   concentration,
 } from './food'
 import { createScene } from './sceneSetup'
+import { renderView, defaultRenderOptions } from './render'
 
 export class Simulation {
   constructor() {
@@ -87,6 +86,8 @@ export class Simulation {
     this._col = { dist: 0, x: 0, y: 0, z: 0 }
     this._fd = { rx: 0, ry: 0, rz: 0 }
     this._one = new THREE.Vector3(1, 1, 1)
+    this._camDir = new THREE.Vector3()
+    this.renderOptions = { ...defaultRenderOptions }
     initBodyPools(this)
   }
 
@@ -456,20 +457,6 @@ export class Simulation {
     this.tailMesh.instanceMatrix.needsUpdate = true
   }
 
-  updateVisibility() {
-    if (!this.camera) return
-    const cam = this.camera.position
-    const len = cam.length() || 1
-    const cx = cam.x / len
-    const cy = cam.y / len
-    const cz = cam.z / len
-    for (const cell of this.cells) {
-      const d = cell
-      const cos = (d.pos.x * cx + d.pos.y * cy + d.pos.z * cz) / SURFACE
-      d.sideHidden = cos <= CULL_COS
-    }
-  }
-
   step(simDt) {
     if (simDt > 0) {
       const steps = Math.min(Math.max(Math.ceil(simDt / FIXED_DT), 1), MAX_STEPS)
@@ -479,14 +466,7 @@ export class Simulation {
   }
 
   render(tailScale) {
-    this.tailScale = tailScale
-    this.tailsHidden = tailScale < 0.5
-    if (this.tailMesh) this.tailMesh.visible = !this.tailsHidden
-    this.updateVisibility()
-    renderBodies(this)
-    this.renderTails()
-    if (this.controls) this.controls.update()
-    if (this.renderer) this.renderer.render(this.scene, this.camera)
+    renderView(this, tailScale)
   }
 
   frame(simDt, tailScale) {
