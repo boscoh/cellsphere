@@ -22,13 +22,31 @@ let fpsCount = 0
 let fpsTime = 0
 const handleResize = () => sim.onResize()
 const onKey = (e) => {
-  if (e.key === 'Escape') tunerOpen.value = false
+  if (e.key === 'Escape') {
+    tunerOpen.value = false
+    return
+  }
+  if (e.metaKey || e.ctrlKey || sim == null) return
+  const o = sim.renderOptions
+  const key = e.key.toLowerCase()
+  const set = (k) => {
+    o[k] = !o[k]
+    console.log(k, '=', o[k], JSON.stringify(o))
+  }
+  if (key === 's') set('drawShell')
+  else if (key === 'o') set('forceOpaqueBodies')
+  else if (key === 't') set('drawTails')
+  else if (key === 'c') set('cull')
+  else if (key === 'b') set('drawBodies')
+  else if (key === 'f') set('drawFood')
 }
 
 onMounted(() => {
   sim = new Simulation()
   sim.attach(canvasHolder.value)
   sim.buildWorld()
+  window.sim = sim
+  console.log('render debug keys — s:shell  o:opaqueBodies  t:tails  c:cull  b:bodies  f:food')
 
   const tick = () => {
     animationId = requestAnimationFrame(tick)

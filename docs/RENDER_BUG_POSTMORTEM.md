@@ -75,32 +75,42 @@ toggleable pipeline:
 
 ## Fixes
 
-- **Cull by actual occlusion** (`src/render.js updateVisibility`): hide a cell
-  (body **and** tail together) whenever the ray to it passes through the shell —
-  `bodyShellGap(...) > 0` — falling back to `cosFace <= CULL_COS`. This makes
-  body and tail appear/vanquish **together** at the limb. Post-fix the audit
-  reports `not-hidden-but-occluded = 0` at every elevation; the only regions
-  newly hidden are the self-occluded limb ring (not the front face).
+- **Disable far-side cull by default** (`src/render.js`): `cull: false`. The
+  opaque shell already occludes anything behind it, so culling is only a perf
+  skip — and every attempt to make it "smart" (a cos threshold or a
+  ray-through-the-shell test) over-hid the rim, because bodies poke just outside
+  the shell and are visible even when their centre ray grazes the shell. With
+  cull off, bodies and tails draw wherever the shell lets them.
+  > This is the field-tested result (render toggles): shell-off (`s`) and
+  > opaque-bodies (`o`) did **not** change the artifact (culling is independent
+  > of both); **cull-off (`c`) restored the bodies**; tails-off (`t`) merely hid
+  > the orphan tail. A cos-threshold cull is the original buggy behaviour and
+  > the conservative-cull revert made it "worse" — so cull stays off.
 - **Remove the nucleus** (`materials.js` `nucleusGeo/nucleusMat`, `cells.js`
   `renderNuclei`, `sim.js` buildWorld/reset/dispose/render): cells are now plain
   translucent capsules; no separate emissive core to leak. (Lighting was also
   softened at the same time so capsule shadow sides never clip near-black.)
-- **Verify**: `npm run build` + headless `auditShell` + a mitosis smoke test.
+  A later attempt to restore the nucleus with a per-cell slot + occlusion gating
+  was reverted at the user's request — the visual bug was the cull, not the
+  nucleus.
+- **Verify**: `npm run build` + a headless mitosis smoke test.
 
 ## How to reason about similar render bugs here
 
 - Opaque objects (tail, shell, food) and transparent objects (bodies) are sorted
   in **separate passes**; a transparent body can be eclipsed by an opaque object
   in front of it, and you can't fix that with a material tweak.
-- Culling must reflect **actual occlusion**, not just a normal-dot heuristic,
-  when the occluder (the sphere) is opaque and the culled thing (a body) sits
-  just outside it.
+- When the occluder (the shell) is opaque and the culled thing (a body) sits
+  just outside it, **cull conservatively** — hide only the far side and let the
+  opaque shell do the real occlusion. A clever "is it behind the shell" test
+  over-hides the rim because the body's near cap sticks out.
 - A separate **emissive** mesh is lighting-independent — if you see a shape that
   never changes brightness, it's emissive, and it must be kept in sync with
   whatever it's supposed to be "inside".
-- When visual bugs resist material/setting fixes, **stop tweaking and make the
-  decision logic pure + headless-testable**, then audit it with numbers. Bisect
-  layers with `sim.renderOptions`.
+- When visual bugs resist material/setting fixes, **stop tweaking and expose the
+  layers as live toggles** (`sim.renderOptions`, wired to keys) and bisect by
+  eye. Verify the hypothesis with a **real-world toggle** (e.g. `c` cull-off),
+  not just a numeric audit that reuses the same assumption you're testing.
 
 ## Code pointers
 

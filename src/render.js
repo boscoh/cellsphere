@@ -1,8 +1,7 @@
-import * as THREE from 'three'
-import { SURFACE, CULL_COS, SPHERE_RADIUS, WIDTH } from './constants'
+import { CULL_COS } from './constants'
 import { renderBodies } from './cells'
 import { bodyMat } from './materials'
-import { cosFace, raySphereNear } from './math'
+import { cosFace } from './math'
 
 // View-layer options. Every branch is a conscious, reversible toggle so the
 // pipeline can be bisected live and audited headlessly.
@@ -11,24 +10,9 @@ export const defaultRenderOptions = {
   drawFood: true,
   drawTails: true,
   drawBodies: true,
-  cull: true, // far-side face culling (sideHidden)
+  cull: false, // far-side cull is OFF; the opaque shell occludes far cells anyway
   bodyDepthWrite: true, // bodies are transparent; depthWrite inherits this
   forceOpaqueBodies: false, // diagnostic: join the opaque pass (no sorting)
-}
-
-// signed distance (world units) from a cell's near surface to the shell's
-// front surface along the camera ray to the cell centre. >0 means the cell
-// is closer than the shell (visible); <0 means the shell occludes it; ~0 is
-// the z-fighting band where bodies vanish near the limb. null = ray misses
-// the shell (cell is on the near side, outside the silhouette).
-export function bodyShellGap(pos, camPos, shellRadius, bodyRadius) {
-  const dir = new THREE.Vector3(pos.x - camPos.x, pos.y - camPos.y, pos.z - camPos.z)
-  const cellDist = dir.length()
-  if (cellDist < 1e-6) return null
-  dir.multiplyScalar(1 / cellDist)
-  const shellNear = raySphereNear(camPos, dir, shellRadius)
-  if (shellNear == null) return null
-  return (cellDist - bodyRadius) - shellNear
 }
 
 function updateVisibility(sim) {
@@ -36,17 +20,12 @@ function updateVisibility(sim) {
   const cam = sim.camera.position
   const camDir = sim._camDir.set(cam.x, cam.y, cam.z).normalize()
   for (const cell of sim.cells) {
-    // Hide body + tail together whenever the opaque shell would eclipse the
-    // body along the camera ray. A dot/CULL threshold culls only the far
-    // hemisphere, leaving a band near the silhouette where the shell hides the
-    // body but the tail still draws (the "tail with no body" artifact).
-    let hidden = false
-    if (sim.renderOptions.cull) {
-      const gap = bodyShellGap(cell.pos, cam, SPHERE_RADIUS, WIDTH)
-      hidden = gap != null && gap > 0
-      if (!hidden && cosFace(cell.pos, camDir) <= CULL_COS) hidden = true
-    }
-    cell.sideHidden = hidden
+    // Cull only cells clearly on the far hemisphere. The opaque shell already
+    // occludes anything behind it, so an aggressive test (e.g. checking whether
+    // the centre ray passes through the shell) over-hides the rim — bodies poke
+    // just outside the shell, so near-limb cells ARE visible. Keeping body and
+    // tail tied to the same flag means they always appear/vanish together.
+    cell.sideHidden = sim.renderOptions.cull && cosFace(cell.pos, camDir) <= CULL_COS
   }
 }
 
@@ -74,31 +53,4 @@ export function renderView(sim, tailScale) {
 
   if (sim.controls) sim.controls.update()
   if (sim.renderer) sim.renderer.render(sim.scene, sim.camera)
-}
-
-// Headless audit: count cells in the z-fighting band vs occluded vs clear,
-// for a camera at `dist` along direction `dir`.
-export function auditShell(sim, camDir, dist = 14) {
-  const o = sim.renderOptions
-  const cam = new THREE.Vector3().copy(camDir).normalize().multiplyScalar(dist)
-  let fight = 0
-  let occluded = 0
-  let clear = 0
-  let inBand = 0
-  for (const d of sim.cells) {
-    const cos = cosFace(d.pos, camDir)
-    if (cos <= CULL_COS) continue // culled either way
-    const gap = bodyShellGap(d.pos, cam, SPHERE_RADIUS, 0.085)
-    if (gap == null) {
-      clear++
-    } else if (gap < 0) {
-      occluded++
-    } else if (gap < 0.05) {
-      fight++
-    } else {
-      clear++
-    }
-    if (cos < 0.25) inBand++
-  }
-  return { fight, occluded, clear, inBand, total: sim.cells.length }
 }
