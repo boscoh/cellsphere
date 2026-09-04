@@ -10,7 +10,7 @@ export const defaultRenderOptions = {
   drawFood: true,
   drawTails: true,
   drawBodies: true,
-  cull: false, // far-side cull is OFF; the opaque shell occludes far cells anyway
+  cull: true, // hides far-side TAILS at the horizon (bodies are never culled)
   bodyDepthWrite: true, // bodies are transparent; depthWrite inherits this
   forceOpaqueBodies: false, // diagnostic: join the opaque pass (no sorting)
 }
@@ -20,11 +20,10 @@ function updateVisibility(sim) {
   const cam = sim.camera.position
   const camDir = sim._camDir.set(cam.x, cam.y, cam.z).normalize()
   for (const cell of sim.cells) {
-    // Cull only cells clearly on the far hemisphere. The opaque shell already
-    // occludes anything behind it, so an aggressive test (e.g. checking whether
-    // the centre ray passes through the shell) over-hides the rim — bodies poke
-    // just outside the shell, so near-limb cells ARE visible. Keeping body and
-    // tail tied to the same flag means they always appear/vanish together.
+    // Hide a cell's TAIL once its surface stops facing the camera (far side):
+    // its body is behind the opaque shell anyway, but the tail would poke past
+    // the silhouette and read as an orphan "tail with no body". Bodies are
+    // never culled — the shell occludes far ones on its own.
     cell.sideHidden = sim.renderOptions.cull && cosFace(cell.pos, camDir) <= CULL_COS
   }
 }

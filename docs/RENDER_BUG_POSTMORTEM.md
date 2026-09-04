@@ -75,17 +75,18 @@ toggleable pipeline:
 
 ## Fixes
 
-- **Disable far-side cull by default** (`src/render.js`): `cull: false`. The
-  opaque shell already occludes anything behind it, so culling is only a perf
-  skip — and every attempt to make it "smart" (a cos threshold or a
-  ray-through-the-shell test) over-hid the rim, because bodies poke just outside
-  the shell and are visible even when their centre ray grazes the shell. With
-  cull off, bodies and tails draw wherever the shell lets them.
-  > This is the field-tested result (render toggles): shell-off (`s`) and
-  > opaque-bodies (`o`) did **not** change the artifact (culling is independent
-  > of both); **cull-off (`c`) restored the bodies**; tails-off (`t`) merely hid
-  > the orphan tail. A cos-threshold cull is the original buggy behaviour and
-  > the conservative-cull revert made it "worse" — so cull stays off.
+- **Don't cull bodies; cull tails at the horizon** (`src/render.js` +
+  `src/cells.js`): bodies are never culled — a near-facing body is in front of
+  the opaque shell (visible), a far-side body is *behind* the shell and depth-
+  occluded naturally. So the body is always correct with no culling. The artifact
+  is a far-side **tail poking past the shell's silhouette** while its own body is
+  occluded. Fix: `sideHidden` (now `cosFace <= 0`, i.e. the horizon, via
+  `CULL_COS = 0`) clears only the **tail** (`placeTail`); `renderBodies` ignores
+  it.
+  > Derived from the toggles: cull-off hid nothing about the body (bodies were
+  > fine) but the tails still poked; the offending culls (cos threshold
+  > `-0.06`, or a ray-through-shell test) hid *bodies* unnecessarily. Bodies
+  > don't need culling at all.
 - **Remove the nucleus** (`materials.js` `nucleusGeo/nucleusMat`, `cells.js`
   `renderNuclei`, `sim.js` buildWorld/reset/dispose/render): cells are now plain
   translucent capsules; no separate emissive core to leak. (Lighting was also

@@ -202,13 +202,9 @@ export function renderBodies(sim) {
     const entry = sim.bodyPools.get(d.bodyBucket)
     if (!entry || !entry.mesh) continue
     const mesh = entry.mesh
-    if (d.sideHidden) {
-      zeroMatrix(sim, mesh, d.bodySlot)
-    } else {
-      const sc = d.fade >= 1 ? sim._one : sim._v9.set(d.fade, d.fade, d.fade)
-      sim._m.compose(d.pos, d.quat, sc)
-      mesh.setMatrixAt(d.bodySlot, sim._m)
-    }
+    const sc = d.fade >= 1 ? sim._one : sim._v9.set(d.fade, d.fade, d.fade)
+    sim._m.compose(d.pos, d.quat, sc)
+    mesh.setMatrixAt(d.bodySlot, sim._m)
     mesh.instanceMatrix.needsUpdate = true
   }
 }

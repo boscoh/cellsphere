@@ -16,7 +16,7 @@ export const TAIL_LINK = 0.05
 export const TAIL_SEGMENTS = Math.round((1.5 * MAX_RADIUS) / TAIL_LINK)
 export const TAIL_MOTOR_AMP = Math.PI * (40 / 360)
 export const TAIL_DYN_SUB = 4
-export const CULL_COS = -0.06
+export const CULL_COS = 0
 
 export const GROUPS = [
   { key: 'world', label: 'World' },
