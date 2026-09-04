@@ -34,7 +34,7 @@ import {
   TAIL_DAMP,
 } from './constants'
 import { randomSurfacePoint, randomTangent, smoothstep } from './math'
-import { bodyMat, nucleusGeo, nucleusMat } from './materials'
+import { bodyMat } from './materials'
 
 const GEO_STEP = 0.01
 const POOL_CAP = MAX_CELLS
@@ -213,19 +213,6 @@ export function renderBodies(sim) {
   }
 }
 
-export function renderNuclei(sim) {
-  const mesh = sim.nucleusMesh
-  if (!mesh) return
-  for (const d of sim.cells) {
-    if (d.bodyBucket == null) continue
-    const scale = sim._v6.set(d.radius * 0.62, WIDTH * 0.5, WIDTH * 0.5)
-    if (d.sideHidden || d.dying || d.splitting) scale.set(0, 0, 0)
-    sim._m.compose(d.pos, d.quat, scale)
-    mesh.setMatrixAt(d.nucleusSlot, sim._m)
-  }
-  mesh.instanceMatrix.needsUpdate = true
-}
-
 export function disposeBodyPools(sim) {
   for (const entry of sim.bodyPools.values()) {
     if (entry.mesh) {
@@ -241,13 +228,6 @@ export function allocTailIndex(sim) {
   if (sim.freeTailIndices.length) return sim.freeTailIndices.pop()
   const idx = sim.nextTailIndex
   sim.nextTailIndex = Math.min(sim.nextTailIndex + 1, MAX_CELLS)
-  return idx
-}
-
-export function allocNucleusIndex(sim) {
-  if (sim.freeNucleusIndices.length) return sim.freeNucleusIndices.pop()
-  const idx = sim.nextNucleusIndex
-  sim.nextNucleusIndex = Math.min(sim.nextNucleusIndex + 1, MAX_CELLS)
   return idx
 }
 
@@ -319,7 +299,6 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     rest: 0,
     index,
     tailStart: index * TAIL_SEGMENTS,
-    nucleusSlot: allocNucleusIndex(sim),
     bodyBucket: null,
     bodySlot: null,
     quat: new THREE.Quaternion(),

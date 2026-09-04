@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { SURFACE, CULL_COS, SPHERE_RADIUS, WIDTH } from './constants'
-import { renderBodies, renderNuclei } from './cells'
+import { renderBodies } from './cells'
 import { bodyMat } from './materials'
 import { cosFace, raySphereNear } from './math'
 
@@ -11,7 +11,6 @@ export const defaultRenderOptions = {
   drawFood: true,
   drawTails: true,
   drawBodies: true,
-  drawNuclei: true,
   cull: true, // far-side face culling (sideHidden)
   bodyDepthWrite: true, // bodies are transparent; depthWrite inherits this
   forceOpaqueBodies: false, // diagnostic: join the opaque pass (no sorting)
@@ -70,8 +69,6 @@ export function renderView(sim, tailScale) {
   }
 
   if (o.drawBodies) renderBodies(sim)
-
-  if (o.drawNuclei) renderNuclei(sim)
 
   if (o.drawTails) sim.renderTails()
 

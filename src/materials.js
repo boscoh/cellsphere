@@ -7,8 +7,6 @@ export const tailGeo = (() => {
   return geo
 })()
 
-export const nucleusGeo = new THREE.SphereGeometry(1, 12, 8)
-
 export const bodyMat = new THREE.MeshStandardMaterial({
   color: 0xffffff,
   roughness: 1,
@@ -47,19 +45,9 @@ export const tailMat = new THREE.MeshStandardMaterial({
   roughness: 0.5,
 })
 
-export const nucleusMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff,
-  roughness: 1,
-  metalness: 0,
-  emissive: 0x57c98c,
-  emissiveIntensity: 0.6,
-})
-
 export function disposeSharedMaterials() {
   foodGeo.dispose()
   tailGeo.dispose()
-  nucleusGeo.dispose()
   foodMat.dispose()
   tailMat.dispose()
-  nucleusMat.dispose()
 }
