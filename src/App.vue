@@ -2,9 +2,11 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Simulation } from './sim'
 import { FIXED_DT } from './constants'
+import Tuner from './Tuner.vue'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
+const tunerOpen = ref(false)
 const simRate = ref(1)
 const fps = ref(0)
 const bacteriaCount = ref(0)
@@ -19,6 +21,9 @@ let accumulator = 0
 let fpsCount = 0
 let fpsTime = 0
 const handleResize = () => sim.onResize()
+const onKey = (e) => {
+  if (e.key === 'Escape') tunerOpen.value = false
+}
 
 onMounted(() => {
   sim = new Simulation()
@@ -55,11 +60,13 @@ onMounted(() => {
   tick()
 
   window.addEventListener('resize', handleResize)
+  window.addEventListener('keydown', onKey)
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(animationId)
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('keydown', onKey)
   sim.dispose()
 })
 </script>
@@ -67,44 +74,95 @@ onBeforeUnmount(() => {
 <template>
   <div ref="canvasHolder" class="canvas-holder"></div>
   <div class="hud">
-    <div class="stats">
-      <span class="title">Cell</span>
-      <span class="stat">{{ fps }} fps</span>
-      <span class="stat">{{ bacteriaCount }} bacteria</span>
-      <span class="stat">{{ foodCount }} food</span>
+    <span class="brand">Cell</span>
+    <span class="sep"></span>
+    <div class="cell">
+      <span class="ctl">Fps</span>
+      <div class="row"><span class="num">{{ fps }}</span></div>
     </div>
-    <span class="divider"></span>
-    <div class="controls">
+    <div class="cell">
+      <span class="ctl">Bacteria</span>
+      <div class="row"><span class="num">{{ bacteriaCount }}</span></div>
+    </div>
+    <div class="cell">
+      <span class="ctl">Food</span>
+      <div class="row"><span class="num">{{ foodCount }}</span></div>
+    </div>
+    <span class="sep"></span>
+    <div class="cell">
       <label class="ctl" for="speed">Speed</label>
-      <input
-        id="speed"
-        class="slider"
-        type="range"
-        min="1"
-        :max="MAX_SIM_RATE"
-        step="2"
-        v-model.number="simRate"
-      />
-      <span class="readout">{{ simRate }}×</span>
-      <span class="divider"></span>
+      <div class="row">
+        <input
+          id="speed"
+          class="slider"
+          type="range"
+          min="1"
+          :max="MAX_SIM_RATE"
+          step="2"
+          v-model.number="simRate"
+        />
+        <span class="readout">{{ simRate }}×</span>
+      </div>
+    </div>
+    <div class="cell">
       <span class="ctl">Tails</span>
-      <button
-        type="button"
-        class="switch"
-        :class="tailsActive ? 'on' : 'off'"
-        role="switch"
-        :aria-checked="String(tailsActive)"
-        :aria-label="'tails ' + (tailsActive ? 'on' : 'off')"
-        @click="tailsActive = !tailsActive"
-      >
-        <span class="sw-opt off">off</span>
-        <span class="sw-thumb"></span>
-        <span class="sw-opt on">on</span>
-      </button>
-      <span class="divider"></span>
-      <button type="button" class="restart" @click="sim.reset()">Restart</button>
+      <div class="row">
+        <button
+          type="button"
+          class="switch"
+          :class="tailsActive ? 'on' : 'off'"
+          role="switch"
+          :aria-checked="String(tailsActive)"
+          :aria-label="'tails ' + (tailsActive ? 'on' : 'off')"
+          @click="tailsActive = !tailsActive"
+        >
+          <span class="sw-opt off">off</span>
+          <span class="sw-thumb"></span>
+          <span class="sw-opt on">on</span>
+        </button>
+      </div>
+    </div>
+    <span class="sep"></span>
+    <div class="cell">
+      <span class="ctl">Tuner</span>
+      <div class="row">
+        <button
+          type="button"
+          id="tune-toggle"
+          class="tune-btn"
+          :class="{ active: tunerOpen }"
+          :aria-expanded="String(tunerOpen)"
+          aria-controls="tuner-panel"
+          aria-label="Open or close the parameter tuner"
+          :title="tunerOpen ? 'Close parameter tuner' : 'Open parameter tuner'"
+          @click="tunerOpen = !tunerOpen"
+        >
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <line x1="21" y1="4" x2="14" y2="4" />
+            <line x1="10" y1="4" x2="3" y2="4" />
+            <line x1="14" y1="2" x2="14" y2="6" />
+            <line x1="21" y1="12" x2="12" y2="12" />
+            <line x1="8" y1="12" x2="3" y2="12" />
+            <line x1="12" y1="10" x2="12" y2="14" />
+            <line x1="21" y1="20" x2="16" y2="20" />
+            <line x1="12" y1="20" x2="3" y2="20" />
+            <line x1="16" y1="18" x2="16" y2="22" />
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
+  <Tuner v-if="tunerOpen" @rebuild="sim.reset()" />
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
 
@@ -121,8 +179,7 @@ onBeforeUnmount(() => {
   left: 24px;
   z-index: 2;
   display: flex;
-  flex-direction: row;
-  align-items: center;
+  align-items: stretch;
   gap: 14px;
   padding: 10px 14px;
   background: rgba(10, 12, 16, 0.55);
@@ -135,39 +192,39 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
-.stats {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 12px;
-  color: #8a93a6;
-}
-
-.stats .title {
+.brand {
+  align-self: center;
   font-size: 15px;
   font-weight: 600;
   color: #eef2f8;
   letter-spacing: -0.3px;
-  padding-right: 2px;
 }
 
-.stats .stat {
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.cell .num {
   color: #b7c2d4;
   font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  line-height: 1;
 }
 
-.stats .stat + .stat {
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  padding-left: 12px;
-}
-
-.controls {
+.row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  pointer-events: auto;
-  font-size: 11px;
-  color: #8a93a6;
+  gap: 6px;
+  height: 24px;
 }
 
 .ctl {
@@ -175,25 +232,29 @@ onBeforeUnmount(() => {
   letter-spacing: 0.5px;
   font-size: 10px;
   color: #6b7484;
+  line-height: 1.2;
 }
 
 .slider {
   width: 110px;
+  height: 20px;
   accent-color: #6fa8ff;
   cursor: pointer;
+  pointer-events: auto;
+}
+
+.tune-btn,
+.switch {
+  pointer-events: auto;
 }
 
 .readout {
   min-width: 30px;
   text-align: left;
   color: #b7c2d4;
+  font-size: 12px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
-}
-
-.divider {
-  width: 1px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.12);
 }
 
 .switch {
@@ -254,24 +315,33 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 
-.restart {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.tune-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
   color: #b7c2d4;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
-  padding: 5px 12px;
   cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-.restart:hover {
+.tune-btn:hover {
   color: #eef2f8;
   background: rgba(255, 255, 255, 0.12);
 }
 
-.restart:focus-visible {
+.tune-btn.active {
+  color: #eef2f8;
+  background: rgba(111, 168, 255, 0.18);
+  border-color: rgba(111, 168, 255, 0.45);
+}
+
+.tune-btn:focus-visible {
   outline: 2px solid rgba(111, 168, 255, 0.7);
   outline-offset: 2px;
 }
