@@ -4,8 +4,9 @@ import {
   GRID,
   WIDTH,
   SENSE_BOOST,
-  GROWTH_PER_FOOD,
-  ABSORB_CAP,
+  ENERGY_MAX,
+  ENERGY_PER_FOOD,
+  ABSORB_RATE,
   GRAZE_RATE,
   GRAZE_GAIN,
   FOOD_RESPAWN,
@@ -14,7 +15,7 @@ import {
   FOOD_CLUMP_WIDE,
 } from './constants'
 import { randomUnitVector, randomSurfacePoint, randomTangent, cellIndex } from './math'
-import { growCell, feedCell } from './cells'
+import { gainEnergy } from './cells'
 
 export function placeFood(sim, food) {
   const s = food.visible ? food.scale : 0.0001
@@ -185,24 +186,39 @@ export function eatAndRespawn(sim, simDt) {
   for (const cell of sim.cells) {
     const d = cell
     if (d.mito || d.splitting || d.split) continue
+    // Food is consumed on contact, but only ENERGY_PER_FOOD banks get absorbed:
+    // a cell stores a budget at ABSORB_RATE/s and converts a particle only once
+    // a full particle's worth is banked. Food it touches beyond that is eaten
+    // but not converted — effectively wasted.
+    d.absorbAcc = Math.min(d.absorbAcc + ABSORB_RATE * simDt, ENERGY_PER_FOOD)
     const halfLen = Math.max(d.radius - WIDTH, 0)
-    let ate = 0
     const cx = Math.floor(d.pos.x / GRID)
     const cy = Math.floor(d.pos.y / GRID)
     const cz = Math.floor(d.pos.z / GRID)
+    // Gather contacted food first so consuming doesn't mutate a bucket under
+    // the shared scanner's feet (it splices as it goes).
+    sim._eatContact.length = 0
+    const contact = sim._eatContact
     forEachNearbyFood(sim, cx, cy, cz, 1, (foodIndex, food) => {
-      if (foodDist(sim, d, food, halfLen) < WIDTH + food.r) {
-        growCell(sim, d, GROWTH_PER_FOOD)
-        feedCell(sim, d)
-        food.respawn = FOOD_RESPAWN + Math.random() * 8
-        food.visible = false
-        removeFoodFromGrid(sim, foodIndex)
-        sim.respawning.push(foodIndex)
-        placeFood(sim, food)
-        dirty = true
-        if (++ate >= ABSORB_CAP) return false
-      }
+      if (foodDist(sim, d, food, halfLen) < WIDTH + food.r) contact.push(foodIndex)
     })
+    for (let c = 0; c < contact.length; c++) {
+      const foodIndex = contact[c]
+      const food = sim.foods[foodIndex]
+      if (!food.visible) continue
+      food.respawn = FOOD_RESPAWN + Math.random() * 8
+      food.visible = false
+      removeFoodFromGrid(sim, foodIndex)
+      sim.respawning.push(foodIndex)
+      placeFood(sim, food)
+      dirty = true
+      if (d.absorbAcc >= ENERGY_PER_FOOD) {
+        d.absorbAcc -= ENERGY_PER_FOOD
+        // gainEnergy clamps to ENERGY_MAX and flips split, so a full cell can
+        // reach the mitosis threshold immediately instead of idling under max.
+        gainEnergy(sim, d, ENERGY_PER_FOOD)
+      }
+    }
   }
 
   if (dirty) sim.foodMesh.instanceMatrix.needsUpdate = true

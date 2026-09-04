@@ -42,11 +42,13 @@ was to **extract the decision logic into pure, headless-testable functions and
 audit them numerically**, plus push the render path into an explicit,
 toggleable pipeline:
 
-- `src/render.js` — `renderView(sim, tailScale)` owns the draw path and reads a
-  `renderOptions` object (`drawShell / drawFood / drawTails / drawBodies /
-  cull / bodyDepthWrite / forceOpaqueBodies`), so each layer can be turned on/off
+- `src/render.js` — `renderView(sim, tailScale)` owns the draw path and used to
+  read a `renderOptions` object (`drawShell / drawFood / drawTails / drawBodies /
+  cull / bodyDepthWrite / forceOpaqueBodies`) so each layer could be flipped on/off
   to bisect. `sim.render()` just delegates to it; the old `updateVisibility`
-  moved here.
+  moved here. **These toggles were diagnostic scaffolding and have since been
+  removed** — `renderView` now draws the full intended pipeline, with far-side
+  tail occlusion always on.
 - `src/math.js` — pure `cosFace(pos, camDir)` and `raySphereNear(origin, dir, r)`.
 - `src/render.js` — `bodyShellGap(pos, camPos, shellRadius, bodyRadius)`: signed
   distance from a cell's near surface to the shell's front surface along the
@@ -111,13 +113,95 @@ toggleable pipeline:
 - When visual bugs resist material/setting fixes, **stop tweaking and expose the
   layers as live toggles** (`sim.renderOptions`, wired to keys) and bisect by
   eye. Verify the hypothesis with a **real-world toggle** (e.g. `c` cull-off),
-  not just a numeric audit that reuses the same assumption you're testing.
+  not just a numeric audit that reuses the same assumption you're testing. These
+  toggles were temporary — once the bugs were root-caused and fixed they were
+  removed; don't ship them for production.
+
+---
+
+# Post-mortem #2 — "bodies disappear and reappear at random when I scroll-zoom" (2026-09-04)
+
+**Status:** resolved (2026-09-04), beads `cell-6uj`. This one was invisible to the
+first investigation because it only shows up under a *narrow* view cone — the far
+framing hid it completely.
+
+## Symptom
+
+Scrolling to zoom made individual capsule bodies vanish and return **at random** —
+a different subset each time. Orbiting alone was fine; the trigger was specifically
+the camera narrowing/widening (scroll zoom).
+
+## Root cause: pooled `InstancedMesh` frustum culling against a stale, localised sphere
+
+The render layer's *cell-level* logic said "bodies are never culled"
+(`render.js` `cull` comment), but that only governed `sideHidden`. The **mesh-level
+`frustumCulled` flag was never touched** (`grep frustumCulled src/` → nothing), so
+three.js culled every pooled `InstancedMesh` by default against a single bounding
+sphere:
+
+- Body pools (`cells.js` `getPool`), `tailMesh`, and `foodMesh` are all pools whose
+  instances are spread across the whole shell (radius ~5).
+- three.js caches `boundingSphere` on **first render**. A body pool is born with one
+  cell, so its sphere is frozen at **~one capsule radius (probe: r ≈ 0.10–0.30),
+  positioned at that first cell** — it is localised, never covers the shell, and is
+  **never recomputed** (thin `cells.js` reference to `computeBoundingSphere`).
+- In the default framing (camera ~14 away, 55° FOV) the frustum is so wide it still
+  contains that sphere → nothing is culled, so a normal view looks fine.
+- **Scroll-zoom in** narrows the view cone. Any bucket whose frozen sphere falls
+  outside the cone has its **entire instance set** dropped that frame, then drawn
+  again as soon as the sphere re-enters → bodies blink on/off. Which buckets are
+  affected depends on where each sphere happens to be vs. where you zoomed — hence
+  "random".
+
+## How it was proven
+
+Headless audit (no GL): built the sim, seeded each pool's bounding sphere the
+moment its mesh was born (exactly three.js's lazy cache), kept it stale, then swept
+a camera between far (`dist ≈ 18`) and close (`dist ≈ 2.3`) while orbiting, and
+counted cells that were on-screen in the camera frustum yet belonged to a mesh that
+`intersectsObject` rejected:
+
+```
+far-view     worst spurious culls: 0
+zoom-in      worst spurious culls: 14   <- whole visible bodies dropped
+```
+
+A single bucket frozen at one cell (r=0.2) vs. a cell that later joined on the
+other side of the shell is the minimal repro: with a close camera pointed at the new
+cell, the stale sphere is out of the cone so the bucket is culled even though the
+cell is dead-centre.
+
+## Fix
+
+Disable frustum culling on the pooled instanced meshes — they always span the
+shell, `frustumCulled` buys nothing, and their spheres are never accurate:
+
+- `src/cells.js` `getPool` — `entry.mesh.frustumCulled = false`
+- `src/sim.js` `buildWorld` — `tailMesh.frustumCulled = false`, `foodMesh.frustumCulled = false`
+
+Re-run of the same audit after the fix: `0` spurious culls at both far and close
+zoom. `npm run build` passes.
+
+## Takeaways (add to the reasoning list above)
+
+- There are **two culling layers**: the cell-level `sideHidden` (correct, per-cell,
+  recomputed every frame) and the **mesh-level `frustumCulled`** (three.js, per
+  each pool, against a stale cached sphere). A pool of instances that spans more
+  space than its one-shot bounding sphere *must* have `frustumCulled = false`.
+- A wide default framing can hide a culling bug entirely — always re-test under the
+  narrowest view the user can reach (zoom all the way in) before calling a render
+  bug fixed.
+- Don't trust comments that say "bodies are never culled"; the comment documents
+  *intent* while the default flag still did the opposite. `grep frustumCulled src/`.
 
 ## Code pointers
 
-- `src/render.js` — pipeline, `renderOptions`, occlusion culling, `bodyShellGap`,
-  `auditShell`.
-- `src/math.js` — `cosFace`, `raySphereNear`.
+- `src/render.js` — `renderView(sim, tailScale)` is the whole draw path now:
+  sets tail scale/visibility, far-side tail occlusion (`updateVisibility` →
+  `sideHidden`), draws bodies + tails, updates controls and renders. No
+  `renderOptions` object, `bodyShellGap`/`auditShell`, or layer toggles remain —
+  they were diagnostic scaffolding for these bugs and were removed on cleanup.
+- `src/math.js` — `cosFace` (used by occlusion culling).
 - `src/cells.js` — `renderBodies` (per-cell shrink scale via `d.fade`),
   `placeTail` (clears tail when `sideHidden`), mitosis parent shrink
   (`pd.fade = 1 - fadeK`), daughter tail handoff (`back` grows, `front` inherits).

@@ -8,7 +8,9 @@ import {
   FIXED_DT,
   MAX_STEPS,
   WIDTH,
+  ENERGY_MAX,
   MITO_SLOW_FRAC,
+  STARVE_SLOW,
   THRUST,
   DRAG,
   ANG_DRAG,
@@ -36,6 +38,7 @@ import {
   placeTail,
   updateTailState,
   updateMito,
+  updateEnergy,
   updateStarvation,
   initBodyPools,
   removeBody,
@@ -51,7 +54,7 @@ import {
   concentration,
 } from './food'
 import { createScene } from './sceneSetup'
-import { renderView, defaultRenderOptions } from './render'
+import { renderView } from './render'
 
 export class Simulation {
   constructor() {
@@ -85,9 +88,9 @@ export class Simulation {
     this._dummy = new THREE.Object3D()
     this._col = { dist: 0, x: 0, y: 0, z: 0 }
     this._fd = { rx: 0, ry: 0, rz: 0 }
+    this._eatContact = []
     this._one = new THREE.Vector3(1, 1, 1)
     this._camDir = new THREE.Vector3()
-    this.renderOptions = { ...defaultRenderOptions }
     initBodyPools(this)
   }
 
@@ -107,6 +110,9 @@ export class Simulation {
       tailMat,
       MAX_CELLS * TAIL_SEGMENTS,
     )
+    // Tail segments are spread across the whole sphere; the cached bounding
+    // sphere is wrong/stale, so a zoom-in would cull visible segments.
+    this.tailMesh.frustumCulled = false
     this.tailMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.tailMesh.setColorAt(0, new THREE.Color(1, 1, 1))
     this.tailMesh.instanceColor.needsUpdate = true
@@ -121,6 +127,7 @@ export class Simulation {
     }
 
     this.foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, FOOD_COUNT)
+    this.foodMesh.frustumCulled = false
     this.foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.scene.add(this.foodMesh)
     generateClumps(this)
@@ -382,15 +389,20 @@ export class Simulation {
         d.rest -= dt
         d.drive = 0
       } else {
-        const slowFrac = smoothstep(
+        const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
+        // Bands are mostly exclusive by energy: coast to a stop as the cell
+        // nears max (mitosis), and slow as it starves toward zero.
+        const coastFrac = smoothstep(
           THREE.MathUtils.clamp(
-            (d.radius - d.maxLength * MITO_SLOW_FRAC) /
-              (d.maxLength * (1 - MITO_SLOW_FRAC)),
+            (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
             0,
             1,
           ),
         )
-        d.drive = d.slow * (1 - slowFrac)
+        const fatigue = smoothstep(
+          THREE.MathUtils.clamp(frac / STARVE_SLOW, 0, 1),
+        )
+        d.drive = d.slow * (1 - coastFrac) * fatigue
       }
 
       if (d.foodAmt > 0.01 && d.foodPeak > PEAK_MIN) {
@@ -440,6 +452,7 @@ export class Simulation {
     }
     this.processSplits()
     for (const cell of this.cells) updateMito(this, cell, dt)
+    for (const cell of this.cells) updateEnergy(this, cell, dt)
     for (const cell of this.cells) updateStarvation(this, cell, dt)
     // tail physics always runs so toggling visibility doesn't snap the tail
     for (const cell of this.cells) updateTailState(this, cell, dt)

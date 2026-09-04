@@ -5,13 +5,15 @@ import {
   MIN_RADIUS,
   MAX_RADIUS,
   START_RADIUS,
+  ENERGY_MAX,
+  METABOLISM,
   MITO_TIME,
   MITO_HOLD,
   MITO_FADE,
   MITO_NEAR,
   MITO_SEP,
   MITO_REST,
-  STARVE_TIME,
+  MITO_SLOW_FRAC,
   WIDTH,
   TAIL_SEGMENTS,
   TAIL_LINK,
@@ -74,29 +76,15 @@ export function initBodyPools(sim) {
   sim.bodyPools = new Map()
 }
 
-function computeCellColor(length, breed) {
-  const t = THREE.MathUtils.clamp(
-    (length - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS),
-    0,
-    1,
-  )
-  const s = smoothstep(t)
-  if (breed === BREED_RED) {
-    return new THREE.Color().setHSL(
-      0.005 + t * 0.06,
-      0.72 + t * 0.15,
-      0.34 + 0.4 * s,
-    )
-  }
-  return new THREE.Color().setHSL(
-    0.56 + t * 0.08,
-    0.55 + t * 0.4,
-    0.34 + 0.46 * s,
-  )
+function computeCellColor(breed) {
+  // Color is constant per breed — size already conveys growth, and the
+  // mitosis aura signals readiness. `length` is no longer a color driver.
+  if (breed === BREED_RED) return new THREE.Color().setHSL(0.015, 0.78, 0.5)
+  return new THREE.Color().setHSL(0.59, 0.62, 0.52)
 }
 
-function setCellColor(d, length) {
-  d.color.copy(computeCellColor(length, d.breed))
+function setCellColor(d) {
+  d.color.copy(computeCellColor(d.breed))
 }
 
 function getPool(sim, length) {
@@ -109,6 +97,10 @@ function getPool(sim, length) {
   if (!entry.mesh) {
     const geo = bodyGeoFor(length)
     entry.mesh = new THREE.InstancedMesh(geo, bodyMat, POOL_CAP)
+    // Instances span the whole shell and change size every frame, so the cached
+    // bounding sphere is never accurate; culling would drop visible bodies on
+    // close zoom. Bodies are never culled (see render.js 'cull' comment).
+    entry.mesh.frustumCulled = false
     entry.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     entry.mesh.instanceMatrix.needsUpdate = true
     const opacity = new THREE.InstancedBufferAttribute(
@@ -118,6 +110,13 @@ function getPool(sim, length) {
     opacity.setUsage(THREE.DynamicDrawUsage)
     entry.mesh.geometry.setAttribute('instanceOpacity', opacity)
     entry.opacity = opacity
+    const mito = new THREE.InstancedBufferAttribute(
+      new Float32Array(POOL_CAP).fill(0),
+      1,
+    )
+    mito.setUsage(THREE.DynamicDrawUsage)
+    entry.mesh.geometry.setAttribute('instanceMito', mito)
+    entry.mito = mito
     sim.scene.add(entry.mesh)
   }
   return entry
@@ -141,6 +140,7 @@ export function addBody(sim, d, length) {
   d.bodyBucket = bucket
   d.bodySlot = slot
   if (entry.opacity) entry.opacity.setX(slot, 1)
+  if (entry.mito) entry.mito.setX(slot, 0)
   setBodyColor(sim, d, d.color)
   entry.mesh.instanceMatrix.needsUpdate = true
 }
@@ -206,6 +206,20 @@ export function renderBodies(sim) {
     sim._m.compose(d.pos, d.quat, sc)
     mesh.setMatrixAt(d.bodySlot, sim._m)
     mesh.instanceMatrix.needsUpdate = true
+    // Aura: ramp 0->1 as the cell climbs toward mitosis (energy beyond
+    // MITO_SLOW_FRAC), so a full cell glows before it divides.
+    if (entry.mito) {
+      const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
+      const ready = smoothstep(
+        THREE.MathUtils.clamp(
+          (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
+          0,
+          1,
+        ),
+      )
+      entry.mito.setX(d.bodySlot, ready)
+      entry.mito.needsUpdate = true
+    }
   }
 }
 
@@ -256,11 +270,21 @@ function makeTailChain(pos, heading, radius) {
   return { pts, vel, vt, q }
 }
 
+export function radiusFromEnergy(energy) {
+  const f = THREE.MathUtils.clamp(energy, 0, ENERGY_MAX) / ENERGY_MAX
+  return MIN_RADIUS + f * (MAX_RADIUS - MIN_RADIUS)
+}
+
+export function energyFromRadius(radius) {
+  const f = (radius - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS)
+  return THREE.MathUtils.clamp(f, 0, 1) * ENERGY_MAX
+}
+
 export function createCell(sim, index, pos, heading, length, breed = Math.random() < 0.5 ? BREED_BLUE : BREED_RED) {
   const chain = makeTailChain(pos, heading, length)
   const d = {
     radius: length,
-    maxLength: length * 2,
+    energy: energyFromRadius(length),
     mass: length * length * 0.25,
     color: new THREE.Color(),
     breed,
@@ -288,18 +312,18 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     dead: false,
     dying: false,
     starveT: 0,
-    lastMeal: sim.simTime,
     sideHidden: false,
     tailGrow: 1,
     fade: 1,
     rest: 0,
     index,
+    absorbAcc: 0,
     tailStart: index * TAIL_SEGMENTS,
     bodyBucket: null,
     bodySlot: null,
     quat: new THREE.Quaternion(),
   }
-  setCellColor(d, length)
+  setCellColor(d)
   addBody(sim, d, length)
   setTailColor(sim, d)
   return d
@@ -313,21 +337,28 @@ export function makeCell(sim) {
   return createCell(sim, allocTailIndex(sim), pos, heading, length)
 }
 
-export function growCell(sim, cell, amount) {
-  const d = cell
-  const next = Math.min(d.radius + amount, d.maxLength)
-  d.radius = next
-  d.mass = Math.max(next * next * 0.25, 0.05)
-  setCellColor(d, next)
-  rehomeBody(sim, d, next)
-  setInstanceColor(sim, d)
-  setTailColor(sim, d)
-  if (next >= d.maxLength - 1e-6 && !d.splitPending) d.split = true
+function setSize(sim, d, energy, checkSplit) {
+  const next = THREE.MathUtils.clamp(energy, 0, ENERGY_MAX)
+  const r = radiusFromEnergy(next)
+  d.energy = next
+  d.mass = Math.max(r * r * 0.25, 0.05)
+  if (r !== d.radius) {
+    d.radius = r
+    const nb = bodyBucket(r)
+    if (nb !== d.bodyBucket) {
+      setCellColor(d)
+      rehomeBody(sim, d, r)
+      setInstanceColor(sim, d)
+      setTailColor(sim, d)
+    }
+  }
+  if (checkSplit && next >= ENERGY_MAX - 1e-6 && !d.splitPending) d.split = true
+  else if (next < ENERGY_MAX - 1e-6) d.splitPending = false
 }
 
-export function feedCell(sim, cell) {
+export function gainEnergy(sim, cell, amount) {
   const d = cell
-  d.lastMeal = sim.simTime
+  setSize(sim, d, d.energy + amount, true)
   if (d.dying) {
     d.dying = false
     d.starveT = 0
@@ -336,9 +367,21 @@ export function feedCell(sim, cell) {
   }
 }
 
-export function updateStarvation(sim, d, dt) {
-  if (STARVE_TIME <= 0) return
+export function drainEnergy(sim, d, amount) {
+  setSize(sim, d, d.energy - amount, false)
+}
+
+export function updateEnergy(sim, d, dt) {
+  if (METABOLISM <= 0) return
   if (d.mito || d.splitting || d.split) return
+  if (d.energy > 0) drainEnergy(sim, d, METABOLISM * dt)
+  if (d.energy <= 0 && !d.dying) {
+    d.dying = true
+    d.starveT = 0
+  }
+}
+
+export function updateStarvation(sim, d, dt) {
   if (d.dying) {
     d.starveT += dt
     const k = Math.min(d.starveT / STARVE_FADE, 1)
@@ -349,10 +392,6 @@ export function updateStarvation(sim, d, dt) {
     }
     setBodyOpacity(sim, d, 1 - k)
     return
-  }
-  if (sim.simTime - d.lastMeal >= STARVE_TIME) {
-    d.dying = true
-    d.starveT = 0
   }
 }
 
@@ -365,8 +404,9 @@ export function mitose(sim, parent) {
   }
   d.splitPending = false
   d.split = false
-  const fullLen = d.radius
-  const childLen = fullLen * 0.45
+  // Each daughter starts at half the parent's length so the two fit exactly
+  // inside the parent's silhouette (2 x childLen == parent body length) — no pop.
+  const childLen = d.radius * 0.5
   const phead = d.heading.clone()
   const n0 = d.pos.clone().normalize()
   const startPos = d.pos.clone()
@@ -396,6 +436,8 @@ export function mitose(sim, parent) {
     startPos,
     headBack,
     half,
+    childLen,
+    parentR: d.radius,
   }
   d.splitting = true
   d.mitoParent = true
@@ -697,8 +739,6 @@ export function updateMito(sim, d, simDt) {
   }
 
   if (m.t >= m.dur) {
-    m.back.lastMeal = sim.simTime
-    m.front.lastMeal = sim.simTime
     finalizeMito(d, m)
   }
 }

@@ -2,11 +2,13 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Simulation } from './sim'
 import { FIXED_DT } from './constants'
+import { resetParams } from './constants'
 import Tuner from './Tuner.vue'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
 const tunerOpen = ref(false)
+const tunerRef = ref(null)
 const simRate = ref(1)
 const fps = ref(0)
 const bacteriaCount = ref(0)
@@ -22,31 +24,19 @@ let fpsCount = 0
 let fpsTime = 0
 const handleResize = () => sim.onResize()
 const onKey = (e) => {
-  if (e.key === 'Escape') {
-    tunerOpen.value = false
-    return
-  }
-  if (e.metaKey || e.ctrlKey || sim == null) return
-  const o = sim.renderOptions
-  const key = e.key.toLowerCase()
-  const set = (k) => {
-    o[k] = !o[k]
-    console.log(k, '=', o[k], JSON.stringify(o))
-  }
-  if (key === 's') set('drawShell')
-  else if (key === 'o') set('forceOpaqueBodies')
-  else if (key === 't') set('drawTails')
-  else if (key === 'c') set('cull')
-  else if (key === 'b') set('drawBodies')
-  else if (key === 'f') set('drawFood')
+  if (e.key === 'Escape') tunerOpen.value = false
+}
+
+function onReset() {
+  resetParams()
+  tunerRef.value?.syncValues()
+  sim.reset()
 }
 
 onMounted(() => {
   sim = new Simulation()
   sim.attach(canvasHolder.value)
   sim.buildWorld()
-  window.sim = sim
-  console.log('render debug keys — s:shell  o:opaqueBodies  t:tails  c:cull  b:bodies  f:food')
 
   const tick = () => {
     animationId = requestAnimationFrame(tick)
@@ -171,10 +161,11 @@ onBeforeUnmount(() => {
             <line x1="16" y1="18" x2="16" y2="22" />
           </svg>
         </button>
+        <button type="button" class="reset-btn" @click="onReset">Reset</button>
       </div>
     </div>
   </div>
-  <Tuner v-if="tunerOpen" @rebuild="sim.reset()" />
+  <Tuner v-if="tunerOpen" ref="tunerRef" @rebuild="sim.reset()" />
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
 
@@ -260,6 +251,35 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 
+.reset-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #b7c2d4;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.reset-btn:hover {
+  color: #eef2f8;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.reset-btn:focus-visible {
+  outline: 2px solid rgba(111, 168, 255, 0.7);
+  outline-offset: 2px;
+}
+
 .readout {
   min-width: 30px;
   text-align: left;
@@ -273,8 +293,8 @@ onBeforeUnmount(() => {
   position: relative;
   appearance: none;
   -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   margin: 0;
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 4px;
@@ -295,10 +315,10 @@ onBeforeUnmount(() => {
 .checkbox:checked::after {
   content: '';
   position: absolute;
-  left: 4px;
-  top: 1px;
-  width: 4px;
-  height: 8px;
+  left: 8px;
+  top: 5px;
+  width: 5px;
+  height: 11px;
   border: solid #10141c;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);

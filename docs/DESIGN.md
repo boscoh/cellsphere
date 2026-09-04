@@ -38,9 +38,12 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   (`MAX_CELLS*TAIL_SEGMENTS`); per-cell color set from `createCell`/`growCell`
   (`setTailColor`), slots via `allocTailIndex` + free list. Tails hidden = skip
   `updateTailState`/`renderTails` and hide the mesh (`tailsHidden`).
-- **Linear motion**: `drive = slow*(1-slowFrac)`; thrust `THRUST*drive` along
-  heading; high `DRAG` bleeds velocity. `slow` ramps to ~0 near food
-  (graze), `slowFrac` ramps to 1 near max length (ease into mitosis).
+- **Linear motion**: `drive = slow × (1 − coast) × fatigue`; thrust
+  `THRUST*drive` along heading; high `DRAG` bleeds velocity. Three mostly-
+  exclusive energy bands: near max (`coast`, above `MITO_SLOW_FRAC`) the cell
+  eases to a stop to split; mid band it drives full; toward zero (`fatigue`,
+  below `STARVE_SLOW`) a starving cell slows. `slow` likewise ramps to ~0 near
+  food (graze).
 - **One consistent time loop**: `App.vue` banks real time in an accumulator
   and calls `sim.step(simDt×simRate)`; `step` subdivides into
   `clamp(ceil(simDt/FIXED_DT),1,MAX_STEPS)` substeps of `advance(dt)`. Render
@@ -57,13 +60,25 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 - **Rotation**: `headingRate` is yaw about the surface normal, damped by
   `ANG_DRAG`. Sources: chemotaxis (turn toward food gradient when
   `foodPeak > PEAK_MIN`) and collision kicks. No random tumble.
-- **Growth/mitosis**: eating grows `radius` to `maxLength = 2×birth`; at full,
-  `mitose()` spawns two daughters (`0.45×` length) facing away. The parent
-  **fades via per-instance opacity** (`setBodyOpacity`; body material runs a
-  custom shader hook multiplying `diffuseColor.a` by `instanceOpacity`) while
-  `depthWrite=false`, then its mesh is dropped but it **keeps colliding** until
-  the daughters finish separating; `finalizeMito` marks it dead and releases
-  the daughters (with a `MITO_REST` coast).
+- **Energy → size & death**: the whole growth/starvation loop is one value,
+  `d.energy` in `[0, ENERGY_MAX]`. `radius = MIN_RADIUS + (energy/ENERGY_MAX)*(MAX_RADIUS-MIN_RADIUS)`
+  (linear food→energy→length). Eating (`gainEnergy`, +`ENERGY_PER_FOOD`) grows it;
+  `METABOLISM` (energy/s) drains it every `advance` → a starved cell **shrinks**
+  back toward `MIN_RADIUS`. At `energy <= 0` the cell reaches the smallest state,
+  `dying` fades it out (`STARVE_FADE`), then it dies. At `energy >= ENERGY_MAX` it
+  goes `split` → mitosis. Food is **consumed on contact** (removed from the
+  sphere), but the cell converts only up to `ABSORB_RATE` energy/s into energy —
+  food beyond that (and food a nearly-full cell touches) is eaten but wasted.
+- **Energy → mitosis**: at full energy, `mitose()` spawns two daughters, each
+  at **half the parent's length** so both fit exactly inside the parent's
+  outline, facing away. The parent **fades via per-instance opacity**
+  (`setBodyOpacity`; body material
+  runs a custom shader hook multiplying `diffuseColor.a` by `instanceOpacity`)
+  while `depthWrite=false`, then its mesh is dropped but it **keeps colliding**
+  until the daughters finish separating; `finalizeMito` marks it dead and
+  releases the daughters (with a `MITO_REST` coast). Because metabolism keeps
+  draining, a full cell that can't split (cap pressure) shrinks and resumes
+  moving instead of parking at max and starving.
 - **Tail model**: `TAIL_SEGMENTS` fixed-length links of `TAIL_LINK` (constant
   length for all body sizes) drawn as capsule segments (`TAIL_LINK_FILL` of each
   pitch → small joint gaps). Joint directions live on the sphere: `placeTail`
@@ -86,11 +101,14 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 | `GRID` / `CELL_GRID` | 0.35 / 1.0 | food / cell spatial-hash cell size |
 | `SPRING` | 22 | cell–cell stiffness |
 | `FIXED_DT` / `MAX_STEPS` | 1/60 / 200 | physics substep / per-frame ceiling |
-| `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.10 / 0.37 / 0.13 | color/length gradient |
-| `GROWTH_PER_FOOD` / `ABSORB_CAP` | 0.0005 / 3 | growth per food / per-frame cap |
-| `MITO_TIME` / `MITO_HOLD` / `MITO_FADE` | 90 / 0.2 / 0.4 | mitosis duration; hold; fade fraction |
+| `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.10 / 0.30 / 0.13 | size gradient (MAX chosen so a full cell exactly spans both daughters) |
+| `ENERGY_MAX` | 1.0 | energy at which a cell divides (linear size: radius = MIN + (energy/MAX)·(MAX−MIN)) |
+| `ENERGY_PER_FOOD` / `ABSORB_RATE` | 0.05 / 0.10 | energy per food / always-on absorption rate (energy/s) |
+| `METABOLISM` | 0.0015 | energy drained per second (0 = off) |
+| `MITO_TIME` / `MITO_HOLD` / `MITO_FADE` | 5 / 0.2 / 0.4 | mitosis duration; hold; fade fraction |
 | `MITO_NEAR` / `MITO_SEP` | 2.1 / 2.8 | child held spread / separated spread |
-| `MITO_SLOW_FRAC` / `MITO_REST` | 0.6 / 4 | decel into split / post-mitosis coast |
+| `MITO_SLOW_FRAC` / `MITO_REST` | 0.9 / 4 | decel into split (just before mitosis) / post-mitosis coast |
+| `STARVE_SLOW` | 0.3 | energy fraction below which a starving cell slows |
 | `WIDTH` | 0.085 | body width (only length grows) |
 | `TAIL_SEGMENTS` / `TAIL_LINK` | 8 / 0.11 | links per tail / link pitch (fixed for all sizes; total ≈0.88) |
 | `TAIL_LINK_FILL` | 0.9 | drawn fraction of each pitch (gaps ≈0.1 → jointed look) |

@@ -1,8 +1,14 @@
 <script setup>
 import { reactive, computed, ref, onMounted } from 'vue'
-import { GROUPS, PARAMS, setParam, resetParams } from './constants'
+import { GROUPS, PARAMS, setParam } from './constants'
 
 const emit = defineEmits(['rebuild'])
+
+function syncValues() {
+  for (const r of rows) r.value = r.def
+}
+
+defineExpose({ syncValues })
 
 const panelEl = ref(null)
 const panelPos = ref({ top: 128, left: 24 })
@@ -58,12 +64,6 @@ function onChange(row) {
   if (row.rebuild) emit('rebuild')
 }
 
-function onReset() {
-  resetParams()
-  for (const r of rows) r.value = r.def
-  emit('rebuild')
-}
-
 function fmt(v) {
   return String(parseFloat(v.toFixed(4)))
 }
@@ -73,9 +73,6 @@ function fmt(v) {
   <aside id="tuner-panel" ref="panelEl" class="panel" :style="{ top: panelPos.top + 'px', left: panelPos.left + 'px' }">
     <header class="head">
       <span class="title">Parameter Tuner</span>
-      <div class="head-actions">
-        <button type="button" class="ghost" @click="onReset">Reset</button>
-      </div>
     </header>
     <div class="body">
       <section v-for="g in groups" :key="g.label" class="group">
@@ -135,28 +132,6 @@ function fmt(v) {
   color: #eef2f8;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-}
-
-.head-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.ghost {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #b7c2d4;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-
-.ghost:hover {
-  color: #eef2f8;
-  background: rgba(255, 255, 255, 0.12);
 }
 
 .body {

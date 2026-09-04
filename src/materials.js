@@ -17,17 +17,24 @@ export const bodyMat = new THREE.MeshStandardMaterial({
 
 bodyMat.onBeforeCompile = (shader) => {
   shader.vertexShader =
-    'attribute highp float instanceOpacity;\nvarying highp float vInstanceOpacity;\n' +
+    'attribute highp float instanceOpacity;\nattribute highp float instanceMito;\nvarying highp float vInstanceOpacity;\nvarying highp float vInstanceMito;\n' +
     shader.vertexShader
   shader.vertexShader = shader.vertexShader.replace(
     '#include <project_vertex>',
-    '#include <project_vertex>\n\tvInstanceOpacity = instanceOpacity;'
+    '#include <project_vertex>\n\tvInstanceOpacity = instanceOpacity;\n\tvInstanceMito = instanceMito;'
   )
   shader.fragmentShader =
-    'varying highp float vInstanceOpacity;\n' + shader.fragmentShader
+    'varying highp float vInstanceOpacity;\nvarying highp float vInstanceMito;\n' +
+    shader.fragmentShader
   shader.fragmentShader = shader.fragmentShader.replace(
     '#include <color_fragment>',
     '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;\n\tif (diffuseColor.a < 0.1) discard;'
+  )
+  // Mitosis aura: an emissive fresnel rim, stronger toward the silhouette,
+  // scaled by the per-instance "ready to divide" value.
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <emissivemap_fragment>',
+    '#include <emissivemap_fragment>\n\t{\n\t\tfloat auraRim = 1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);\n\t\ttotalEmissiveRadiance += vInstanceMito * auraRim * auraRim * diffuseColor.rgb * 1.25;\n\t}'
   )
 }
 

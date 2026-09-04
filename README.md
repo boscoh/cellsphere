@@ -106,7 +106,9 @@ closed (a periodic domain).
 - Food proximity accumulates a **graduated concentration** (`sum`) that sets
   `d.slow` (eases toward `GRAZE_RATE`), plus a direction (`d.foodDir`) and a
   peakedness measure (`d.foodPeak`) used for chemotaxis. Eating grows the cell
-  (`GROWTH_PER_FOOD`, capped by `ABSORB_CAP` per frame).
+  linearly (`ENERGY_PER_FOOD` per particle), but absorption is always
+  rate-limited at `ABSORB_RATE` (energy/s), so growth can never burst even in a
+  dense clump.
 
 ### Collisions between bacteria
 `solveCollisions` computes the true **capsule–capsule** minimum distance. On
@@ -122,8 +124,8 @@ re-projects both onto the sphere.
 | `CELL_COUNT`        | Number of bacteria (225)                       |
 | `FOOD_COUNT`        | Number of food specks (26,000)                 |
 | `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | Body length range (grow; capped at 2× start) |
-| `GROWTH_PER_FOOD`   | Length gained per food eaten                   |
-| `ABSORB_CAP`        | Max foods absorbed per cell per frame          |
+| `ENERGY_PER_FOOD`   | Energy gained per food eaten                   |
+| `ABSORB_RATE`       | Max energy a cell absorbs per second (always rate-limited) |
 | `WIDTH`             | Body width (fixed); length grows only          |
 | `TAIL_SEGMENTS` / `TAIL_LEN` / `TAIL_AMP` / `TAIL_FREQ` / `TAIL_WAVE` | Tail shape |
 | `THRUST` / `DRAG`   | Propulsion / linear damping (high viscosity)   |
