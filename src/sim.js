@@ -28,8 +28,6 @@ import {
   foodMat,
   tailGeo,
   tailMat,
-  nucleusGeo,
-  nucleusMat,
   disposeSharedMaterials,
 } from './materials'
 import {
@@ -42,7 +40,6 @@ import {
   updateStarvation,
   initBodyPools,
   renderBodies,
-  renderNuclei,
   removeBody,
   zeroMatrix,
   disposeBodyPools,
@@ -117,11 +114,6 @@ export class Simulation {
     }
     this.scene.add(this.tailMesh)
 
-    this.nucleusMesh = new THREE.InstancedMesh(nucleusGeo, nucleusMat, MAX_CELLS)
-    this.nucleusMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    for (let i = 0; i < MAX_CELLS; i++) zeroMatrix(this, this.nucleusMesh, i)
-    this.scene.add(this.nucleusMesh)
-
     for (let i = 0; i < CELL_COUNT; i++) {
       const cell = makeCell(this)
       this.cells.push(cell)
@@ -138,7 +130,7 @@ export class Simulation {
 
   reset() {
     disposeBodyPools(this)
-    for (const mesh of [this.foodMesh, this.tailMesh, this.nucleusMesh]) {
+    for (const mesh of [this.foodMesh, this.tailMesh]) {
       if (mesh) {
         this.scene.remove(mesh)
         mesh.dispose()
@@ -158,7 +150,6 @@ export class Simulation {
     this.senseAccum = 0
     this.foodMesh = null
     this.tailMesh = null
-    this.nucleusMesh = null
     initBodyPools(this)
     this.buildWorld()
   }
@@ -179,7 +170,6 @@ export class Simulation {
     const d = cell
     removeBody(this, d)
     clearTail(this, d)
-    zeroMatrix(this, this.nucleusMesh, d.index)
     this.tailMesh.instanceMatrix.needsUpdate = true
     if (!d.tailTransfer) this.freeTailIndices.push(d.index)
   }
@@ -494,7 +484,6 @@ export class Simulation {
     if (this.tailMesh) this.tailMesh.visible = !this.tailsHidden
     this.updateVisibility()
     renderBodies(this)
-    renderNuclei(this)
     this.renderTails()
     if (this.controls) this.controls.update()
     if (this.renderer) this.renderer.render(this.scene, this.camera)
@@ -523,7 +512,6 @@ export class Simulation {
     }
     if (this.foodMesh) this.foodMesh.dispose()
     if (this.tailMesh) this.tailMesh.dispose()
-    if (this.nucleusMesh) this.nucleusMesh.dispose()
     if (this.renderer) this.renderer.domElement.remove()
   }
 }

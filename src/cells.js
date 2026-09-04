@@ -34,7 +34,7 @@ import {
   TAIL_DAMP,
 } from './constants'
 import { randomSurfacePoint, randomTangent, smoothstep } from './math'
-import { bodyMat, nucleusGeo, nucleusMat } from './materials'
+import { bodyMat } from './materials'
 
 const GEO_STEP = 0.01
 const POOL_CAP = MAX_CELLS
@@ -211,19 +211,6 @@ export function renderBodies(sim) {
     }
     mesh.instanceMatrix.needsUpdate = true
   }
-}
-
-export function renderNuclei(sim) {
-  const mesh = sim.nucleusMesh
-  if (!mesh) return
-  for (const d of sim.cells) {
-    if (d.bodyBucket == null) continue
-    const scale = sim._v6.set(d.radius * 0.62, WIDTH * 0.5, WIDTH * 0.5)
-    if (d.sideHidden || d.dying || d.splitting) scale.set(0, 0, 0)
-    sim._m.compose(d.pos, d.quat, scale)
-    mesh.setMatrixAt(d.index, sim._m)
-  }
-  mesh.instanceMatrix.needsUpdate = true
 }
 
 export function disposeBodyPools(sim) {

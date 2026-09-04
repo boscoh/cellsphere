@@ -38,17 +38,20 @@ export function createScene(container) {
   controls.target.set(0, PIVOT_Y, 0)
   controls.update()
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5))
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55))
 
   // Key light hangs top-left and behind the viewer (directional, so zoom and
-  // orbit do not change brightness), with a soft opposite fill for shape.
+  // orbit do not change brightness), with a soft opposite fill for shape. A
+  // low hemisphere light lifts the sheltered side so capsule bodies never go
+  // near-black.
   scene.add(camera)
-  const key = new THREE.DirectionalLight(0xe6eeff, 1.2)
+  const key = new THREE.DirectionalLight(0xe6eeff, 1.1)
   key.position.set(-8, 6, 12)
   camera.add(key)
-  const rim = new THREE.DirectionalLight(0xffc6d8, 0.35)
+  const rim = new THREE.DirectionalLight(0xffc6d8, 0.4)
   rim.position.set(7, -5, 10)
   camera.add(rim)
+  scene.add(new THREE.HemisphereLight(0xbfd0e2, 0x1a1e18, 0.45))
 
   const sphereShell = new THREE.Mesh(
     new THREE.SphereGeometry(SPHERE_RADIUS, 32, 16),
