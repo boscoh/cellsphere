@@ -154,6 +154,14 @@ min 1, max `MAX_SIM_RATE = 10`, step 2. Drag hint sits bottom-center.
 - Issue tracking: **Beads (`bd`)**: `bd ready` / `bd create` / `bd update
   --claim` / `bd close`. Use `bd remember` for persistent knowledge (no
   MEMORY.md). See `AGENTS.md`.
+
+> **Rendering debug trail**: see `RENDER_BUG_POSTMORTEM.md` for the long-running
+> "cells go black / body vanishes leaving only a tail" investigation — two
+> compounding defects (opaque-shell occlusion of near-limb bodies + a separate
+> emissive nucleus), fixed by culling on actual occlusion and removing the
+> nucleus. The render pipeline is now an explicit, toggleable `src/render.js`
+> with pure headless-testable helpers.
+
 - Git: commit semantically per subsystem; no git origin configured (local only).
 - Dev: `npm run dev` (Vite). Build: `npm run build` (final tree verified).
 
