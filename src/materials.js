@@ -7,9 +7,11 @@ export const tailGeo = (() => {
   return geo
 })()
 
+export const nucleusGeo = new THREE.SphereGeometry(1, 12, 8)
+
 export const bodyMat = new THREE.MeshStandardMaterial({
   color: 0xffffff,
-  roughness: 0.25,
+  roughness: 1,
   metalness: 0,
   transparent: true,
   opacity: 0.9,
@@ -27,7 +29,7 @@ bodyMat.onBeforeCompile = (shader) => {
     'varying highp float vInstanceOpacity;\n' + shader.fragmentShader
   shader.fragmentShader = shader.fragmentShader.replace(
     '#include <color_fragment>',
-    '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;'
+    '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;\n\tif (diffuseColor.a < 0.01) discard;'
   )
 }
 
@@ -45,9 +47,19 @@ export const tailMat = new THREE.MeshStandardMaterial({
   roughness: 0.5,
 })
 
+export const nucleusMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  roughness: 1,
+  metalness: 0,
+  emissive: 0x57c98c,
+  emissiveIntensity: 0.8,
+})
+
 export function disposeSharedMaterials() {
   foodGeo.dispose()
   tailGeo.dispose()
+  nucleusGeo.dispose()
   foodMat.dispose()
   tailMat.dispose()
+  nucleusMat.dispose()
 }

@@ -8,9 +8,13 @@ import {
   ABSORB_CAP,
   GRAZE_RATE,
   GRAZE_GAIN,
+  FOOD_RESPAWN,
+  FOOD_CLUMPS,
+  FOOD_SCATTER,
+  FOOD_CLUMP_WIDE,
 } from './constants'
 import { randomUnitVector, randomSurfacePoint, randomTangent, cellIndex } from './math'
-import { growCell } from './cells'
+import { growCell, feedCell } from './cells'
 
 export function placeFood(sim, food) {
   const s = food.visible ? food.scale : 0.0001
@@ -22,12 +26,13 @@ export function placeFood(sim, food) {
 }
 
 export function generateClumps(sim) {
-  const n = 12 + Math.floor(Math.random() * 8)
+  const n =
+    FOOD_CLUMPS > 0 ? FOOD_CLUMPS + Math.floor(Math.random() * 8) : 0
   for (let i = 0; i < n; i++) {
     sim.clumps.push({
       center: randomUnitVector(),
       radius: 0.3 + Math.random() * 0.9,
-      theta: (0.2 + Math.random() * 0.6) / SURFACE,
+      theta: ((0.2 + Math.random() * 0.6) * FOOD_CLUMP_WIDE) / SURFACE,
     })
   }
 }
@@ -43,15 +48,20 @@ function foodInClump(clump) {
     .multiplyScalar(SURFACE)
 }
 
-function clumpPos(sim) {
-  if (Math.random() < 0.15) return randomSurfacePoint()
-  return foodInClump(sim.clumps[Math.floor(Math.random() * sim.clumps.length)])
+function pointForClump(sim, clumpIndex) {
+  if (clumpIndex < 0 || sim.clumps.length === 0) return randomSurfacePoint()
+  return foodInClump(sim.clumps[clumpIndex])
 }
 
 export function makeFood(sim) {
   const r = 0.016 + Math.random() * 0.024
+  const clump =
+    sim.clumps.length > 0 && Math.random() >= FOOD_SCATTER
+      ? Math.floor(Math.random() * sim.clumps.length)
+      : -1
   const food = {
-    pos: clumpPos(sim),
+    pos: pointForClump(sim, clump),
+    clump,
     r,
     scale: r / 0.05,
     respawn: 0,
@@ -129,6 +139,24 @@ export function forEachNearbyFood(sim, cx, cy, cz, r, cb) {
   }
 }
 
+function overlapsAnyCell(sim, pos, r) {
+  for (const cell of sim.cells) {
+    const d = cell
+    if (d.mito || d.splitting || d.split || d.dead) continue
+    const halfLen = Math.max(d.radius - WIDTH, 0)
+    if (foodDist(sim, d, { pos, r }, halfLen) < WIDTH + r) return true
+  }
+  return false
+}
+
+function respawnSpot(sim, food) {
+  for (let t = 0; t < 16; t++) {
+    const p = pointForClump(sim, food.clump)
+    if (!overlapsAnyCell(sim, p, food.r)) return p
+  }
+  return pointForClump(sim, food.clump)
+}
+
 export function eatAndRespawn(sim, simDt) {
   let dirty = false
   for (let i = sim.respawning.length - 1; i >= 0; i--) {
@@ -138,7 +166,7 @@ export function eatAndRespawn(sim, simDt) {
     if (food.respawn <= 0) {
       sim.respawning.splice(i, 1)
       removeFoodFromGrid(sim, foodIndex)
-      food.pos = clumpPos(sim)
+      food.pos = respawnSpot(sim, food)
       food.visible = true
       addFoodToGrid(sim, foodIndex)
       placeFood(sim, food)
@@ -157,7 +185,8 @@ export function eatAndRespawn(sim, simDt) {
     forEachNearbyFood(sim, cx, cy, cz, 1, (foodIndex, food) => {
       if (foodDist(sim, d, food, halfLen) < WIDTH + food.r) {
         growCell(sim, d, GROWTH_PER_FOOD)
-        food.respawn = 2.5 + Math.random() * 8
+        feedCell(sim, d)
+        food.respawn = FOOD_RESPAWN + Math.random() * 8
         food.visible = false
         removeFoodFromGrid(sim, foodIndex)
         sim.respawning.push(foodIndex)

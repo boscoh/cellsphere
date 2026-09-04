@@ -28,6 +28,8 @@ import {
   foodMat,
   tailGeo,
   tailMat,
+  nucleusGeo,
+  nucleusMat,
   disposeSharedMaterials,
 } from './materials'
 import {
@@ -37,8 +39,10 @@ import {
   placeTail,
   updateTailState,
   updateMito,
+  updateStarvation,
   initBodyPools,
   renderBodies,
+  renderNuclei,
   removeBody,
   zeroMatrix,
   disposeBodyPools,
@@ -77,6 +81,9 @@ export class Simulation {
     this._v4 = new THREE.Vector3()
     this._v5 = new THREE.Vector3()
     this._v6 = new THREE.Vector3()
+    this._v7 = new THREE.Vector3()
+    this._v8 = new THREE.Vector3()
+    this._v9 = new THREE.Vector3()
     this._q = new THREE.Quaternion()
     this._m = new THREE.Matrix4()
     this._dummy = new THREE.Object3D()
@@ -110,6 +117,11 @@ export class Simulation {
     }
     this.scene.add(this.tailMesh)
 
+    this.nucleusMesh = new THREE.InstancedMesh(nucleusGeo, nucleusMat, MAX_CELLS)
+    this.nucleusMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    for (let i = 0; i < MAX_CELLS; i++) zeroMatrix(this, this.nucleusMesh, i)
+    this.scene.add(this.nucleusMesh)
+
     for (let i = 0; i < CELL_COUNT; i++) {
       const cell = makeCell(this)
       this.cells.push(cell)
@@ -126,7 +138,7 @@ export class Simulation {
 
   reset() {
     disposeBodyPools(this)
-    for (const mesh of [this.foodMesh, this.tailMesh]) {
+    for (const mesh of [this.foodMesh, this.tailMesh, this.nucleusMesh]) {
       if (mesh) {
         this.scene.remove(mesh)
         mesh.dispose()
@@ -146,6 +158,7 @@ export class Simulation {
     this.senseAccum = 0
     this.foodMesh = null
     this.tailMesh = null
+    this.nucleusMesh = null
     initBodyPools(this)
     this.buildWorld()
   }
@@ -153,6 +166,11 @@ export class Simulation {
   processSplits() {
     const snapshot = this.cells.slice()
     for (const cell of snapshot) {
+      if (cell.splitPending) {
+        if (this.cells.length + 2 > MAX_CELLS) continue
+        cell.splitPending = false
+        cell.split = true
+      }
       if (cell.split) mitose(this, cell)
     }
   }
@@ -161,6 +179,7 @@ export class Simulation {
     const d = cell
     removeBody(this, d)
     clearTail(this, d)
+    zeroMatrix(this, this.nucleusMesh, d.index)
     this.tailMesh.instanceMatrix.needsUpdate = true
     if (!d.tailTransfer) this.freeTailIndices.push(d.index)
   }
@@ -366,7 +385,9 @@ export class Simulation {
       const normal = this._v1.copy(d.pos).normalize()
 
       d.heading.addScaledVector(normal, -d.heading.dot(normal)).normalize()
-      if (d.rest > 0) {
+      if (d.dying) {
+        d.drive = 0
+      } else if (d.rest > 0) {
         d.rest -= dt
         d.drive = 0
       } else {
@@ -428,9 +449,9 @@ export class Simulation {
     }
     this.processSplits()
     for (const cell of this.cells) updateMito(this, cell, dt)
-    if (!this.tailsHidden) {
-      for (const cell of this.cells) updateTailState(this, cell, dt)
-    }
+    for (const cell of this.cells) updateStarvation(this, cell, dt)
+    // tail physics always runs so toggling visibility doesn't snap the tail
+    for (const cell of this.cells) updateTailState(this, cell, dt)
     for (let i = this.cells.length - 1; i >= 0; i--) {
       if (this.cells[i].dead) {
         this.removeCell(this.cells[i])
@@ -473,6 +494,7 @@ export class Simulation {
     if (this.tailMesh) this.tailMesh.visible = !this.tailsHidden
     this.updateVisibility()
     renderBodies(this)
+    renderNuclei(this)
     this.renderTails()
     if (this.controls) this.controls.update()
     if (this.renderer) this.renderer.render(this.scene, this.camera)
@@ -501,6 +523,7 @@ export class Simulation {
     }
     if (this.foodMesh) this.foodMesh.dispose()
     if (this.tailMesh) this.tailMesh.dispose()
+    if (this.nucleusMesh) this.nucleusMesh.dispose()
     if (this.renderer) this.renderer.domElement.remove()
   }
 }
