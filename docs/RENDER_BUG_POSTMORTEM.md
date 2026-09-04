@@ -87,20 +87,6 @@ toggleable pipeline:
   softened at the same time so capsule shadow sides never clip near-black.)
 - **Verify**: `npm run build` + headless `auditShell` + a mitosis smoke test.
 
-## Nucleus re-added (correctly) — 2026-09-04 later
-
-With occlusion-based culling in place, the nucleus is safe to bring back, done
-robustly:
-- **Dedicated `nucleusSlot`** allocated via a monotonic + free-list allocator
-  (`allocNucleusIndex` / `sim.freeNucleusIndices`), **decoupled from the tail
-  index** — so the mother and the front daughter no longer share a nucleus
-  instance (that sharing was the real "which cell owns this nucleus" headache).
-- **Visibility gating** mirrors the body: `renderNuclei` zeroes the instance for
-  `d.sideHidden || d.dying || d.splitting`, so nucleus, body and tail all
-  appear/vanquish **together** (the occlusion-aware `sideHidden` now hides the
-  whole limb band, no more glowing core with no body).
-- Wired through `render.js` behind a `drawNuclei: true` render option.
-
 ## How to reason about similar render bugs here
 
 - Opaque objects (tail, shell, food) and transparent objects (bodies) are sorted
