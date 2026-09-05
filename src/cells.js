@@ -206,21 +206,40 @@ export function renderBodies(sim) {
     sim._m.compose(d.pos, d.quat, sc)
     mesh.setMatrixAt(d.bodySlot, sim._m)
     mesh.instanceMatrix.needsUpdate = true
-    // Aura: ramp 0->1 as the cell climbs toward mitosis (energy beyond
-    // MITO_SLOW_FRAC), so a full cell glows before it divides.
+    // Aura: only while a cell is actually in mitosis. The energy ramp still
+    // drives intensity, so the full-size parent glows and the small daughters
+    // (energy ~0.25) don't; a near-full cell that isn't dividing has no aura.
     if (entry.mito) {
+      const inMito = d.splitting || d.mito
       const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
-      const ready = smoothstep(
-        THREE.MathUtils.clamp(
-          (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
-          0,
-          1,
-        ),
-      )
+      const ready = inMito
+        ? smoothstep(
+            THREE.MathUtils.clamp(
+              (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
+              0,
+              1,
+            ),
+          )
+        : 0
       entry.mito.setX(d.bodySlot, ready)
       entry.mito.needsUpdate = true
     }
   }
+}
+
+export function renderNuclei(sim) {
+  const mesh = sim.nucleusMesh
+  if (!mesh) return
+  for (const d of sim.cells) {
+    if (d.bodyBucket == null) continue
+    const scale = sim._v6.set(d.radius * 0.62, WIDTH * 0.5, WIDTH * 0.5)
+    // Gate visibility with the body: hide the nucleus at the limb, while
+    // dying, and during division so it never reads as an orphan glowing core.
+    if (d.sideHidden || d.dying || d.splitting || d.mito) scale.set(0, 0, 0)
+    sim._m.compose(d.pos, d.quat, scale)
+    mesh.setMatrixAt(d.nucleusSlot, sim._m)
+  }
+  mesh.instanceMatrix.needsUpdate = true
 }
 
 export function disposeBodyPools(sim) {
@@ -238,6 +257,13 @@ export function allocTailIndex(sim) {
   if (sim.freeTailIndices.length) return sim.freeTailIndices.pop()
   const idx = sim.nextTailIndex
   sim.nextTailIndex = Math.min(sim.nextTailIndex + 1, MAX_CELLS)
+  return idx
+}
+
+export function allocNucleusIndex(sim) {
+  if (sim.freeNucleusIndices.length) return sim.freeNucleusIndices.pop()
+  const idx = sim.nextNucleusIndex
+  sim.nextNucleusIndex = Math.min(sim.nextNucleusIndex + 1, MAX_CELLS)
   return idx
 }
 
@@ -319,6 +345,7 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     index,
     absorbAcc: 0,
     tailStart: index * TAIL_SEGMENTS,
+    nucleusSlot: allocNucleusIndex(sim),
     bodyBucket: null,
     bodySlot: null,
     quat: new THREE.Quaternion(),

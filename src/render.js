@@ -1,5 +1,5 @@
 import { CULL_COS } from './constants'
-import { renderBodies } from './cells'
+import { renderBodies, renderNuclei } from './cells'
 import { cosFace } from './math'
 
 function updateVisibility(sim) {
@@ -23,6 +23,7 @@ export function renderView(sim, tailScale) {
   updateVisibility(sim)
 
   renderBodies(sim)
+  renderNuclei(sim)
   sim.renderTails()
 
   if (sim.controls) sim.controls.update()
