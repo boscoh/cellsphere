@@ -104,7 +104,7 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 | `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.10 / 0.30 / 0.13 | size gradient (MAX chosen so a full cell exactly spans both daughters) |
 | `ENERGY_MAX` | 1.0 | energy at which a cell divides (linear size: radius = MIN + (energy/MAX)·(MAX−MIN)) |
 | `ENERGY_PER_FOOD` / `ABSORB_RATE` | 0.05 / 0.10 | energy per food / always-on absorption rate (energy/s) |
-| `METABOLISM` | 0.0015 | energy drained per second (0 = off) |
+| `METABOLISM` | 0.003 | energy drained per second (0 = off) |
 | `MITO_TIME` / `MITO_HOLD` / `MITO_FADE` | 5 / 0.2 / 0.4 | mitosis duration; hold; fade fraction |
 | `MITO_NEAR` / `MITO_SEP` | 2.1 / 2.8 | child held spread / separated spread |
 | `MITO_SLOW_FRAC` / `MITO_REST` | 0.9 / 4 | decel into split (just before mitosis) / post-mitosis coast |
@@ -118,7 +118,7 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 | `TAIL_RUDDER_GAIN` | 1.0 | sweep deflection per unit `headingRate/MAX_SPIN` (tail drives turns) |
 | `THRUST` / `DRAG` | 12 / 22 | linear propulsion / damping |
 | `GRAZE_RATE` / `GRAZE_GAIN` | 0.01 / 6.0 | slowdown floor / gain |
-| `ANG_DRAG` / `MAX_SPIN` | 12 / 2.0 | angular damping / rate cap |
+| `ANG_DRAG` / `MAX_SPIN` | 22 / 2.0 | angular damping (matches DRAG) / rate cap |
 | `CHEMO_ACCEL` / `MAX_ACCEL` / `PEAK_MIN` | 3.5 / 1.2 / 0.18 | chemotaxis torque / cap / min gradient |
 | `COLLISION_KICK` | 0.5 | contact → angular kick |
 | `SENSE_BOOST` / `SENSE_PERIOD` | 0.25 / 0.05 | sensing radius / scan period |

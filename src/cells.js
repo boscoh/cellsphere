@@ -18,6 +18,7 @@ import {
   TAIL_SEGMENTS,
   TAIL_LINK,
   TAIL_LINK_FILL,
+  TAIL_BODY,
   TAIL_TRAIL_RATE,
   TAIL_ARC_MAX,
   TAIL_CARRIER_RATE,
@@ -324,6 +325,8 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     tailVT: chain.vt,
     tailQ: chain.q,
     tailLag: 0,
+    tailBend: 0,
+    steer: 0,
     tailPhase: 0,
     slow: 1,
     foodDir: new THREE.Vector3(),
@@ -494,7 +497,9 @@ export function placeTail(sim, d) {
     return
   }
   const dirs = d.tailDirs
-  const pitch = TAIL_LINK * d.tailGrow
+  // Tail length is TAIL_BODY × body length (body ≈ 2·radius), so the tail
+  // scales proportionally with the cell.
+  const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   const draw = pitch * TAIL_LINK_FILL
   const ts = sim.tailScale
   const a = sim._v1.copy(d.pos).addScaledVector(d.heading, -d.radius)
@@ -531,7 +536,8 @@ export function updateTailState(sim, d, dt) {
   if (behind.lengthSq() < 1e-8) return
   behind.normalize()
 
-  const pitch = TAIL_LINK * d.tailGrow
+  // Tail length is TAIL_BODY × body length (pitch scales with radius).
+  const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   if (pitch < 1e-6 || dt <= 0) return
 
   // --- (B) drag axis with orientation memory -------------------------------
@@ -551,12 +557,12 @@ export function updateTailState(sim, d, dt) {
   if (d.drive > 0.02 || turning) d.tailPhase += dt * TAIL_OSC_FREQ
 
   const kTrail = 1 - Math.exp(-TAIL_TRAIL_RATE * dt)
-  // tail lag: accumulated body rotation while turning, relaxing slowly. It
-  // arcs the spine behind the turn so rotation shows a trailing curvature
-  // that gradually straightens. bend is hard-capped so the arc can't coil.
+  // tail lag: the tail arcs toward the steering command (chemotaxis) and any
+  // body rotation (collisions), relaxing slowly. This trailing arc drives the
+  // body's heading rate, so rotation is visibly produced by the tail.
   const lagMax = TAIL_ARC_MAX / TAIL_RUDDER_GAIN
   d.tailLag = THREE.MathUtils.clamp(
-    d.tailLag + d.headingRate * dt - kTrail * d.tailLag,
+    d.tailLag + ((d.steer || 0) + d.headingRate) * dt - kTrail * d.tailLag,
     -lagMax,
     lagMax,
   )
@@ -565,6 +571,7 @@ export function updateTailState(sim, d, dt) {
     -TAIL_ARC_MAX,
     TAIL_ARC_MAX,
   )
+  d.tailBend = bend
 
   const side = sim._v5.crossVectors(n0, carrier)
   const root = sim._v2.copy(d.pos).addScaledVector(d.heading, -d.radius)
@@ -575,8 +582,15 @@ export function updateTailState(sim, d, dt) {
   // A gently curved spine (trailing arc) from the root, swept about the drag
   // axis by the head motor. Joints chase it: stiff at the motor paddle, weak
   // (drag) elsewhere.
-  const motorA =
-    TAIL_MOTOR_AMP * THREE.MathUtils.clamp(d.drive, 0, 1) * Math.sin(d.tailPhase)
+  // Whip amplitude is driven by drive (forward swimming) OR by the steering
+  // bend during a turn, so the tail visibly sweeps a couple of times while
+  // turning even if the cell is coasting (drive ~ 0).
+  const whip =
+    Math.max(
+      THREE.MathUtils.clamp(d.drive, 0, 1),
+      THREE.MathUtils.clamp(Math.abs(bend) * 1.5, 0, 1),
+    )
+  const motorA = TAIL_MOTOR_AMP * whip * Math.sin(d.tailPhase)
   const cur = sim._v7.copy(root)
   for (let j = 0; j <= S; j++) {
     q[j].copy(cur)
