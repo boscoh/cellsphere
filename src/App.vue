@@ -204,12 +204,12 @@ onBeforeUnmount(() => {
             <line x1="16" y1="18" x2="16" y2="22" />
           </svg>
         </button>
-        <button type="button" class="reset-btn" @click="onRestart">
+        <button type="button" class="reset-btn" aria-label="Restart" title="Restart" @click="onRestart">
           <svg
             class="icon"
             viewBox="0 0 24 24"
-            width="13"
-            height="13"
+            width="15"
+            height="15"
             fill="none"
             stroke="currentColor"
             stroke-width="2"
@@ -220,7 +220,6 @@ onBeforeUnmount(() => {
             <path d="M21 12a9 9 0 1 1-3-6.7" />
             <polyline points="21 3 21 9 15 9" />
           </svg>
-          Restart
         </button>
       </div>
     </div>
@@ -329,22 +328,18 @@ onBeforeUnmount(() => {
 }
 
 .tune-btn,
-.checkbox {
+.checkbox,
+.reset-btn {
   pointer-events: auto;
 }
 
 .reset-btn {
-  pointer-events: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
   height: 24px;
-  box-sizing: border-box;
-  padding: 0 10px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  gap: 6px;
+  padding: 0;
   color: #b7c2d4;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
