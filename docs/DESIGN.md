@@ -130,7 +130,7 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 
 Reactive UI: single-line **HUD top-left** — `Cell · fps · bacteria · food |
 Speed slider × | Tails on/off word switch | Restart`. `simRate` default **1×**,
-min 1, max `MAX_SIM_RATE = 10`, step 2. Drag hint sits bottom-center.
+min 1, max `MAX_SIM_RATE = 100`, step 1. Drag hint sits bottom-center.
 
 ## Scene look
 

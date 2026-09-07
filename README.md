@@ -74,7 +74,7 @@ perf timings.
 | ------------------------------------ | ------------------------------------------ |
 | Drag                                  | Orbit the camera                           |
 | Scroll                                | Zoom                                       |
-| Speed slider (1–10×)                  | Time acceleration                          |
+| Speed slider (1–100×)                 | Time acceleration                          |
 | Tails checkbox                        | Toggle tail beat / propulsion on and off   |
 | Tuner button                          | Open/close the parameter panel (Esc closes)|
 | Restart                               | Rebuild the world at the current defaults  |
