@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import {
   SURFACE,
-  CELL_COUNT,
+  PREY_COUNT,
+  PRED_COUNT,
   MAX_CELLS,
   FOOD_COUNT,
   SPRING,
@@ -21,16 +22,13 @@ import {
   PEAK_MIN,
   SENSE_PERIOD,
   CELL_GRID,
-  TAIL_SEGMENTS,
+  PRED_RANGE,
+  PRED_DRIVE,
 } from './constants'
 import { smoothstep, cellIndex } from './math'
 import {
   foodGeo,
   foodMat,
-  tailGeo,
-  tailMat,
-  nucleusGeo,
-  nucleusMat,
   disposeSharedMaterials,
 } from './materials'
 import {
@@ -44,9 +42,9 @@ import {
   updateStarvation,
   initBodyPools,
   removeBody,
-  zeroMatrix,
   disposeBodyPools,
   disposeBodyGeos,
+  disposeTailPool,
 } from './cells'
 import {
   generateClumps,
@@ -55,8 +53,10 @@ import {
   eatAndRespawn,
   concentration,
 } from './food'
+import { predation, forEachNearbyCell } from './predator'
 import { createScene } from './sceneSetup'
 import { renderView } from './render'
+import { createPerf } from './perf'
 
 export class Simulation {
   constructor() {
@@ -67,15 +67,12 @@ export class Simulation {
     this.cellGrid = new Map()
     this.clumps = []
     this.foodMesh = null
-    this.tailMesh = null
-    this.nucleusMesh = null
+    this.tailChunks = []
     this.simTime = 0
     this.tailScale = 1
     this.tailsHidden = false
     this.nextTailIndex = 0
     this.freeTailIndices = []
-    this.nextNucleusIndex = 0
-    this.freeNucleusIndices = []
     this.respawning = []
     this.senseAccum = 0
 
@@ -96,6 +93,7 @@ export class Simulation {
     this._eatContact = []
     this._one = new THREE.Vector3(1, 1, 1)
     this._camDir = new THREE.Vector3()
+    this.perf = createPerf()
     initBodyPools(this)
   }
 
@@ -110,31 +108,11 @@ export class Simulation {
   }
 
   buildWorld() {
-    this.tailMesh = new THREE.InstancedMesh(
-      tailGeo,
-      tailMat,
-      MAX_CELLS * TAIL_SEGMENTS,
-    )
-    // Tail segments are spread across the whole sphere; the cached bounding
-    // sphere is wrong/stale, so a zoom-in would cull visible segments.
-    this.tailMesh.frustumCulled = false
-    this.tailMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    this.tailMesh.setColorAt(0, new THREE.Color(1, 1, 1))
-    this.tailMesh.instanceColor.needsUpdate = true
-    for (let i = 0; i < MAX_CELLS * TAIL_SEGMENTS; i++) {
-      zeroMatrix(this, this.tailMesh, i)
+    for (let i = 0; i < Math.min(PREY_COUNT, MAX_CELLS); i++) {
+      this.cells.push(makeCell(this, 0))
     }
-    this.scene.add(this.tailMesh)
-
-    this.nucleusMesh = new THREE.InstancedMesh(nucleusGeo, nucleusMat, MAX_CELLS)
-    this.nucleusMesh.frustumCulled = false
-    this.nucleusMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    for (let i = 0; i < MAX_CELLS; i++) zeroMatrix(this, this.nucleusMesh, i)
-    this.scene.add(this.nucleusMesh)
-
-    for (let i = 0; i < CELL_COUNT; i++) {
-      const cell = makeCell(this)
-      this.cells.push(cell)
+    for (let i = 0; i < Math.min(PRED_COUNT, MAX_CELLS - this.cells.length); i++) {
+      this.cells.push(makeCell(this, 1))
     }
 
     this.foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, FOOD_COUNT)
@@ -149,11 +127,10 @@ export class Simulation {
 
   reset() {
     disposeBodyPools(this)
-    for (const mesh of [this.foodMesh, this.tailMesh, this.nucleusMesh]) {
-      if (mesh) {
-        this.scene.remove(mesh)
-        mesh.dispose()
-      }
+    disposeTailPool(this)
+    if (this.foodMesh) {
+      this.scene.remove(this.foodMesh)
+      this.foodMesh.dispose()
     }
     this.cells = []
     this.foods = []
@@ -166,12 +143,8 @@ export class Simulation {
     this.tailsHidden = false
     this.nextTailIndex = 0
     this.freeTailIndices = []
-    this.nextNucleusIndex = 0
-    this.freeNucleusIndices = []
     this.senseAccum = 0
     this.foodMesh = null
-    this.tailMesh = null
-    this.nucleusMesh = null
     initBodyPools(this)
     this.buildWorld()
   }
@@ -192,11 +165,6 @@ export class Simulation {
     const d = cell
     removeBody(this, d)
     clearTail(this, d)
-    if (d.nucleusSlot != null) {
-      zeroMatrix(this, this.nucleusMesh, d.nucleusSlot)
-      this.freeNucleusIndices.push(d.nucleusSlot)
-    }
-    this.tailMesh.instanceMatrix.needsUpdate = true
     if (!d.tailTransfer) this.freeTailIndices.push(d.index)
   }
 
@@ -213,6 +181,7 @@ export class Simulation {
   }
 
   deflectHeading(d, awayWorld, intensity) {
+    if (d.paralysed) return
     const ang = this.signedAngleTo(d, awayWorld)
     if (ang == null) return
     d.headingRate += THREE.MathUtils.clamp(ang * COLLISION_KICK, -0.4, 0.4) * intensity
@@ -298,9 +267,9 @@ export class Simulation {
     }
   }
 
-  solveCollisions(simDt) {
-    const n = this.cells.length
+  buildCellGrid() {
     this.cellGrid.clear()
+    const n = this.cells.length
     for (let i = 0; i < n; i++) {
       const d = this.cells[i]
       if ((d.mito || d.splitting) && !d.mitoParent) continue
@@ -313,7 +282,10 @@ export class Simulation {
       if (bucket) bucket.push(i)
       else this.cellGrid.set(key, [i])
     }
+  }
 
+  solveCollisions(simDt) {
+    const n = this.cells.length
     for (let i = 0; i < n; i++) {
       const a = this.cells[i]
       if ((a.mito || a.splitting) && !a.mitoParent) continue
@@ -391,7 +363,13 @@ export class Simulation {
 
   advance(dt) {
     this.simTime += dt
+    // Fresh spatial grid for this frame so camera-relevant queries (blue flee,
+    // red hunt) and predation never see stale/removed cell indices.
+    this.perf.begin('grid')
+    this.buildCellGrid()
+    this.perf.end('grid')
 
+    this.perf.begin('cells')
     for (const cell of this.cells) {
       const d = cell
       if (d.mito || d.splitting) {
@@ -401,51 +379,114 @@ export class Simulation {
       const normal = this._v1.copy(d.pos).normalize()
 
       d.heading.addScaledVector(normal, -d.heading.dot(normal)).normalize()
-      if (d.dying) {
+      if (d.paralysed) {
         d.drive = 0
-      } else if (d.rest > 0) {
-        d.rest -= dt
-        d.drive = 0
+        d.steer = 0
+        d.headingRate = 0
+        d.vel.multiplyScalar(Math.exp(-50 * dt))
       } else {
-        const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
-        // Bands are mostly exclusive by energy: coast to a stop as the cell
-        // nears max (mitosis), and slow as it starves toward zero.
-        const coastFrac = smoothstep(
-          THREE.MathUtils.clamp(
-            (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
-            0,
-            1,
-          ),
-        )
-        const fatigue = smoothstep(
-          THREE.MathUtils.clamp(frac / STARVE_SLOW, 0, 1),
-        )
-        d.drive = d.slow * (1 - coastFrac) * fatigue
-      }
-
-      // Chemotaxis turns into a tail steering command; the tail arc then drives
-      // the body's heading (see updateTailState + TAIL_TURN below) and ANG_DRAG
-      // damps it, so rotation is generated by tail motion rather than directly.
-      d.steer = 0
-      if (d.foodAmt > 0.01 && d.foodPeak > PEAK_MIN) {
-        const ang = this.signedAngleTo(d, d.foodDir)
-        if (ang != null) {
-          d.steer = THREE.MathUtils.clamp(ang * STEER_GAIN, -1, 1)
+        if (d.dying) {
+          d.drive = 0
+        } else if (d.rest > 0) {
+          d.rest -= dt
+          d.drive = 0
+        } else {
+          const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
+          // Bands are mostly exclusive by energy: coast to a stop as the cell
+          // nears max (mitosis), and slow as it starves toward zero.
+          const coastFrac = smoothstep(
+            THREE.MathUtils.clamp(
+              (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
+              0,
+              1,
+            ),
+          )
+          const fatigue = smoothstep(
+            THREE.MathUtils.clamp(frac / STARVE_SLOW, 0, 1),
+          )
+          d.drive = d.slow * (1 - coastFrac) * fatigue
+          if (d.breed === 1) {
+            d.drive *= PRED_DRIVE
+            // While feeding on a latched prey, stop entirely so it holds the
+            // latch and drains the blue instead of swimming past/through.
+            if (d.target && d.target.paralysed) d.drive = 0
+          }
         }
-      }
-      // The tail's steering bend imparts a heading rate (0 when the tail is
-      // straight), then angular drag quickly damps it.
-      d.headingRate += TAIL_TURN * (d.tailBend || 0) * dt
-      d.headingRate *= Math.exp(-ANG_DRAG * dt)
-      d.headingRate = THREE.MathUtils.clamp(d.headingRate, -MAX_SPIN, MAX_SPIN)
-      this._q.setFromAxisAngle(normal, d.headingRate * dt)
-      d.heading
-        .applyQuaternion(this._q)
-        .addScaledVector(normal, -d.heading.dot(normal))
-        .normalize()
 
-      d.vel.addScaledVector(d.heading, THRUST * d.drive * dt)
-      d.vel.multiplyScalar(Math.exp(-DRAG * dt))
+        // Chemotaxis turns into a tail steering command; the tail arc then drives
+        // the body's heading (see updateTailState + TAIL_TURN below) and ANG_DRAG
+        // damps it, so rotation is generated by tail motion rather than directly.
+        d.steer = 0
+        if (d.foodAmt > 0.01 && d.foodPeak > PEAK_MIN) {
+          const ang = this.signedAngleTo(d, d.foodDir)
+          if (ang != null) {
+            d.steer = THREE.MathUtils.clamp(ang * STEER_GAIN, -1, 1)
+          }
+        }
+        if (d.breed === 0) {
+          const cx = Math.floor(d.pos.x / CELL_GRID)
+          const cy = Math.floor(d.pos.y / CELL_GRID)
+          const cz = Math.floor(d.pos.z / CELL_GRID)
+          let red = null
+          let best = PRED_RANGE
+          forEachNearbyCell(this, cx, cy, cz, 1, (index) => {
+            const other = this.cells[index]
+            if (other.breed !== 1) return
+            this.capsuleDist(d, other)
+            if (this._col.dist < best) {
+              best = this._col.dist
+              red = other
+            }
+          })
+          if (red) {
+            const away = this._v7.subVectors(d.pos, red.pos).normalize()
+            const ang = this.signedAngleTo(d, away)
+            if (ang != null) {
+              d.steer = THREE.MathUtils.clamp(d.steer + ang * STEER_GAIN, -1, 1)
+            }
+          }
+        }
+        // Red hunts: steer toward the nearest blue within a sight radius (a
+        // several-body-lengths chase range) so it can close the gap and latch;
+        // predation() then immobilises/drains when it gets within PRED_RANGE.
+        // Once it has a latched prey it stops steering and holds the latch.
+        if (d.breed === 1 && !(d.target && d.target.paralysed)) {
+          const sight = PRED_RANGE * 4
+          const cx = Math.floor(d.pos.x / CELL_GRID)
+          const cy = Math.floor(d.pos.y / CELL_GRID)
+          const cz = Math.floor(d.pos.z / CELL_GRID)
+          let target = null
+          let best = sight
+          forEachNearbyCell(this, cx, cy, cz, 2, (index) => {
+            const other = this.cells[index]
+            if (other.breed !== 0 || other.dead || other.dying || other.splitting) return
+            this.capsuleDist(d, other)
+            if (this._col.dist < best) {
+              best = this._col.dist
+              target = other
+            }
+          })
+          if (target) {
+            const ang = this.signedAngleTo(d, target.pos)
+            if (ang != null) {
+              d.steer = THREE.MathUtils.clamp(d.steer + ang * STEER_GAIN * 1.5, -1, 1)
+            }
+          }
+        }
+        // The tail's steering bend imparts a heading rate (0 when the tail is
+        // straight), then angular drag quickly damps it.
+        d.headingRate += TAIL_TURN * (d.tailBend || 0) * dt
+        d.headingRate *= Math.exp(-ANG_DRAG * dt)
+        d.headingRate = THREE.MathUtils.clamp(d.headingRate, -MAX_SPIN, MAX_SPIN)
+        this._q.setFromAxisAngle(normal, d.headingRate * dt)
+        d.heading
+          .applyQuaternion(this._q)
+          .addScaledVector(normal, -d.heading.dot(normal))
+          .normalize()
+
+        d.vel.addScaledVector(d.heading, THRUST * d.drive * dt)
+        d.vel.multiplyScalar(Math.exp(-DRAG * dt))
+      }
       d.vel.addScaledVector(normal, -d.vel.dot(normal))
 
       d.pos.addScaledVector(d.vel, dt)
@@ -465,32 +506,50 @@ export class Simulation {
       this._m.makeBasis(fwd, normal2, right)
       d.quat.setFromRotationMatrix(this._m)
     }
+    this.perf.end('cells')
 
+    this.perf.begin('collide')
     this.solveCollisions(dt)
+    this.perf.end('collide')
+
+    this.perf.begin('eat')
     eatAndRespawn(this, dt)
+    this.perf.end('eat')
+
+    this.perf.begin('pred')
+    predation(this, dt)
+    this.perf.end('pred')
+
+    this.perf.begin('sense')
     this.senseAccum += dt
     if (this.senseAccum >= SENSE_PERIOD) {
       concentration(this)
       this.senseAccum = 0
     }
+    this.perf.end('sense')
+
+    this.perf.begin('split')
     this.processSplits()
     for (const cell of this.cells) updateMito(this, cell, dt)
     for (const cell of this.cells) updateEnergy(this, cell, dt)
     for (const cell of this.cells) updateStarvation(this, cell, dt)
-    // tail physics always runs so toggling visibility doesn't snap the tail
-    for (const cell of this.cells) updateTailState(this, cell, dt)
     for (let i = this.cells.length - 1; i >= 0; i--) {
       if (this.cells[i].dead) {
         this.removeCell(this.cells[i])
         this.cells.splice(i, 1)
       }
     }
+    this.perf.end('split')
+
+    // tail physics always runs so toggling visibility doesn't snap the tail
+    this.perf.begin('tail')
+    for (const cell of this.cells) updateTailState(this, cell, dt)
+    this.perf.end('tail')
   }
 
   renderTails() {
     if (this.tailsHidden) return
     for (const cell of this.cells) placeTail(this, cell)
-    this.tailMesh.instanceMatrix.needsUpdate = true
   }
 
   step(simDt) {
@@ -527,8 +586,7 @@ export class Simulation {
       this.sphereShell.material.dispose()
     }
     if (this.foodMesh) this.foodMesh.dispose()
-    if (this.tailMesh) this.tailMesh.dispose()
-    if (this.nucleusMesh) this.nucleusMesh.dispose()
+    disposeTailPool(this)
     if (this.renderer) this.renderer.domElement.remove()
   }
 }

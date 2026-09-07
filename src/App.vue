@@ -1,20 +1,25 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Simulation } from './sim'
-import { FIXED_DT } from './constants'
-import { resetParams } from './constants'
+import { FIXED_DT, SIM_SPEED, resetParams, setParam } from './constants'
+import { computeCellColor } from './cells'
 import Tuner from './Tuner.vue'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
 const tunerOpen = ref(false)
 const tunerRef = ref(null)
-const simRate = ref(1)
+const simRate = ref(SIM_SPEED)
 const fps = ref(0)
 const bacteriaCount = ref(0)
+const blueCount = ref(0)
+const redCount = ref(0)
 const foodCount = ref(0)
+const perf = ref({})
 const MAX_SIM_RATE = 10
 const MAX_BACKLOG = MAX_SIM_RATE * FIXED_DT
+const dotBlue = '#' + computeCellColor(0).getHexString()
+const dotRed = '#' + computeCellColor(1).getHexString()
 
 let sim
 let animationId
@@ -30,7 +35,22 @@ const onKey = (e) => {
 function onReset() {
   resetParams()
   tunerRef.value?.syncValues()
+  simRate.value = SIM_SPEED
   sim.reset()
+}
+
+function onRestart() {
+  sim.reset()
+}
+
+function onParamChange(key, value) {
+  if (key === 'SIM_SPEED') simRate.value = value
+}
+
+function onSpeed(event) {
+  const v = Number(event.target.value)
+  simRate.value = v
+  setParam('SIM_SPEED', v)
 }
 
 onMounted(() => {
@@ -61,8 +81,21 @@ onMounted(() => {
       fpsCount = 0
       fpsTime = 0
       bacteriaCount.value = sim.cells.length
+      let blue = 0
+      let red = 0
+      for (const c of sim.cells) {
+        if (c.breed === 0) blue++
+        else red++
+      }
+      blueCount.value = blue
+      redCount.value = red
       foodCount.value = 0
       for (const f of sim.foods) if (f.visible) foodCount.value++
+      perf.value = {}
+      for (const name in sim.perf.totals) {
+        perf.value[name] = sim.perf.totals[name]
+      }
+      sim.perf.clear()
     }
   }
   tick()
@@ -89,12 +122,21 @@ onBeforeUnmount(() => {
       <div class="row"><span class="num">{{ fps }}</span></div>
     </div>
     <div class="cell">
-      <span class="ctl">Cell</span>
-      <div class="row"><span class="num">{{ bacteriaCount }}</span></div>
+      <span class="ctl">Cells</span>
+      <div class="row">
+        <span class="dot" :style="{ background: dotBlue }"></span><span class="num">{{ blueCount }}</span>
+        <span class="dot" :style="{ background: dotRed }"></span><span class="num">{{ redCount }}</span>
+      </div>
     </div>
     <div class="cell">
       <span class="ctl">Food</span>
       <div class="row"><span class="num">{{ foodCount }}</span></div>
+    </div>
+    <div class="cell">
+      <span class="ctl">Perf ms</span>
+      <div class="perfs">
+        <span v-for="(ms, name) in perf" :key="name" class="perf">{{ name }} {{ ms.toFixed(1) }}</span>
+      </div>
     </div>
     <span class="sep"></span>
     <div class="cell">
@@ -106,8 +148,9 @@ onBeforeUnmount(() => {
           type="range"
           min="1"
           :max="MAX_SIM_RATE"
-          step="2"
-          v-model.number="simRate"
+          step="1"
+          :value="simRate"
+          @input="onSpeed"
         />
         <span class="readout">{{ simRate }}×</span>
       </div>
@@ -161,11 +204,11 @@ onBeforeUnmount(() => {
             <line x1="16" y1="18" x2="16" y2="22" />
           </svg>
         </button>
-        <button type="button" class="reset-btn" @click="onReset">Reset</button>
+        <button type="button" class="reset-btn" @click="onRestart">Restart</button>
       </div>
     </div>
   </div>
-  <Tuner v-if="tunerOpen" ref="tunerRef" @rebuild="sim.reset()" />
+  <Tuner v-if="tunerOpen" ref="tunerRef" @rebuild="sim.reset()" @default="onReset" @param="onParamChange" />
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
 
@@ -221,6 +264,28 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   line-height: 1;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin: 0 2px 0 4px;
+}
+
+.perfs {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf {
+  font-size: 10px;
+  color: #9aa6ba;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .row {

@@ -7,6 +7,7 @@ import {
   START_RADIUS,
   ENERGY_MAX,
   METABOLISM,
+  RED_SIZE,
   MITO_TIME,
   MITO_HOLD,
   MITO_FADE,
@@ -30,20 +31,26 @@ import {
   TAIL_MOTOR_K,
   TAIL_MOTOR_JOINTS,
   TAIL_OSC_FREQ,
+  TAIL_WAVE,
   TAIL_RUDDER_GAIN,
+  TAIL_ARC,
+  TAIL_HINGE,
   TAIL_DYN_SUB,
   TAIL_LEN_K,
   TAIL_LEN_DAMP,
   TAIL_DAMP,
+  TAIL_CHUNK_CELLS,
+  BODY_CHUNK_CELLS,
 } from './constants'
 import { randomSurfacePoint, randomTangent, smoothstep } from './math'
-import { bodyMat } from './materials'
+import { bodyMat, tailGeo, tailMat } from './materials'
 
 const GEO_STEP = 0.01
-const POOL_CAP = MAX_CELLS
+const TAIL_CHUNK_SIZE = TAIL_CHUNK_CELLS * TAIL_SEGMENTS
 const BREED_BLUE = 0
 const BREED_RED = 1
 const STARVE_FADE = 1.5
+const STARVE_AURA = STARVE_FADE * 1.6
 const bodyGeoCache = new Map()
 
 export function makeBodyGeo(length) {
@@ -77,11 +84,11 @@ export function initBodyPools(sim) {
   sim.bodyPools = new Map()
 }
 
-function computeCellColor(breed) {
+export function computeCellColor(breed) {
   // Color is constant per breed — size already conveys growth, and the
   // mitosis aura signals readiness. `length` is no longer a color driver.
   if (breed === BREED_RED) return new THREE.Color().setHSL(0.015, 0.78, 0.5)
-  return new THREE.Color().setHSL(0.59, 0.62, 0.52)
+  return new THREE.Color().setHSL(0.37, 0.5, 0.5)
 }
 
 function setCellColor(d) {
@@ -92,35 +99,86 @@ function getPool(sim, length) {
   const bucket = bodyBucket(length)
   let entry = sim.bodyPools.get(bucket)
   if (!entry) {
-    entry = { bucket, mesh: null, free: [], live: 0, count: 0 }
+    entry = { bucket, geo: bodyGeoFor(length), chunks: [] }
     sim.bodyPools.set(bucket, entry)
   }
-  if (!entry.mesh) {
-    const geo = bodyGeoFor(length)
-    entry.mesh = new THREE.InstancedMesh(geo, bodyMat, POOL_CAP)
-    // Instances span the whole shell and change size every frame, so the cached
-    // bounding sphere is never accurate; culling would drop visible bodies on
-    // close zoom. Bodies are never culled (see render.js 'cull' comment).
-    entry.mesh.frustumCulled = false
-    entry.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    entry.mesh.instanceMatrix.needsUpdate = true
-    const opacity = new THREE.InstancedBufferAttribute(
-      new Float32Array(POOL_CAP).fill(1),
-      1,
-    )
-    opacity.setUsage(THREE.DynamicDrawUsage)
-    entry.mesh.geometry.setAttribute('instanceOpacity', opacity)
-    entry.opacity = opacity
-    const mito = new THREE.InstancedBufferAttribute(
-      new Float32Array(POOL_CAP).fill(0),
-      1,
-    )
-    mito.setUsage(THREE.DynamicDrawUsage)
-    entry.mesh.geometry.setAttribute('instanceMito', mito)
-    entry.mito = mito
-    sim.scene.add(entry.mesh)
-  }
   return entry
+}
+
+function attachChunk(sim, chunk) {
+  if (!chunk.attached) {
+    sim.scene.add(chunk.mesh)
+    chunk.attached = true
+  }
+}
+
+function detachChunk(sim, chunk) {
+  if (chunk.attached) {
+    sim.scene.remove(chunk.mesh)
+    chunk.attached = false
+  }
+}
+
+function createBodyChunk(sim, entry) {
+  const geo = entry.geo
+  const mesh = new THREE.InstancedMesh(geo, bodyMat, BODY_CHUNK_CELLS)
+  // Instances span the whole shell and change size every frame, so the cached
+  // bounding sphere is never accurate; culling would drop visible bodies on
+  // close zoom. Bodies are never culled (see render.js 'cull' comment).
+  mesh.frustumCulled = false
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  mesh.instanceMatrix.needsUpdate = true
+  const opacity = new THREE.InstancedBufferAttribute(
+    new Float32Array(BODY_CHUNK_CELLS).fill(1),
+    1,
+  )
+  opacity.setUsage(THREE.DynamicDrawUsage)
+  mesh.geometry.setAttribute('instanceOpacity', opacity)
+  const mito = new THREE.InstancedBufferAttribute(
+    new Float32Array(BODY_CHUNK_CELLS).fill(0),
+    1,
+  )
+  mito.setUsage(THREE.DynamicDrawUsage)
+  mesh.geometry.setAttribute('instanceMito', mito)
+  const paralysed = new THREE.InstancedBufferAttribute(
+    new Float32Array(BODY_CHUNK_CELLS).fill(0),
+    1,
+  )
+  paralysed.setUsage(THREE.DynamicDrawUsage)
+  mesh.geometry.setAttribute('instanceParalysed', paralysed)
+  const chunk = {
+    mesh,
+    free: [],
+    live: 0,
+    count: 0,
+    opacity,
+    mito,
+    paralysed,
+    attached: false,
+  }
+  sim.scene.add(mesh)
+  chunk.attached = true
+  return chunk
+}
+
+function allocChunkSlot(sim, entry) {
+  for (const chunk of entry.chunks) {
+    if (chunk.free.length) {
+      const slot = chunk.free.pop()
+      attachChunk(sim, chunk)
+      return { chunk, slot }
+    }
+  }
+  for (const chunk of entry.chunks) {
+    if (chunk.count < BODY_CHUNK_CELLS) {
+      const slot = chunk.count++
+      attachChunk(sim, chunk)
+      return { chunk, slot }
+    }
+  }
+  const chunk = createBodyChunk(sim, entry)
+  entry.chunks.push(chunk)
+  return { chunk, slot: chunk.count++ }
 }
 
 export function zeroMatrix(sim, mesh, slot) {
@@ -134,24 +192,26 @@ export function zeroMatrix(sim, mesh, slot) {
 
 export function addBody(sim, d, length) {
   const entry = getPool(sim, length)
-  const bucket = entry.bucket
-  const slot = entry.free.length ? entry.free.pop() : entry.count++
-  entry.live++
-  entry.mesh.count = entry.count
-  d.bodyBucket = bucket
+  const { chunk, slot } = allocChunkSlot(sim, entry)
+  chunk.live++
+  chunk.mesh.count = chunk.count
+  d.bodyBucket = entry.bucket
+  d.bodyChunk = chunk
   d.bodySlot = slot
-  if (entry.opacity) entry.opacity.setX(slot, 1)
-  if (entry.mito) entry.mito.setX(slot, 0)
+  if (chunk.opacity) chunk.opacity.setX(slot, 1)
+  if (chunk.mito) chunk.mito.setX(slot, 0)
+  if (chunk.paralysed) chunk.paralysed.setX(slot, 0)
   setBodyColor(sim, d, d.color)
-  entry.mesh.instanceMatrix.needsUpdate = true
+  chunk.mesh.instanceMatrix.needsUpdate = true
 }
 
 export function setBodyColor(sim, d, color) {
   if (d.bodyBucket == null) return
   const entry = sim.bodyPools.get(d.bodyBucket)
-  if (!entry || !entry.mesh) return
-  entry.mesh.setColorAt(d.bodySlot, color)
-  if (entry.mesh.instanceColor) entry.mesh.instanceColor.needsUpdate = true
+  const chunk = d.bodyChunk
+  if (!entry || !chunk || !chunk.mesh) return
+  chunk.mesh.setColorAt(d.bodySlot, color)
+  if (chunk.mesh.instanceColor) chunk.mesh.instanceColor.needsUpdate = true
 }
 
 export function setInstanceColor(sim, d) {
@@ -160,29 +220,28 @@ export function setInstanceColor(sim, d) {
 
 export function setBodyOpacity(sim, d, opacity) {
   if (d.bodyBucket == null) return
-  const entry = sim.bodyPools.get(d.bodyBucket)
-  if (!entry || !entry.mesh || !entry.opacity) return
-  entry.opacity.setX(d.bodySlot, opacity)
-  entry.opacity.needsUpdate = true
+  const chunk = d.bodyChunk
+  if (!chunk || !chunk.mesh || !chunk.opacity) return
+  chunk.opacity.setX(d.bodySlot, opacity)
+  chunk.opacity.needsUpdate = true
 }
 
 export function removeBody(sim, d) {
   if (d.bodyBucket == null) return
   const entry = sim.bodyPools.get(d.bodyBucket)
-  if (entry && entry.mesh) {
-    zeroMatrix(sim, entry.mesh, d.bodySlot)
-    entry.free.push(d.bodySlot)
-    entry.live--
-    if (entry.live === 0) {
-      sim.scene.remove(entry.mesh)
-      entry.mesh = null
-      entry.free = []
-      entry.count = 0
+  const chunk = d.bodyChunk
+  if (entry && chunk && chunk.mesh) {
+    zeroMatrix(sim, chunk.mesh, d.bodySlot)
+    chunk.free.push(d.bodySlot)
+    chunk.live--
+    if (chunk.live === 0) {
+      detachChunk(sim, chunk)
     } else {
-      entry.mesh.instanceMatrix.needsUpdate = true
+      chunk.mesh.instanceMatrix.needsUpdate = true
     }
   }
   d.bodyBucket = null
+  d.bodyChunk = null
   d.bodySlot = null
 }
 
@@ -200,72 +259,99 @@ export function rehomeBody(sim, d, newLength) {
 export function renderBodies(sim) {
   for (const d of sim.cells) {
     if (d.bodyBucket == null) continue
-    const entry = sim.bodyPools.get(d.bodyBucket)
-    if (!entry || !entry.mesh) continue
-    const mesh = entry.mesh
+    const chunk = d.bodyChunk
+    if (!chunk || !chunk.mesh) continue
+    const mesh = chunk.mesh
     const sc = d.fade >= 1 ? sim._one : sim._v9.set(d.fade, d.fade, d.fade)
     sim._m.compose(d.pos, d.quat, sc)
     mesh.setMatrixAt(d.bodySlot, sim._m)
     mesh.instanceMatrix.needsUpdate = true
-    // Aura: only while a cell is actually in mitosis. The energy ramp still
-    // drives intensity, so the full-size parent glows and the small daughters
-    // (energy ~0.25) don't; a near-full cell that isn't dividing has no aura.
-    if (entry.mito) {
+    // Aura: only while a cell is actually in mitosis, or fading out on
+    // starvation. The energy ramp still drives mitosis intensity, so the
+    // full-size parent glows and the small daughters (energy ~0.25) don't; a
+    // near-full cell that isn't dividing has no aura. Dying cells ramp the Aura
+    // up over STARVE_FADE so they glow as they starve.
+    if (chunk.mito) {
       const inMito = d.splitting || d.mito
       const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
-      const ready = inMito
-        ? smoothstep(
-            THREE.MathUtils.clamp(
-              (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
-              0,
-              1,
-            ),
-          )
-        : 0
-      entry.mito.setX(d.bodySlot, ready)
-      entry.mito.needsUpdate = true
+      let ready = 0
+      if (inMito) {
+        ready = smoothstep(
+          THREE.MathUtils.clamp(
+            (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
+            0,
+            1,
+          ),
+        )
+      } else if (d.dying) {
+        ready = smoothstep(THREE.MathUtils.clamp(d.starveT / STARVE_AURA, 0, 1))
+      }
+      chunk.mito.setX(d.bodySlot, ready)
+      chunk.mito.needsUpdate = true
+    }
+    // Predator-latched blue glows purple so it's obvious the prey is held.
+    if (chunk.paralysed) {
+      chunk.paralysed.setX(d.bodySlot, d.paralysed ? 1 : 0)
+      chunk.paralysed.needsUpdate = true
     }
   }
 }
 
-export function renderNuclei(sim) {
-  const mesh = sim.nucleusMesh
-  if (!mesh) return
-  for (const d of sim.cells) {
-    if (d.bodyBucket == null) continue
-    const scale = sim._v6.set(d.radius * 0.62, WIDTH * 0.5, WIDTH * 0.5)
-    // Gate visibility with the body: hide the nucleus at the limb, while
-    // dying, and during division so it never reads as an orphan glowing core.
-    if (d.sideHidden || d.dying || d.splitting || d.mito) scale.set(0, 0, 0)
-    sim._m.compose(d.pos, d.quat, scale)
-    mesh.setMatrixAt(d.nucleusSlot, sim._m)
-  }
-  mesh.instanceMatrix.needsUpdate = true
-}
-
 export function disposeBodyPools(sim) {
   for (const entry of sim.bodyPools.values()) {
-    if (entry.mesh) {
-      sim.scene.remove(entry.mesh)
-      entry.mesh.dispose()
-      entry.mesh = null
+    for (const chunk of entry.chunks) {
+      if (chunk.mesh) {
+        sim.scene.remove(chunk.mesh)
+        chunk.mesh.dispose()
+        chunk.mesh = null
+      }
     }
   }
   sim.bodyPools.clear()
 }
 
+export function tailChunkIndex(cellIndex) {
+  return Math.floor(cellIndex / TAIL_CHUNK_CELLS)
+}
+
+function tailSegLocal(cellIndex, seg) {
+  return (cellIndex % TAIL_CHUNK_CELLS) * TAIL_SEGMENTS + seg
+}
+
+export function ensureTailChunk(sim, cellIndex) {
+  const ci = tailChunkIndex(cellIndex)
+  while (sim.tailChunks.length <= ci) {
+    const mesh = new THREE.InstancedMesh(tailGeo, tailMat, TAIL_CHUNK_SIZE)
+    // Tail segments are spread across the whole sphere; the cached bounding
+    // sphere is wrong/stale, so a zoom-in would cull visible segments.
+    mesh.frustumCulled = false
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    mesh.setColorAt(0, new THREE.Color(1, 1, 1))
+    mesh.instanceColor.needsUpdate = true
+    for (let i = 0; i < TAIL_CHUNK_SIZE; i++) zeroMatrix(sim, mesh, i)
+    sim.scene.add(mesh)
+    sim.tailChunks.push({ mesh })
+  }
+  return sim.tailChunks[ci]
+}
+
 export function allocTailIndex(sim) {
   if (sim.freeTailIndices.length) return sim.freeTailIndices.pop()
-  const idx = sim.nextTailIndex
+  const idx = Math.min(sim.nextTailIndex, MAX_CELLS - 1)
   sim.nextTailIndex = Math.min(sim.nextTailIndex + 1, MAX_CELLS)
+  ensureTailChunk(sim, idx)
   return idx
 }
 
-export function allocNucleusIndex(sim) {
-  if (sim.freeNucleusIndices.length) return sim.freeNucleusIndices.pop()
-  const idx = sim.nextNucleusIndex
-  sim.nextNucleusIndex = Math.min(sim.nextNucleusIndex + 1, MAX_CELLS)
-  return idx
+export function disposeTailPool(sim) {
+  for (const chunk of sim.tailChunks) {
+    if (chunk.mesh) {
+      sim.scene.remove(chunk.mesh)
+      chunk.mesh.dispose()
+      chunk.mesh = null
+    }
+  }
+  sim.tailChunks = []
 }
 
 function makeTailDirs(heading) {
@@ -297,13 +383,16 @@ function makeTailChain(pos, heading, radius) {
   return { pts, vel, vt, q }
 }
 
-export function radiusFromEnergy(energy) {
+const sizeF = (breed) => (breed === BREED_RED ? RED_SIZE : 1)
+
+export function radiusFromEnergy(energy, breed = BREED_BLUE) {
   const f = THREE.MathUtils.clamp(energy, 0, ENERGY_MAX) / ENERGY_MAX
-  return MIN_RADIUS + f * (MAX_RADIUS - MIN_RADIUS)
+  return (MIN_RADIUS + f * (MAX_RADIUS - MIN_RADIUS)) * sizeF(breed)
 }
 
-export function energyFromRadius(radius) {
-  const f = (radius - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS)
+export function energyFromRadius(radius, breed = BREED_BLUE) {
+  const base = radius / sizeF(breed)
+  const f = (base - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS)
   return THREE.MathUtils.clamp(f, 0, 1) * ENERGY_MAX
 }
 
@@ -311,7 +400,7 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
   const chain = makeTailChain(pos, heading, length)
   const d = {
     radius: length,
-    energy: energyFromRadius(length),
+    energy: energyFromRadius(length, breed),
     mass: length * length * 0.25,
     color: new THREE.Color(),
     breed,
@@ -334,6 +423,8 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     foodPeak: 0,
     headingRate: 0,
     drive: 0,
+    paralysed: false,
+    target: null,
     split: false,
     splitPending: false,
     mito: null,
@@ -347,9 +438,8 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     rest: 0,
     index,
     absorbAcc: 0,
-    tailStart: index * TAIL_SEGMENTS,
-    nucleusSlot: allocNucleusIndex(sim),
     bodyBucket: null,
+    bodyChunk: null,
     bodySlot: null,
     quat: new THREE.Quaternion(),
   }
@@ -359,17 +449,20 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
   return d
 }
 
-export function makeCell(sim) {
-  const length = START_RADIUS + Math.random() * 0.04
+export function makeCell(sim, breed) {
+  if (breed === undefined) {
+    breed = Math.random() < 0.5 ? BREED_BLUE : BREED_RED
+  }
+  const length = (START_RADIUS + Math.random() * 0.04) * sizeF(breed)
   const pos = randomSurfacePoint()
   const normal = pos.clone().normalize()
   const heading = randomTangent(normal)
-  return createCell(sim, allocTailIndex(sim), pos, heading, length)
+  return createCell(sim, allocTailIndex(sim), pos, heading, length, breed)
 }
 
 function setSize(sim, d, energy, checkSplit) {
   const next = THREE.MathUtils.clamp(energy, 0, ENERGY_MAX)
-  const r = radiusFromEnergy(next)
+  const r = radiusFromEnergy(next, d.breed)
   d.energy = next
   d.mass = Math.max(r * r * 0.25, 0.05)
   if (r !== d.radius) {
@@ -476,19 +569,23 @@ export function mitose(sim, parent) {
 }
 
 export function setTailColor(sim, d) {
-  if (!sim.tailMesh || !d.color) return
+  if (!d.color) return
+  const chunk = sim.tailChunks[tailChunkIndex(d.index)]
+  if (!chunk || !chunk.mesh) return
+  const mesh = chunk.mesh
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
-    sim.tailMesh.setColorAt(d.tailStart + i, d.color)
+    mesh.setColorAt(tailSegLocal(d.index, i), d.color)
   }
-  if (sim.tailMesh.instanceColor) {
-    sim.tailMesh.instanceColor.needsUpdate = true
-  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
 }
 
 export function clearTail(sim, d) {
+  const chunk = sim.tailChunks[tailChunkIndex(d.index)]
+  if (!chunk || !chunk.mesh) return
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
-    zeroMatrix(sim, sim.tailMesh, d.tailStart + i)
+    zeroMatrix(sim, chunk.mesh, tailSegLocal(d.index, i))
   }
+  chunk.mesh.instanceMatrix.needsUpdate = true
 }
 
 export function placeTail(sim, d) {
@@ -496,13 +593,18 @@ export function placeTail(sim, d) {
     clearTail(sim, d)
     return
   }
+  const chunk = sim.tailChunks[tailChunkIndex(d.index)]
+  if (!chunk || !chunk.mesh) return
+  const tailMesh = chunk.mesh
   const dirs = d.tailDirs
   // Tail length is TAIL_BODY × body length (body ≈ 2·radius), so the tail
   // scales proportionally with the cell.
   const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   const draw = pitch * TAIL_LINK_FILL
   const ts = sim.tailScale
-  const a = sim._v1.copy(d.pos).addScaledVector(d.heading, -d.radius)
+  const a = sim._v1
+    .copy(d.pos)
+    .addScaledVector(d.heading, -(d.radius - WIDTH * TAIL_HINGE))
   a.setLength(SURFACE)
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
     const b = sim._v2.copy(a).addScaledVector(dirs[i], pitch)
@@ -517,9 +619,10 @@ export function placeTail(sim, d) {
     sim._dummy.position.copy(a).add(b).multiplyScalar(0.5)
     sim._dummy.scale.set(draw, ts, ts)
     sim._dummy.updateMatrix()
-    sim.tailMesh.setMatrixAt(d.tailStart + i, sim._dummy.matrix)
+    tailMesh.setMatrixAt(tailSegLocal(d.index, i), sim._dummy.matrix)
     a.copy(b)
   }
+  tailMesh.instanceMatrix.needsUpdate = true
 }
 
 export function updateTailState(sim, d, dt) {
@@ -574,7 +677,9 @@ export function updateTailState(sim, d, dt) {
   d.tailBend = bend
 
   const side = sim._v5.crossVectors(n0, carrier)
-  const root = sim._v2.copy(d.pos).addScaledVector(d.heading, -d.radius)
+  const root = sim._v2
+    .copy(d.pos)
+    .addScaledVector(d.heading, -(d.radius - WIDTH * TAIL_HINGE))
   root.setLength(SURFACE)
   pts[0].copy(root)
 
@@ -590,12 +695,16 @@ export function updateTailState(sim, d, dt) {
       THREE.MathUtils.clamp(d.drive, 0, 1),
       THREE.MathUtils.clamp(Math.abs(bend) * 1.5, 0, 1),
     )
-  const motorA = TAIL_MOTOR_AMP * whip * Math.sin(d.tailPhase)
   const cur = sim._v7.copy(root)
   for (let j = 0; j <= S; j++) {
     q[j].copy(cur)
     if (j < S) {
-      const ang = motorA - bend * j * ramp
+      // Phase-shifted wave: the crest travels from the root to the tip (base ->
+      // tip). The trailing bend arc is optional (TAIL_ARC toggle) and adds the
+      // slow drag curve.
+      const ang =
+        TAIL_MOTOR_AMP * whip * Math.sin(d.tailPhase - TAIL_WAVE * j) -
+        TAIL_ARC * bend * j * ramp
       const cq = Math.cos(ang)
       const sq = Math.sin(ang)
       sim._v8.copy(carrier).multiplyScalar(cq).addScaledVector(side, sq)

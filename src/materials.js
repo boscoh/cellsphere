@@ -6,7 +6,6 @@ export const tailGeo = (() => {
   geo.rotateZ(Math.PI / 2)
   return geo
 })()
-export const nucleusGeo = new THREE.SphereGeometry(1, 12, 8)
 
 export const bodyMat = new THREE.MeshStandardMaterial({
   color: 0xffffff,
@@ -18,24 +17,24 @@ export const bodyMat = new THREE.MeshStandardMaterial({
 
 bodyMat.onBeforeCompile = (shader) => {
   shader.vertexShader =
-    'attribute highp float instanceOpacity;\nattribute highp float instanceMito;\nvarying highp float vInstanceOpacity;\nvarying highp float vInstanceMito;\n' +
+    'attribute highp float instanceOpacity;\nattribute highp float instanceMito;\nattribute highp float instanceParalysed;\nvarying highp float vInstanceOpacity;\nvarying highp float vInstanceMito;\nvarying highp float vInstanceParalysed;\n' +
     shader.vertexShader
   shader.vertexShader = shader.vertexShader.replace(
     '#include <project_vertex>',
-    '#include <project_vertex>\n\tvInstanceOpacity = instanceOpacity;\n\tvInstanceMito = instanceMito;'
+    '#include <project_vertex>\n\tvInstanceOpacity = instanceOpacity;\n\tvInstanceMito = instanceMito;\n\tvInstanceParalysed = instanceParalysed;'
   )
   shader.fragmentShader =
-    'varying highp float vInstanceOpacity;\nvarying highp float vInstanceMito;\n' +
+    'varying highp float vInstanceOpacity;\nvarying highp float vInstanceMito;\nvarying highp float vInstanceParalysed;\n' +
     shader.fragmentShader
   shader.fragmentShader = shader.fragmentShader.replace(
     '#include <color_fragment>',
     '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;\n\tif (diffuseColor.a < 0.1) discard;'
   )
-  // Mitosis aura: an emissive fresnel rim, stronger toward the silhouette,
-  // scaled by the per-instance "ready to divide" value.
+  // Mitosis aura (cell color) + paralysed/predator-latched aura (purple): both
+  // emissive fresnel rims, stronger toward the silhouette, per-instance.
   shader.fragmentShader = shader.fragmentShader.replace(
     '#include <emissivemap_fragment>',
-    '#include <emissivemap_fragment>\n\t{\n\t\tfloat auraRim = 1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);\n\t\ttotalEmissiveRadiance += vInstanceMito * auraRim * auraRim * diffuseColor.rgb * 1.25;\n\t}'
+    '#include <emissivemap_fragment>\n\t{\n\t\tfloat auraRim = 1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);\n\t\ttotalEmissiveRadiance += vInstanceMito * auraRim * auraRim * diffuseColor.rgb * 1.25;\n\t\ttotalEmissiveRadiance += vInstanceParalysed * auraRim * auraRim * vec3(0.55, 0.30, 0.95) * 1.4;\n\t}'
   )
 }
 
@@ -53,19 +52,9 @@ export const tailMat = new THREE.MeshStandardMaterial({
   roughness: 0.5,
 })
 
-export const nucleusMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff,
-  roughness: 1,
-  metalness: 0,
-  emissive: 0x57c98c,
-  emissiveIntensity: 0.6,
-})
-
 export function disposeSharedMaterials() {
   foodGeo.dispose()
   tailGeo.dispose()
-  nucleusGeo.dispose()
   foodMat.dispose()
   tailMat.dispose()
-  nucleusMat.dispose()
 }

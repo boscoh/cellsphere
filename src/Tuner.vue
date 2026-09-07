@@ -2,7 +2,7 @@
 import { reactive, computed, ref, onMounted } from 'vue'
 import { GROUPS, PARAMS, setParam } from './constants'
 
-const emit = defineEmits(['rebuild'])
+const emit = defineEmits(['rebuild', 'default', 'param'])
 
 function syncValues() {
   for (const r of rows) r.value = r.def
@@ -14,19 +14,20 @@ const panelEl = ref(null)
 const panelPos = ref({ top: 128, left: 24 })
 
 onMounted(() => {
+  const hud = document.querySelector('.hud')
+  if (hud) {
+    const r = hud.getBoundingClientRect()
+    const w = panelEl.value?.getBoundingClientRect().width ?? 300
+    const left = Math.max(8, r.right - w)
+    panelPos.value = { top: r.bottom + 8, left }
+    return
+  }
   const btn = document.getElementById('tune-toggle')
   if (btn) {
     const b = btn.getBoundingClientRect()
     const w = panelEl.value?.getBoundingClientRect().width ?? 300
-    const cx = b.left + b.width / 2
-    const left = Math.min(Math.max(8, cx - w / 2), window.innerWidth - w - 8)
+    const left = Math.max(8, b.right - w)
     panelPos.value = { top: b.bottom + 8, left }
-    return
-  }
-  const hud = document.querySelector('.hud')
-  if (hud) {
-    const r = hud.getBoundingClientRect()
-    panelPos.value = { top: r.bottom + 8, left: r.right - 300 }
   }
 })
 
@@ -58,6 +59,7 @@ function onInput(row, event) {
   const v = Number(event.target.value)
   row.value = v
   setParam(row.key, v)
+  emit('param', row.key, v)
 }
 
 function onChange(row) {
@@ -73,6 +75,7 @@ function fmt(v) {
   <aside id="tuner-panel" ref="panelEl" class="panel" :style="{ top: panelPos.top + 'px', left: panelPos.left + 'px' }">
     <header class="head">
       <span class="title">Parameter Tuner</span>
+      <button type="button" class="reset-btn" :title="'Reset all parameters to defaults'" @click="emit('default')">Default</button>
     </header>
     <div class="body">
       <section v-for="g in groups" :key="g.label" class="group">
@@ -132,6 +135,35 @@ function fmt(v) {
   color: #eef2f8;
   text-transform: uppercase;
   letter-spacing: 0.6px;
+}
+
+.reset-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #b7c2d4;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.reset-btn:hover {
+  color: #eef2f8;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.reset-btn:focus-visible {
+  outline: 2px solid rgba(111, 168, 255, 0.7);
+  outline-offset: 2px;
 }
 
 .body {

@@ -31,13 +31,17 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   mitosis state. Physics in `sim.js` reads/writes these directly.
 - **Bodies** render via **pooled `InstancedMesh`es** keyed by length bucket
   (`bodyGeoCache` + `bodyPools`): `addBody/removeBody/rehomeBody` manage a free
-  list per bucket; per-instance color + a custom `instanceOpacity` attribute
-  (`setBodyColor/setBodyOpacity`) drive color and the mitosis fade.
-  `renderBodies` composes each cell's matrix from `pos/quat`.
-- **Tails** render as one `InstancedMesh` of capsule segments
-  (`MAX_CELLS*TAIL_SEGMENTS`); per-cell color set from `createCell`/`growCell`
-  (`setTailColor`), slots via `allocTailIndex` + free list. Tails hidden = skip
-  `updateTailState`/`renderTails` and hide the mesh (`tailsHidden`).
+  list per bucket chunk; per-instance color + a custom `instanceOpacity`
+  attribute (`setBodyColor/setBodyOpacity`) drive color and the mitosis fade.
+  `renderBodies` composes each cell's matrix from `pos/quat`. Each bucket grows
+  on demand in `BODY_CHUNK_CELLS` chunks rather than reserving `MAX_CELLS`
+  up-front; a chunk is detached from the scene when it empties.
+- **Tails** render as **chunked `InstancedMesh`es** of capsule segments
+  (`TAIL_CHUNK_CELLS*TAIL_SEGMENTS` each); per-cell color set from
+  `createCell`/`growCell` (`setTailColor`), slots via `allocTailIndex` + free
+  list (a new chunk is grown lazily when the index high-water crosses a chunk
+  boundary). Tails hidden = skip `updateTailState`/`renderTails` and hide the
+  chunk meshes (`tailsHidden`).
 - **Linear motion**: `drive = slow × (1 − coast) × fatigue`; thrust
   `THRUST*drive` along heading; high `DRAG` bleeds velocity. Three mostly-
   exclusive energy bands: near max (`coast`, above `MITO_SLOW_FRAC`) the cell
@@ -164,8 +168,12 @@ min 1, max `MAX_SIM_RATE = 10`, step 2. Drag hint sits bottom-center.
   filtered away by `TAIL_JOINT_RATE`).
 - The **tails** toggle hides the mesh and skips tail sim/placement entirely
   (not the old micro-scale trick).
-- `MAX_CELLS` preallocates body-pool and tail capacities; unused slots are
-  zero matrices.
+- Body-pool and tail capacities grow **on demand in fixed-size chunks**
+  (`BODY_CHUNK_CELLS` / `TAIL_CHUNK_CELLS`), so buffers track the high-water
+  mark of concurrent cells, not the `MAX_CELLS` ceiling. `MAX_CELLS` remains
+  only the logical tail-index ceiling. Empty body chunks are detached (not
+  drawn/uploaded) but kept for reuse. Reserved-but-unused slots are zero
+  matrices.
 
 ## Workflow
 

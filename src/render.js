@@ -1,5 +1,5 @@
 import { CULL_COS } from './constants'
-import { renderBodies, renderNuclei } from './cells'
+import { renderBodies } from './cells'
 import { cosFace } from './math'
 
 function updateVisibility(sim) {
@@ -19,13 +19,23 @@ function updateVisibility(sim) {
 export function renderView(sim, tailScale) {
   sim.tailScale = tailScale
   sim.tailsHidden = tailScale < 0.5
-  if (sim.tailMesh) sim.tailMesh.visible = !sim.tailsHidden
+  for (const chunk of sim.tailChunks) {
+    chunk.mesh.visible = !sim.tailsHidden
+  }
+  sim.perf.begin('vis')
   updateVisibility(sim)
+  sim.perf.end('vis')
 
+  sim.perf.begin('bodies')
   renderBodies(sim)
-  renderNuclei(sim)
+  sim.perf.end('bodies')
+
+  sim.perf.begin('tails')
   sim.renderTails()
+  sim.perf.end('tails')
 
   if (sim.controls) sim.controls.update()
+  sim.perf.begin('draw')
   if (sim.renderer) sim.renderer.render(sim.scene, sim.camera)
+  sim.perf.end('draw')
 }

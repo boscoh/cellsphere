@@ -1,11 +1,16 @@
 export const SPHERE_RADIUS = 5
 export const SURFACE = SPHERE_RADIUS + 0.06
-export const CELL_COUNT = 100
 export const MAX_CELLS = 500
 export const GRID = 0.35
 export const CELL_GRID = 1.0
 export const FIXED_DT = 1 / 60
 export const MAX_STEPS = 200
+
+// Pools grow on demand in fixed-size chunks rather than sizing every buffer to
+// MAX_CELLS up-front, so memory/upload scale with the high-water mark of
+// concurrent cells, not the ceiling (cell-8jl).
+export const TAIL_CHUNK_CELLS = 64
+export const BODY_CHUNK_CELLS = 64
 
 export const MIN_RADIUS = 0.10
 export const MAX_RADIUS = 0.30
@@ -27,10 +32,14 @@ export const GROUPS = [
   { key: 'mitosis', label: 'Mitosis' },
   { key: 'survival', label: 'Survival' },
   { key: 'tail', label: 'Tail' },
+  { key: 'predator', label: 'Predator' },
 ]
 
 export const PARAM_DEFS = [
-  { key: 'FOOD_COUNT', group: 'world', label: 'Food count', desc: 'Total food particles in the world (rebuilds on change).', def: 7000, min: 500, max: 40000, step: 500, rebuild: true },
+  { key: 'PREY_COUNT', group: 'world', label: 'Prey (start)', desc: 'Number of prey (blue) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
+  { key: 'PRED_COUNT', group: 'world', label: 'Predators (start)', desc: 'Number of predator (red) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
+  { key: 'SIM_SPEED', group: 'world', label: 'Default speed', desc: 'Simulation speed applied on startup and when Default/Reset is pressed (1x = real time).', def: 1, min: 1, max: 10, step: 1 },
+  { key: 'FOOD_COUNT', group: 'world', label: 'Initial food', desc: 'Total food particles spawned when the world is (re)built.', def: 7000, min: 500, max: 40000, step: 500, rebuild: true },
   { key: 'FOOD_CLUMPS', group: 'world', label: 'Food clumps', desc: 'Number of food clusters (0 = none; rebuilds).', def: 12, min: 0, max: 80, step: 1, rebuild: true },
   { key: 'FOOD_SCATTER', group: 'world', label: 'Food scatter', desc: 'Share of food placed uniformly instead of in clumps (rebuilds).', def: 0.15, min: 0, max: 1, step: 0.05, rebuild: true },
   { key: 'FOOD_CLUMP_WIDE', group: 'world', label: 'Clump spread', desc: 'Angular spread of each clump (rebuilds).', def: 1, min: 0.2, max: 4, step: 0.1, rebuild: true },
@@ -63,9 +72,10 @@ export const PARAM_DEFS = [
   { key: 'METABOLISM', group: 'survival', label: 'Metabolism', desc: 'Energy drained per second while alive (0 = no drain).', def: 0.003, min: 0, max: 0.3, step: 0.0005 },
   { key: 'STARVE_SLOW', group: 'survival', label: 'Starve slow frac', desc: 'Energy fraction below which a starving cell progressively slows (0 = no slowdown).', def: 0.3, min: 0, max: 1, step: 0.05 },
 
-  { key: 'TAIL_OSC_FREQ', group: 'tail', label: 'Osc freq', desc: 'Tail motor sweep frequency (Hz) while driving or turning.', def: 7, min: 0, max: 20, step: 0.5 },
+  { key: 'TAIL_OSC_FREQ', group: 'tail', label: 'Osc freq', desc: 'Tail wave frequency (Hz) while driving or turning.', def: 4, min: 0, max: 20, step: 0.5 },
+  { key: 'TAIL_WAVE', group: 'tail', label: 'Wave shift', desc: 'Phase shift per joint (rad). Positive travels base->tip, negative travels tip->base.', def: 0.35, min: -2, max: 2, step: 0.05 },
   { key: 'TAIL_CARRIER_RATE', group: 'tail', label: 'Carrier rate', desc: 'Rate the tail axis re-aims toward the body heading.', def: 2, min: 0.1, max: 10, step: 0.1 },
-  { key: 'TAIL_DRAG_K', group: 'tail', label: 'Drag K', desc: 'Guide-spring stiffness along the tail (drag feel).', def: 6, min: 0, max: 60, step: 1 },
+  { key: 'TAIL_DRAG_K', group: 'tail', label: 'Drag K', desc: 'Guide-spring stiffness along the tail (higher = the whole chain follows the wave, less drag lag).', def: 25, min: 0, max: 60, step: 1 },
   { key: 'TAIL_MOTOR_K', group: 'tail', label: 'Motor K', desc: 'Guide stiffness at the root motor joints (whip).', def: 2200, min: 0, max: 8000, step: 100 },
   { key: 'TAIL_MOTOR_JOINTS', group: 'tail', label: 'Motor joints', desc: 'Number of root joints driven by the head motor.', def: 3, min: 0, max: 10, step: 1 },
   { key: 'TAIL_BEND_K', group: 'tail', label: 'Bend K', desc: 'Local beam stiffness resisting tail curvature.', def: 900, min: 0, max: 5000, step: 50 },
@@ -77,15 +87,27 @@ export const PARAM_DEFS = [
   { key: 'TAIL_TRAIL_RATE', group: 'tail', label: 'Trail rate', desc: 'How fast tail-lag memory decays after turns.', def: 1, min: 0.1, max: 5, step: 0.1 },
   { key: 'TAIL_ARC_MAX', group: 'tail', label: 'Arc max', desc: 'Hard cap (rad) on the trailing arc bend.', def: 2, min: 0, max: 4, step: 0.1 },
   { key: 'TAIL_RUDDER_GAIN', group: 'tail', label: 'Rudder gain', desc: 'Maps accumulated heading turn into the arc bend.', def: 1, min: 0, max: 4, step: 0.1 },
+  { key: 'TAIL_ARC', group: 'tail', label: 'Trailing arc', desc: '0 = no trailing arc (pure travelling wave), 1 = arc on.', def: 1, min: 0, max: 1, step: 1 },
+  { key: 'TAIL_HINGE', group: 'tail', label: 'Hinge', desc: 'How far the tail hinge tucks into the body (fraction of body width; 0 = rear tip, 1 = deepest).', def: 0.5, min: 0, max: 1, step: 0.05 },
   { key: 'TAIL_TURN', group: 'tail', label: 'Tail turn', desc: 'Heading-rate gain from the tail steering bend (tail drives the turn).', def: 2.5, min: 0, max: 10, step: 0.25 },
   { key: 'TAIL_LINK_FILL', group: 'tail', label: 'Link fill', desc: 'Fraction of link spacing covered by each segment mesh.', def: 0.95, min: 0.1, max: 1.5, step: 0.05 },
   { key: 'TAIL_BODY', group: 'tail', label: 'Tail length', desc: 'Total tail length as a multiple of body length.', def: 2, min: 1, max: 6, step: 0.25 },
+
+  { key: 'PRED_RANGE', group: 'predator', label: 'Predator range', desc: 'Latch distance to a blue (capsule gap).', def: 0.18, min: 0, max: 1, step: 0.01 },
+  { key: 'PRED_BITE', group: 'predator', label: 'Predator bite', desc: 'Distance at which draining proceeds (>= range so a latched prey is bitten).', def: 0.18, min: 0, max: 0.5, step: 0.01 },
+  { key: 'PRED_DRAIN', group: 'predator', label: 'Predator drain', desc: 'Blue energy drained per second.', def: 0.05, min: 0, max: 1, step: 0.005 },
+  { key: 'PRED_EFF', group: 'predator', label: 'Predator yield', desc: 'Fraction of drained energy red gains.', def: 0.6, min: 0, max: 1, step: 0.05 },
+  { key: 'PRED_DRIVE', group: 'predator', label: 'Predator drive', desc: 'Red speed multiplier (<1 = slower).', def: 0.7, min: 0, max: 1, step: 0.05 },
+  { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of blue (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.05 },
 ]
 
 export const PARAMS = PARAM_DEFS.map((p) => ({ ...p, value: p.def }))
 const byKey = new Map(PARAMS.map((p) => [p.key, p]))
 
 export let SPRING
+export let PREY_COUNT
+export let PRED_COUNT
+export let SIM_SPEED
 export let FOOD_COUNT
 export let FOOD_CLUMPS
 export let FOOD_SCATTER
@@ -105,6 +127,7 @@ export let STARVE_SLOW
 export let TAIL_LINK_FILL
 export let TAIL_BODY
 export let TAIL_OSC_FREQ
+export let TAIL_WAVE
 export let TAIL_CARRIER_RATE
 export let TAIL_DRAG_K
 export let TAIL_BEND_K
@@ -115,6 +138,8 @@ export let TAIL_MOTOR_JOINTS
 export let TAIL_TRAIL_RATE
 export let TAIL_ARC_MAX
 export let TAIL_RUDDER_GAIN
+export let TAIL_ARC
+export let TAIL_HINGE
 export let TAIL_TURN
 export let TAIL_LEN_K
 export let TAIL_LEN_DAMP
@@ -130,9 +155,18 @@ export let MAX_SPIN
 export let PEAK_MIN
 export let SENSE_BOOST
 export let SENSE_PERIOD
+export let PRED_RANGE
+export let PRED_BITE
+export let PRED_DRAIN
+export let PRED_EFF
+export let PRED_DRIVE
+export let RED_SIZE
 
 const setters = {
   SPRING: (v) => { SPRING = v },
+  PREY_COUNT: (v) => { PREY_COUNT = v },
+  PRED_COUNT: (v) => { PRED_COUNT = v },
+  SIM_SPEED: (v) => { SIM_SPEED = v },
   FOOD_COUNT: (v) => { FOOD_COUNT = v },
   FOOD_CLUMPS: (v) => { FOOD_CLUMPS = v },
   FOOD_SCATTER: (v) => { FOOD_SCATTER = v },
@@ -152,6 +186,7 @@ const setters = {
   TAIL_LINK_FILL: (v) => { TAIL_LINK_FILL = v },
   TAIL_BODY: (v) => { TAIL_BODY = v },
   TAIL_OSC_FREQ: (v) => { TAIL_OSC_FREQ = v },
+  TAIL_WAVE: (v) => { TAIL_WAVE = v },
   TAIL_CARRIER_RATE: (v) => { TAIL_CARRIER_RATE = v },
   TAIL_DRAG_K: (v) => { TAIL_DRAG_K = v },
   TAIL_BEND_K: (v) => { TAIL_BEND_K = v },
@@ -162,6 +197,8 @@ const setters = {
   TAIL_TRAIL_RATE: (v) => { TAIL_TRAIL_RATE = v },
   TAIL_ARC_MAX: (v) => { TAIL_ARC_MAX = v },
   TAIL_RUDDER_GAIN: (v) => { TAIL_RUDDER_GAIN = v },
+  TAIL_ARC: (v) => { TAIL_ARC = v },
+  TAIL_HINGE: (v) => { TAIL_HINGE = v },
   TAIL_TURN: (v) => { TAIL_TURN = v },
   TAIL_LEN_K: (v) => { TAIL_LEN_K = v },
   TAIL_LEN_DAMP: (v) => { TAIL_LEN_DAMP = v },
@@ -177,6 +214,12 @@ const setters = {
   PEAK_MIN: (v) => { PEAK_MIN = v },
   SENSE_BOOST: (v) => { SENSE_BOOST = v },
   SENSE_PERIOD: (v) => { SENSE_PERIOD = v },
+  PRED_RANGE: (v) => { PRED_RANGE = v },
+  PRED_BITE: (v) => { PRED_BITE = v },
+  PRED_DRAIN: (v) => { PRED_DRAIN = v },
+  PRED_EFF: (v) => { PRED_EFF = v },
+  PRED_DRIVE: (v) => { PRED_DRIVE = v },
+  RED_SIZE: (v) => { RED_SIZE = v },
 }
 
 for (const [key, set] of Object.entries(setters)) set(byKey.get(key).def)
