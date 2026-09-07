@@ -204,7 +204,24 @@ onBeforeUnmount(() => {
             <line x1="16" y1="18" x2="16" y2="22" />
           </svg>
         </button>
-        <button type="button" class="reset-btn" @click="onRestart">Restart</button>
+        <button type="button" class="reset-btn" @click="onRestart">
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            width="13"
+            height="13"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 12a9 9 0 1 1-3-6.7" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+          Restart
+        </button>
       </div>
     </div>
   </div>
@@ -327,6 +344,7 @@ onBeforeUnmount(() => {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
+  gap: 6px;
   color: #b7c2d4;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
