@@ -119,9 +119,12 @@ export function predation(sim, simDt) {
       latch.paralysed = true
       if (dist <= PRED_BITE) {
         drainEnergy(sim, latch, PRED_DRAIN * simDt)
-        if (latch.energy <= 0 && !latch.dying) {
-          latch.dying = true
-          latch.starveT = 0
+        if (latch.energy <= 0) {
+          latch.killedByPred = true
+          if (!latch.dying) {
+            latch.dying = true
+            latch.starveT = 0
+          }
         }
         gainEnergy(sim, red, PRED_DRAIN * simDt * PRED_EFF)
       }

@@ -7,6 +7,10 @@ import {
   START_RADIUS,
   ENERGY_MAX,
   METABOLISM,
+  MOVE_COST,
+  TURN_COST,
+  PRED_METABOLISM,
+  MAX_SPIN,
   RED_SIZE,
   MITO_TIME,
   MITO_HOLD,
@@ -23,22 +27,13 @@ import {
   TAIL_TRAIL_RATE,
   TAIL_ARC_MAX,
   TAIL_CARRIER_RATE,
-  TAIL_DRAG_K,
-  TAIL_BEND_K,
-  TAIL_CONTACT_D,
-  TAIL_CONTACT_K,
   TAIL_MOTOR_AMP,
-  TAIL_MOTOR_K,
-  TAIL_MOTOR_JOINTS,
   TAIL_OSC_FREQ,
   TAIL_WAVE,
   TAIL_RUDDER_GAIN,
   TAIL_ARC,
   TAIL_HINGE,
-  TAIL_DYN_SUB,
-  TAIL_LEN_K,
-  TAIL_LEN_DAMP,
-  TAIL_DAMP,
+  TAIL_POSE_RATE,
   TAIL_CHUNK_CELLS,
   BODY_CHUNK_CELLS,
 } from './constants'
@@ -364,13 +359,9 @@ function makeTailDirs(heading) {
 function makeTailChain(pos, heading, radius) {
   const n = TAIL_SEGMENTS + 1
   const pts = []
-  const vel = []
-  const vt = []
   const q = []
   for (let i = 0; i < n; i++) {
     pts.push(new THREE.Vector3())
-    vel.push(new THREE.Vector3())
-    vt.push(new THREE.Vector3())
     q.push(new THREE.Vector3())
   }
   const root = pos.clone().addScaledVector(heading, -radius)
@@ -380,7 +371,7 @@ function makeTailChain(pos, heading, radius) {
   for (let i = 1; i < n; i++) {
     pts[i].copy(pts[i - 1]).addScaledVector(back, TAIL_LINK).setLength(SURFACE)
   }
-  return { pts, vel, vt, q }
+  return { pts, q }
 }
 
 const sizeF = (breed) => (breed === BREED_RED ? RED_SIZE : 1)
@@ -411,8 +402,6 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     tailDirs: makeTailDirs(heading),
     tailCarrier: heading.clone().negate().normalize(),
     tailPts: chain.pts,
-    tailVel: chain.vel,
-    tailVT: chain.vt,
     tailQ: chain.q,
     tailLag: 0,
     tailBend: 0,
@@ -434,8 +423,10 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     splitting: false,
     dead: false,
     dying: false,
+    killedByPred: false,
     starveT: 0,
     sideHidden: false,
+    sideHiddenPrev: false,
     tailGrow: 1,
     fade: 1,
     rest: 0,
@@ -488,6 +479,7 @@ export function gainEnergy(sim, cell, amount) {
   if (d.dying) {
     d.dying = false
     d.starveT = 0
+    d.killedByPred = false
     d.tailGrow = 1
     setBodyOpacity(sim, d, 1)
   }
@@ -498,9 +490,20 @@ export function drainEnergy(sim, d, amount) {
 }
 
 export function updateEnergy(sim, d, dt) {
-  if (METABOLISM <= 0) return
+  if (METABOLISM <= 0 && MOVE_COST <= 0 && TURN_COST <= 0 && PRED_METABOLISM <= 0) return
   if (d.mito || d.splitting || d.split) return
-  if (d.energy > 0) drainEnergy(sim, d, METABOLISM * dt)
+  if (d.energy > 0) {
+    // Locomotion costs: swimming scales with drive (thrust), turning with the
+    // heading rate normalised by MAX_SPIN, so effort drains energy on top of
+    // the passive metabolism.
+    const spin = MAX_SPIN > 0 ? Math.min(Math.abs(d.headingRate) / MAX_SPIN, 1) : 0
+    // A predator with no prey latched burns PRED_METABOLISM on top, so reds
+    // starve quickly when there is nothing to hunt.
+    const pred = d.breed === BREED_RED && !d.target ? PRED_METABOLISM : 0
+    const cost =
+      METABOLISM + pred + MOVE_COST * Math.max(d.drive || 0, 0) + TURN_COST * spin
+    drainEnergy(sim, d, cost * dt)
+  }
   if (d.energy <= 0 && !d.dying) {
     d.dying = true
     d.starveT = 0
@@ -628,12 +631,49 @@ export function placeTail(sim, d) {
   tailMesh.instanceMatrix.needsUpdate = true
 }
 
+export function updateTailBend(sim, d, dt) {
+  if (d.drive > 0.02 || Math.abs(d.headingRate) > 0.05) d.tailPhase += dt * TAIL_OSC_FREQ
+  const kTrail = 1 - Math.exp(-TAIL_TRAIL_RATE * dt)
+  const lagMax = TAIL_ARC_MAX / TAIL_RUDDER_GAIN
+  d.tailLag = THREE.MathUtils.clamp(
+    d.tailLag + ((d.steer || 0) + d.headingRate) * dt - kTrail * d.tailLag,
+    -lagMax,
+    lagMax,
+  )
+  d.tailBend = THREE.MathUtils.clamp(
+    TAIL_RUDDER_GAIN * d.tailLag,
+    -TAIL_ARC_MAX,
+    TAIL_ARC_MAX,
+  )
+}
+
+export function warmTail(sim, d) {
+  const S = TAIL_SEGMENTS
+  const n0 = sim._v1.copy(d.pos).normalize()
+  const behind = sim._v3.copy(d.heading).negate()
+  behind.addScaledVector(n0, -behind.dot(n0))
+  if (behind.lengthSq() < 1e-8) behind.copy(d.tailCarrier)
+  else behind.normalize()
+  const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
+  d.tailCarrier.copy(behind)
+  const root = sim._v2.copy(d.pos).addScaledVector(d.heading, -(d.radius - d.width * TAIL_HINGE))
+  root.setLength(SURFACE)
+  d.tailPts[0].copy(root)
+  for (let i = 1; i <= S; i++) {
+    const prev = sim._v4.copy(d.tailPts[i - 1]).addScaledVector(behind, pitch)
+    d.tailPts[i].copy(prev.setLength(SURFACE))
+  }
+  for (let i = 0; i < S; i++) {
+    d.tailDirs[i].copy(d.tailPts[i + 1]).sub(d.tailPts[i])
+    if (d.tailDirs[i].lengthSq() < 1e-12) d.tailDirs[i].copy(behind)
+    else d.tailDirs[i].normalize()
+  }
+}
+
 export function updateTailState(sim, d, dt) {
   const S = TAIL_SEGMENTS
   const dirs = d.tailDirs
   const pts = d.tailPts
-  const vels = d.tailVel
-  const acc = d.tailVT
   const q = d.tailQ
 
   const n0 = sim._v1.copy(d.pos).normalize()
@@ -659,37 +699,17 @@ export function updateTailState(sim, d, dt) {
 
   const ramp = S > 1 ? 1 / (S - 1) : 0
 
-  const turning = Math.abs(d.headingRate) > 0.05
-  if (d.drive > 0.02 || turning) d.tailPhase += dt * TAIL_OSC_FREQ
-
-  const kTrail = 1 - Math.exp(-TAIL_TRAIL_RATE * dt)
-  // tail lag: the tail arcs toward the steering command (chemotaxis) and any
-  // body rotation (collisions), relaxing slowly. This trailing arc drives the
-  // body's heading rate, so rotation is visibly produced by the tail.
-  const lagMax = TAIL_ARC_MAX / TAIL_RUDDER_GAIN
-  d.tailLag = THREE.MathUtils.clamp(
-    d.tailLag + ((d.steer || 0) + d.headingRate) * dt - kTrail * d.tailLag,
-    -lagMax,
-    lagMax,
-  )
-  const bend = THREE.MathUtils.clamp(
-    TAIL_RUDDER_GAIN * d.tailLag,
-    -TAIL_ARC_MAX,
-    TAIL_ARC_MAX,
-  )
-  d.tailBend = bend
+  const bend = d.tailBend
 
   const side = sim._v5.crossVectors(n0, carrier)
   const root = sim._v2
     .copy(d.pos)
-    .addScaledVector(d.heading, -(d.radius - WIDTH * TAIL_HINGE))
+    .addScaledVector(d.heading, -(d.radius - d.width * TAIL_HINGE))
   root.setLength(SURFACE)
-  pts[0].copy(root)
 
   // --- guide targets q[j] ---------------------------------------------------
   // A gently curved spine (trailing arc) from the root, swept about the drag
-  // axis by the head motor. Joints chase it: stiff at the motor paddle, weak
-  // (drag) elsewhere.
+  // axis by the head motor. The rendered pose eases toward q at TAIL_POSE_RATE.
   // Whip amplitude is driven by drive (forward swimming) OR by the steering
   // bend during a turn, so the tail visibly sweeps a couple of times while
   // turning even if the cell is coasting (drive ~ 0).
@@ -715,141 +735,12 @@ export function updateTailState(sim, d, dt) {
     }
   }
 
-  // --- damped spring-chain integration on the sphere -----------------------
-  // Forces are gathered into per-joint accelerations first, then integrated, so
-  // pair forces (beam, contact) act symmetrically:
-  //   - guide springs: stiff at the motor paddle, weak drag elsewhere
-  //   - length springs to neighbours (keep spacing = pitch)
-  //   - (A) local beam: straighten curvature -> rigidity for motion, and the
-  //     mechanism that stops the chain folding/collapsing
-  //   - (C) self-avoidance: non-adjacent joints push apart only on contact
-  const h = dt / TAIL_DYN_SUB
-  const damp = Math.exp(-TAIL_DAMP * h)
-  const VMAX = 40
-  for (let s = 0; s < TAIL_DYN_SUB; s++) {
-    // 1. accumulate accelerations: guide + length springs + local beam
-    for (let j = 1; j <= S; j++) {
-      const pj = pts[j]
-      const nj = sim._v1.copy(pj).normalize()
-      const stiff = j <= TAIL_MOTOR_JOINTS ? TAIL_MOTOR_K : TAIL_DRAG_K
-      let ax = stiff * (q[j].x - pj.x)
-      let ay = stiff * (q[j].y - pj.y)
-      let az = stiff * (q[j].z - pj.z)
-      for (let off = -1; off <= 1; off += 2) {
-        const k = j + off
-        if (k < 0 || k > S) continue
-        const pk = pts[k]
-        let dx = pk.x - pj.x
-        let dy = pk.y - pj.y
-        let dz = pk.z - pj.z
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-9
-        const proj = dx * nj.x + dy * nj.y + dz * nj.z
-        let ux = dx - proj * nj.x
-        let uy = dy - proj * nj.y
-        let uz = dz - proj * nj.z
-        const ul = Math.sqrt(ux * ux + uy * uy + uz * uz)
-        if (ul < 1e-9) continue
-        ux /= ul
-        uy /= ul
-        uz /= ul
-        const stretch = TAIL_LEN_K * (dist - pitch)
-        ax += stretch * ux
-        ay += stretch * uy
-        az += stretch * uz
-        const vk = vels[k]
-        const rel =
-          (vk.x - vels[j].x) * ux +
-          (vk.y - vels[j].y) * uy +
-          (vk.z - vels[j].z) * uz
-        const fv = TAIL_LEN_DAMP * rel
-        ax += fv * ux
-        ay += fv * uy
-        az += fv * uz
-      }
-      // (A) local beam: restoring acceleration along the discrete second
-      // difference straightens any curvature in the chain
-      if (j < S) {
-        const pl = pts[j - 1]
-        const pr = pts[j + 1]
-        ax += TAIL_BEND_K * (pl.x + pr.x - 2 * pj.x)
-        ay += TAIL_BEND_K * (pl.y + pr.y - 2 * pj.y)
-        az += TAIL_BEND_K * (pl.z + pr.z - 2 * pj.z)
-      }
-      const rad = ax * nj.x + ay * nj.y + az * nj.z
-      const ac = acc[j]
-      ac.x = ax - rad * nj.x
-      ac.y = ay - rad * nj.y
-      ac.z = az - rad * nj.z
-    }
-    // 2. (C) self-avoidance: push non-adjacent joints apart only on contact
-    for (let i = 0; i < S; i++) {
-      const pi = pts[i]
-      const ni = sim._v1.copy(pi).normalize()
-      for (let k = i + 2; k <= S; k++) {
-        const pk = pts[k]
-        const dx = pk.x - pi.x
-        const dy = pk.y - pi.y
-        const dz = pk.z - pi.z
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-        const need = TAIL_CONTACT_D - dist
-        if (need <= 0) continue
-        const f = TAIL_CONTACT_K * need
-        const projI = dx * ni.x + dy * ni.y + dz * ni.z
-        const ux = dx - projI * ni.x
-        const uy = dy - projI * ni.y
-        const uz = dz - projI * ni.z
-        const ul = Math.sqrt(ux * ux + uy * uy + uz * uz)
-        if (ul > 1e-9) {
-          const sc = f / ul
-          if (i > 0) {
-            acc[i].x -= ux * sc
-            acc[i].y -= uy * sc
-            acc[i].z -= uz * sc
-          }
-        }
-        const nk = sim._v1.copy(pk).normalize()
-        const projK = -(dx * nk.x + dy * nk.y + dz * nk.z)
-        const wx = -dx - projK * nk.x
-        const wy = -dy - projK * nk.y
-        const wz = -dz - projK * nk.z
-        const wl = Math.sqrt(wx * wx + wy * wy + wz * wz)
-        if (wl > 1e-9) {
-          const sc = f / wl
-          acc[k].x += wx * sc
-          acc[k].y += wy * sc
-          acc[k].z += wz * sc
-        }
-      }
-    }
-    // 3. integrate accelerations into velocities/positions (tangent, clamped)
-    for (let j = 1; j <= S; j++) {
-      const nj = sim._v1.copy(pts[j]).normalize()
-      const ac = acc[j]
-      let vx = (vels[j].x + ac.x * h) * damp
-      let vy = (vels[j].y + ac.y * h) * damp
-      let vz = (vels[j].z + ac.z * h) * damp
-      const rad = vx * nj.x + vy * nj.y + vz * nj.z
-      vx -= rad * nj.x
-      vy -= rad * nj.y
-      vz -= rad * nj.z
-      const vl = Math.sqrt(vx * vx + vy * vy + vz * vz)
-      if (vl > VMAX) {
-        const sc = VMAX / vl
-        vx *= sc
-        vy *= sc
-        vz *= sc
-      }
-      vels[j].x = vx
-      vels[j].y = vy
-      vels[j].z = vz
-      pts[j].x += vx * h
-      pts[j].y += vy * h
-      pts[j].z += vz * h
-      pts[j].setLength(SURFACE)
-    }
+  const kPose = 1 - Math.exp(-TAIL_POSE_RATE * dt)
+  pts[0].copy(root)
+  for (let j = 1; j <= S; j++) {
+    pts[j].lerp(q[j], kPose)
+    pts[j].setLength(SURFACE)
   }
-
-  // store segment tangents for the instanced rendering
   for (let i = 0; i < S; i++) {
     dirs[i].copy(pts[i + 1]).sub(pts[i])
     if (dirs[i].lengthSq() < 1e-12) dirs[i].copy(behind)
@@ -893,6 +784,9 @@ export function updateMito(sim, d, simDt) {
 
   if (m.t >= m.dur) {
     finalizeMito(d, m)
+    // One parent becomes two daughters = one net birth for the rate estimate.
+    if (d.breed === BREED_BLUE) sim.events.preyBirths++
+    else sim.events.predBirths++
   }
 }
 

@@ -35,7 +35,9 @@ import {
   mitose,
   clearTail,
   placeTail,
+  warmTail,
   updateTailState,
+  updateTailBend,
   updateMito,
   updateEnergy,
   updateStarvation,
@@ -74,6 +76,13 @@ export class Simulation {
     this.freeTailIndices = []
     this.respawning = []
     this.senseAccum = 0
+    this.events = {
+      preyBirths: 0,
+      predBirths: 0,
+      preyStarved: 0,
+      predStarved: 0,
+      predKills: 0,
+    }
 
     this._v1 = new THREE.Vector3()
     this._v2 = new THREE.Vector3()
@@ -143,6 +152,13 @@ export class Simulation {
     this.nextTailIndex = 0
     this.freeTailIndices = []
     this.senseAccum = 0
+    this.events = {
+      preyBirths: 0,
+      predBirths: 0,
+      preyStarved: 0,
+      predStarved: 0,
+      predKills: 0,
+    }
     this.foodMesh = null
     initBodyPools(this)
     this.buildWorld()
@@ -519,22 +535,40 @@ export class Simulation {
     for (const cell of this.cells) updateEnergy(this, cell, dt)
     for (const cell of this.cells) updateStarvation(this, cell, dt)
     for (let i = this.cells.length - 1; i >= 0; i--) {
-      if (this.cells[i].dead) {
-        this.removeCell(this.cells[i])
+      const d = this.cells[i]
+      if (d.dead) {
+        // Mito parents are replaced by their daughters, not a real death.
+        if (!d.mitoParent) {
+          if (d.killedByPred) this.events.predKills++
+          else if (d.breed === 0) this.events.preyStarved++
+          else this.events.predStarved++
+        }
+        this.removeCell(d)
         this.cells.splice(i, 1)
       }
     }
     this.perf.end('split')
 
-    // tail physics always runs so toggling visibility doesn't snap the tail
+    // The tail's bend is a physical control (it steers the body via TAIL_TURN),
+    // so it always advances with the sim. The pose itself is derived for the
+    // render path only, and only for cells that are actually drawn.
     this.perf.begin('tail')
-    for (const cell of this.cells) updateTailState(this, cell, dt)
+    for (const cell of this.cells) updateTailBend(this, cell, dt)
     this.perf.end('tail')
   }
 
-  renderTails() {
+  renderTails(dt = 1 / 60) {
     if (this.tailsHidden) return
-    for (const cell of this.cells) placeTail(this, cell)
+    for (const cell of this.cells) {
+      if (cell.sideHidden) {
+        placeTail(this, cell)
+      } else {
+        if (cell.sideHiddenPrev) warmTail(this, cell)
+        updateTailState(this, cell, dt)
+        placeTail(this, cell)
+      }
+      cell.sideHiddenPrev = cell.sideHidden
+    }
   }
 
   step(simDt) {
@@ -545,8 +579,8 @@ export class Simulation {
     }
   }
 
-  render(tailScale) {
-    renderView(this, tailScale)
+  render(tailScale, dt) {
+    renderView(this, tailScale, dt)
   }
 
   frame(simDt, tailScale) {
