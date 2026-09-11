@@ -76,6 +76,7 @@ export class Simulation {
     this.freeTailIndices = []
     this.respawning = []
     this.senseAccum = 0
+    this.tailSimTime = 0
     this.events = {
       preyBirths: 0,
       predBirths: 0,
@@ -152,6 +153,7 @@ export class Simulation {
     this.nextTailIndex = 0
     this.freeTailIndices = []
     this.senseAccum = 0
+    this.tailSimTime = 0
     this.events = {
       preyBirths: 0,
       predBirths: 0,
@@ -558,13 +560,17 @@ export class Simulation {
   }
 
   renderTails(dt = 1 / 60) {
+    // Sim time since the previous render: the wave phase is advanced by this,
+    // so its frequency scales with sim speed (clamped inside updateTailState).
+    const waveDt = Math.max(0, this.simTime - this.tailSimTime)
+    this.tailSimTime = this.simTime
     if (this.tailsHidden) return
     for (const cell of this.cells) {
       if (cell.sideHidden) {
         placeTail(this, cell)
       } else {
         if (cell.sideHiddenPrev) warmTail(this, cell)
-        updateTailState(this, cell, dt)
+        updateTailState(this, cell, dt, waveDt)
         placeTail(this, cell)
       }
       cell.sideHiddenPrev = cell.sideHidden

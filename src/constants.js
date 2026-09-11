@@ -73,7 +73,8 @@ export const PARAM_DEFS = [
   { key: 'TURN_COST', group: 'survival', label: 'Turn cost', desc: 'Extra energy drained per second at full spin (scales with turning effort).', def: 0.001, min: 0, max: 0.1, step: 0.0005 },
   { key: 'STARVE_SLOW', group: 'survival', label: 'Starve slow frac', desc: 'Energy fraction below which a starving cell progressively slows (0 = no slowdown).', def: 0.3, min: 0, max: 1, step: 0.05 },
 
-  { key: 'TAIL_OSC_FREQ', group: 'tail', label: 'Osc freq', desc: 'Tail wave frequency (Hz) while driving or turning.', def: 4, min: 0, max: 20, step: 0.5 },
+  { key: 'TAIL_OSC_FREQ', group: 'tail', label: 'Osc freq', desc: 'Tail wave frequency (rad/s) while driving or turning; scales with sim speed.', def: 4, min: 0, max: 20, step: 0.5 },
+  { key: 'TAIL_WAVE_MAX_HZ', group: 'tail', label: 'Wave max Hz', desc: 'Cap on the visible wave frequency (Hz). Prevents high sim speeds from aliasing/flattening the oscillation.', def: 8, min: 1, max: 20, step: 1 },
   { key: 'TAIL_WAVE', group: 'tail', label: 'Wave shift', desc: 'Phase shift per joint (rad). Positive travels base->tip, negative travels tip->base.', def: 0.35, min: -2, max: 2, step: 0.05 },
   { key: 'TAIL_CARRIER_RATE', group: 'tail', label: 'Carrier rate', desc: 'Rate the tail axis re-aims toward the body heading.', def: 2, min: 0.1, max: 10, step: 0.1 },
   { key: 'TAIL_POSE_RATE', group: 'tail', label: 'Pose rate', desc: 'Lag rate (1/s) the rendered tail pose eases toward the analytic spine; higher = stiffer.', def: 20, min: 1, max: 80, step: 1 },
@@ -124,6 +125,7 @@ export let STARVE_SLOW
 export let TAIL_LINK_FILL
 export let TAIL_BODY
 export let TAIL_OSC_FREQ
+export let TAIL_WAVE_MAX_HZ
 export let TAIL_WAVE
 export let TAIL_CARRIER_RATE
 export let TAIL_POSE_RATE
@@ -179,6 +181,7 @@ const setters = {
   TAIL_LINK_FILL: (v) => { TAIL_LINK_FILL = v },
   TAIL_BODY: (v) => { TAIL_BODY = v },
   TAIL_OSC_FREQ: (v) => { TAIL_OSC_FREQ = v },
+  TAIL_WAVE_MAX_HZ: (v) => { TAIL_WAVE_MAX_HZ = v },
   TAIL_WAVE: (v) => { TAIL_WAVE = v },
   TAIL_CARRIER_RATE: (v) => { TAIL_CARRIER_RATE = v },
   TAIL_POSE_RATE: (v) => { TAIL_POSE_RATE = v },

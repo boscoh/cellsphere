@@ -29,6 +29,7 @@ import {
   TAIL_CARRIER_RATE,
   TAIL_MOTOR_AMP,
   TAIL_OSC_FREQ,
+  TAIL_WAVE_MAX_HZ,
   TAIL_WAVE,
   TAIL_RUDDER_GAIN,
   TAIL_ARC,
@@ -632,7 +633,6 @@ export function placeTail(sim, d) {
 }
 
 export function updateTailBend(sim, d, dt) {
-  if (d.drive > 0.02 || Math.abs(d.headingRate) > 0.05) d.tailPhase += dt * TAIL_OSC_FREQ
   const kTrail = 1 - Math.exp(-TAIL_TRAIL_RATE * dt)
   const lagMax = TAIL_ARC_MAX / TAIL_RUDDER_GAIN
   d.tailLag = THREE.MathUtils.clamp(
@@ -670,7 +670,7 @@ export function warmTail(sim, d) {
   }
 }
 
-export function updateTailState(sim, d, dt) {
+export function updateTailState(sim, d, dt, waveDt = dt) {
   const S = TAIL_SEGMENTS
   const dirs = d.tailDirs
   const pts = d.tailPts
@@ -685,6 +685,15 @@ export function updateTailState(sim, d, dt) {
   // Tail length is TAIL_BODY × body length (pitch scales with radius).
   const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   if (pitch < 1e-6 || dt <= 0) return
+
+  // The travelling wave is cosmetic. Advance its phase by the SIM time elapsed
+  // since the last render (`waveDt`), so frequency scales with sim speed, but
+  // clamp the per-frame step to a renderable maximum: past Nyquist the wave
+  // aliases, and the pose-lag filter flattens it, so it would stop oscillating.
+  if (d.drive > 0.02 || Math.abs(d.headingRate) > 0.05) {
+    const step = Math.min(waveDt * TAIL_OSC_FREQ, Math.PI * 2 * TAIL_WAVE_MAX_HZ * dt)
+    d.tailPhase += step
+  }
 
   // --- (B) drag axis with orientation memory -------------------------------
   // The tail streams along `carrier`, which slowly re-aims toward `behind`.
