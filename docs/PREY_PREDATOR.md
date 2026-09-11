@@ -69,11 +69,15 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
     on it — in `predation`, when `prey.energy <= 0`, set `prey.dying = true`
     (and `prey.starveT = 0`) if not already. `updateStarvation` then fades it
     out and marks `dead` → removed. That's the "eats the blue" resolution.
-  - `gainEnergy(red, PRED_DRAIN * dt * PRED_EFF)` (eff ≤ 1) so the predator
-    grows from the meal; `gainEnergy` caps at `ENERGY_MAX` and flips `split`,
-    so a well-fed red divides.
+  - `gainEnergy(red, PRED_DRAIN * dt * PRED_EFF)` so the predator grows from the
+    meal; `PRED_EFF` may exceed 1 so growth is decoupled from (and can outpace)
+    the drain. `gainEnergy` caps at `ENERGY_MAX` and flips `split`, so a
+    well-fed red divides.
 - A red drains at most `PRED_DRAIN` energy/s (rate-limited like `ABSORB_RATE`)
   and holds only one target.
+- A red with no latched target (`!d.target`) additionally burns
+  `PRED_METABOLISM` energy/s in `updateEnergy`, so unfed predators die quickly
+  instead of lingering on base metabolism alone.
 
 ### 4. Perception / escape tension (so prey aren't instantly wiped out)
 - Blue flee: the steering is now tail-driven via `d.steer` (chemotaxis → steer →
@@ -83,6 +87,11 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
 - Predators are slower: red drive is scaled by `PRED_DRIVE` (< 1), so they can't
   catch everything; blue escapability keeps predation a *maintained*
   population, not a wipe-out.
+- Predator gradient sensing: `predatorSense()` (in the sensing pass, next to
+  `concentration()`) sums proximity-weighted directions to every valid blue
+  within `PRED_SENSE` (weight `1 - dist/sense`) into `d.preyDir`/`d.preyAmt`, and
+  red steers up that gradient — so it tracks the shoal instead of a single
+  nearest target behind a hard cutoff.
 - `PRED_BITE`/`PRED_DRAIN` → a single unlatchable blue takes a few seconds to
   fully consume, giving an observed shrinking.
 
@@ -91,9 +100,11 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
 | key | label | def | role |
 |---|---|---|---|
 | `PRED_RANGE` | Predator range | 0.18 | latch distance (capsule gap) |
-| `PRED_BITE` | Predator bite | 0.10 | distance at which draining proceeds |
-| `PRED_DRAIN` | Predator drain | 0.05 | prey energy drained per second |
-| `PRED_EFF` | Predator yield | 0.6 | fraction of drained energy red gains |
+| `PRED_SENSE` | Predator sense | 1.5 | distance over which reds smell prey into a gradient |
+| `PRED_BITE` | Predator bite | 0.18 | distance at which draining proceeds |
+| `PRED_DRAIN` | Predator drain | 0.008 | prey energy drained per second |
+| `PRED_EFF` | Predator growth | 1 | energy red gains per second as a multiple of the drain (also division rate) |
+| `PRED_METABOLISM` | Predator metabolism | 0.005 | extra energy/s a red burns with no prey latched (starves quickly) |
 | `PRED_DRIVE` | Predator drive | 0.7 | red speed multiplier |
 
 `d.paralysed`/`d.target` have no param. Add `predator` to `GROUPS`; wire live
