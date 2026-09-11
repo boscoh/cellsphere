@@ -55,6 +55,7 @@ import {
   concentration,
 } from './food'
 import { predation, predatorSense, forEachNearbyCell } from './predator'
+import { initPops, spawnPop, disposePops } from './pops'
 import { createScene } from './sceneSetup'
 import { renderView } from './render'
 import { createPerf } from './perf'
@@ -128,6 +129,7 @@ export class Simulation {
     this.foodMesh.frustumCulled = false
     this.foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.scene.add(this.foodMesh)
+    initPops(this)
     generateClumps(this)
     for (let i = 0; i < FOOD_COUNT; i++) makeFood(this)
     buildFoodGrid(this)
@@ -162,6 +164,7 @@ export class Simulation {
       predKills: 0,
     }
     this.foodMesh = null
+    this.pops = []
     initBodyPools(this)
     this.buildWorld()
   }
@@ -544,6 +547,7 @@ export class Simulation {
           if (d.killedByPred) this.events.predKills++
           else if (d.breed === 0) this.events.preyStarved++
           else this.events.predStarved++
+          spawnPop(this, d)
         }
         this.removeCell(d)
         this.cells.splice(i, 1)
@@ -606,6 +610,7 @@ export class Simulation {
     disposeSharedMaterials()
     disposeBodyPools(this)
     disposeBodyGeos()
+    disposePops(this)
     if (this.sphereShell) {
       this.sphereShell.geometry.dispose()
       this.sphereShell.material.dispose()

@@ -200,38 +200,35 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="cell">
-      <span class="ctl">Tails</span>
-      <div class="row">
-        <input
-          type="checkbox"
-          class="checkbox"
-          :checked="tailsActive"
-          aria-label="Tails"
-          @change="tailsActive = $event.target.checked"
-        />
-      </div>
+      <button
+        type="button"
+        class="toggle-btn"
+        :class="{ active: tailsActive }"
+        :aria-pressed="String(tailsActive)"
+        title="Toggle tails"
+        @click="tailsActive = !tailsActive"
+      >
+        Tails
+      </button>
     </div>
     <div class="cell">
-      <span class="ctl">Restart</span>
-      <div class="row">
-        <button type="button" class="reset-btn" aria-label="Restart" title="Restart" @click="onRestart">
-          <svg
-            class="icon"
-            viewBox="0 0 24 24"
-            width="15"
-            height="15"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 12a9 9 0 1 1-3-6.7" />
-            <polyline points="21 3 21 9 15 9" />
-          </svg>
-        </button>
-      </div>
+      <button type="button" class="reset-btn" aria-label="Restart" title="Restart" @click="onRestart">
+        <svg
+          class="icon"
+          viewBox="0 0 24 24"
+          width="15"
+          height="15"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M21 12a9 9 0 1 1-3-6.7" />
+          <polyline points="21 3 21 9 15 9" />
+        </svg>
+      </button>
     </div>
   </div>
   <Tuner ref="tunerRef" @rebuild="onRestart" @default="onReset" @param="onParamChange" />
@@ -292,8 +289,8 @@ onBeforeUnmount(() => {
 
 .cell {
   display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
+  flex-direction: row;
+  align-items: center;
   gap: 6px;
 }
 
@@ -354,12 +351,8 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 
-.checkbox,
 .reset-btn {
   pointer-events: auto;
-}
-
-.reset-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -393,42 +386,36 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.checkbox {
-  position: relative;
-  appearance: none;
-  -webkit-appearance: none;
-  width: 28px;
+.toggle-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 24px;
-  margin: 0;
+  padding: 0 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7484;
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-.checkbox:hover {
+.toggle-btn:hover {
+  color: #eef2f8;
   background: rgba(255, 255, 255, 0.12);
 }
 
-.checkbox:checked {
-  background: #6fa8ff;
-  border-color: #6fa8ff;
+.toggle-btn.active {
+  color: #eef2f8;
+  background: rgba(111, 168, 255, 0.18);
+  border-color: rgba(111, 168, 255, 0.45);
 }
 
-.checkbox:checked::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 5px;
-  height: 10px;
-  border: solid #10141c;
-  border-width: 0 2px 2px 0;
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.checkbox:focus-visible {
+.toggle-btn:focus-visible {
   outline: 2px solid rgba(111, 168, 255, 0.7);
   outline-offset: 2px;
 }

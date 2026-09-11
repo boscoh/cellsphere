@@ -1,5 +1,6 @@
 import { CULL_COS } from './constants'
 import { renderBodies, warmTail } from './cells'
+import { updatePops } from './pops'
 import { cosFace } from './math'
 
 function updateVisibility(sim) {
@@ -35,6 +36,10 @@ export function renderView(sim, tailScale, dt) {
   sim.perf.begin('bodies')
   renderBodies(sim)
   sim.perf.end('bodies')
+
+  sim.perf.begin('pops')
+  updatePops(sim, dt)
+  sim.perf.end('pops')
 
   sim.perf.begin('tails')
   sim.renderTails(dt)
