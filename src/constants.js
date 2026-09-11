@@ -37,7 +37,7 @@ export const GROUPS = [
 
 export const PARAM_DEFS = [
   { key: 'PREY_COUNT', group: 'world', label: 'Prey (start)', desc: 'Number of prey (blue) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
-  { key: 'PRED_COUNT', group: 'world', label: 'Predators (start)', desc: 'Number of predator (red) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
+  { key: 'PRED_COUNT', group: 'world', label: 'Predators (start)', desc: 'Number of predator (red) cells spawned when the world is (re)built.', def: 15, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
   { key: 'SIM_SPEED', group: 'world', label: 'Default speed', desc: 'Simulation speed applied on startup and when Default/Reset is pressed (1x = real time).', def: 1, min: 1, max: 50, step: 1 },
   { key: 'FOOD_COUNT', group: 'world', label: 'Initial food', desc: 'Total food particles spawned when the world is (re)built.', def: 7000, min: 500, max: 40000, step: 500, rebuild: true },
   { key: 'FOOD_CLUMPS', group: 'world', label: 'Food clumps', desc: 'Number of food clusters (0 = none; rebuilds).', def: 12, min: 0, max: 80, step: 1, rebuild: true },
@@ -94,11 +94,13 @@ export const PARAM_DEFS = [
   { key: 'TAIL_BODY', group: 'tail', label: 'Tail length', desc: 'Total tail length as a multiple of body length.', def: 2, min: 1, max: 6, step: 0.25 },
 
   { key: 'PRED_RANGE', group: 'predator', label: 'Predator range', desc: 'Latch distance to a blue (capsule gap).', def: 0.18, min: 0, max: 1, step: 0.01 },
+  { key: 'PRED_SENSE', group: 'predator', label: 'Predator sense', desc: 'Distance over which a red smells prey; nearby blues are weighted into a gradient direction.', def: 1.5, min: 0, max: 5, step: 0.1 },
   { key: 'PRED_BITE', group: 'predator', label: 'Predator bite', desc: 'Distance at which draining proceeds (>= range so a latched prey is bitten).', def: 0.18, min: 0, max: 0.5, step: 0.01 },
-  { key: 'PRED_DRAIN', group: 'predator', label: 'Predator drain', desc: 'Blue energy drained per second.', def: 0.05, min: 0, max: 1, step: 0.005 },
-  { key: 'PRED_EFF', group: 'predator', label: 'Predator yield', desc: 'Fraction of drained energy red gains.', def: 0.6, min: 0, max: 1, step: 0.05 },
+  { key: 'PRED_DRAIN', group: 'predator', label: 'Predator drain', desc: 'Blue energy drained per second.', def: 0.008, min: 0, max: 1, step: 0.001 },
+  { key: 'PRED_EFF', group: 'predator', label: 'Predator growth', desc: 'Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide.', def: 1, min: 0, max: 4, step: 0.1 },
+  { key: 'PRED_METABOLISM', group: 'predator', label: 'Predator metabolism', desc: 'Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly.', def: 0.005, min: 0, max: 0.3, step: 0.001 },
   { key: 'PRED_DRIVE', group: 'predator', label: 'Predator drive', desc: 'Red speed multiplier (<1 = slower).', def: 0.7, min: 0, max: 1, step: 0.05 },
-  { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of blue (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.05 },
+  { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of blue (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.01 },
 ]
 
 export const PARAMS = PARAM_DEFS.map((p) => ({ ...p, value: p.def }))
@@ -156,9 +158,11 @@ export let PEAK_MIN
 export let SENSE_BOOST
 export let SENSE_PERIOD
 export let PRED_RANGE
+export let PRED_SENSE
 export let PRED_BITE
 export let PRED_DRAIN
 export let PRED_EFF
+export let PRED_METABOLISM
 export let PRED_DRIVE
 export let RED_SIZE
 
@@ -215,9 +219,11 @@ const setters = {
   SENSE_BOOST: (v) => { SENSE_BOOST = v },
   SENSE_PERIOD: (v) => { SENSE_PERIOD = v },
   PRED_RANGE: (v) => { PRED_RANGE = v },
+  PRED_SENSE: (v) => { PRED_SENSE = v },
   PRED_BITE: (v) => { PRED_BITE = v },
   PRED_DRAIN: (v) => { PRED_DRAIN = v },
   PRED_EFF: (v) => { PRED_EFF = v },
+  PRED_METABOLISM: (v) => { PRED_METABOLISM = v },
   PRED_DRIVE: (v) => { PRED_DRIVE = v },
   RED_SIZE: (v) => { RED_SIZE = v },
 }

@@ -8,7 +8,6 @@ import {
   SPRING,
   FIXED_DT,
   MAX_STEPS,
-  WIDTH,
   ENERGY_MAX,
   MITO_SLOW_FRAC,
   STARVE_SLOW,
@@ -53,7 +52,7 @@ import {
   eatAndRespawn,
   concentration,
 } from './food'
-import { predation, forEachNearbyCell } from './predator'
+import { predation, predatorSense, forEachNearbyCell } from './predator'
 import { createScene } from './sceneSetup'
 import { renderView } from './render'
 import { createPerf } from './perf'
@@ -188,8 +187,8 @@ export class Simulation {
   }
 
   capsuleDist(a, b) {
-    const ha = Math.max(a.radius - WIDTH, 0)
-    const hb = Math.max(b.radius - WIDTH, 0)
+    const ha = Math.max(a.radius - a.width, 0)
+    const hb = Math.max(b.radius - b.width, 0)
     const dhx = a.heading.x * ha
     const dhy = a.heading.y * ha
     const dhz = a.heading.z * ha
@@ -307,11 +306,11 @@ export class Simulation {
               const cdx = b.pos.x - a.pos.x
               const cdy = b.pos.y - a.pos.y
               const cdz = b.pos.z - a.pos.z
-              const bound = a.radius + b.radius + 2 * WIDTH
+              const bound = a.radius + b.radius + a.width + b.width
               if (cdx * cdx + cdy * cdy + cdz * cdz >= bound * bound) continue
 
               this.capsuleDist(a, b)
-              const contact = 2 * WIDTH
+              const contact = a.width + b.width
               if (this._col.dist >= contact) continue
               const overlap = contact - this._col.dist
               const nx = this._col.x
@@ -446,28 +445,13 @@ export class Simulation {
             }
           }
         }
-        // Red hunts: steer toward the nearest blue within a sight radius (a
-        // several-body-lengths chase range) so it can close the gap and latch;
-        // predation() then immobilises/drains when it gets within PRED_RANGE.
-        // Once it has a latched prey it stops steering and holds the latch.
+        // Red hunts by following the prey gradient built in predatorSense()
+        // (a weighted direction to nearby blues), so it tracks the shoal rather
+        // than only the single nearest blue inside a hard cutoff. Once it has a
+        // latched prey it stops steering and holds the latch.
         if (d.breed === 1 && !(d.target && d.target.paralysed)) {
-          const sight = PRED_RANGE * 4
-          const cx = Math.floor(d.pos.x / CELL_GRID)
-          const cy = Math.floor(d.pos.y / CELL_GRID)
-          const cz = Math.floor(d.pos.z / CELL_GRID)
-          let target = null
-          let best = sight
-          forEachNearbyCell(this, cx, cy, cz, 2, (index) => {
-            const other = this.cells[index]
-            if (other.breed !== 0 || other.dead || other.dying || other.splitting) return
-            this.capsuleDist(d, other)
-            if (this._col.dist < best) {
-              best = this._col.dist
-              target = other
-            }
-          })
-          if (target) {
-            const ang = this.signedAngleTo(d, target.pos)
+          if (d.preyAmt > 0) {
+            const ang = this.signedAngleTo(d, d.preyDir)
             if (ang != null) {
               d.steer = THREE.MathUtils.clamp(d.steer + ang * STEER_GAIN * 1.5, -1, 1)
             }
@@ -524,6 +508,7 @@ export class Simulation {
     this.senseAccum += dt
     if (this.senseAccum >= SENSE_PERIOD) {
       concentration(this)
+      predatorSense(this)
       this.senseAccum = 0
     }
     this.perf.end('sense')

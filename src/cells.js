@@ -53,25 +53,25 @@ const STARVE_FADE = 1.5
 const STARVE_AURA = STARVE_FADE * 1.6
 const bodyGeoCache = new Map()
 
-export function makeBodyGeo(length) {
-  const cylLen = Math.max(2 * (length - WIDTH), 0.001)
-  const geo = new THREE.CapsuleGeometry(WIDTH, cylLen, 6, 12)
+export function makeBodyGeo(length, width) {
+  const cylLen = Math.max(2 * (length - width), 0.001)
+  const geo = new THREE.CapsuleGeometry(width, cylLen, 6, 12)
   geo.rotateZ(Math.PI / 2)
   return geo
 }
 
-export function bodyGeoFor(length) {
-  const bucket = Math.round(length / GEO_STEP)
-  let geo = bodyGeoCache.get(bucket)
+export function bodyGeoFor(length, width) {
+  const key = bodyBucket(length, width)
+  let geo = bodyGeoCache.get(key)
   if (!geo) {
-    geo = makeBodyGeo(length)
-    bodyGeoCache.set(bucket, geo)
+    geo = makeBodyGeo(length, width)
+    bodyGeoCache.set(key, geo)
   }
   return geo
 }
 
-export function bodyBucket(length) {
-  return Math.round(length / GEO_STEP)
+export function bodyBucket(length, width) {
+  return Math.round(length / GEO_STEP) * 1000 + Math.round(width / 0.001)
 }
 
 export function disposeBodyGeos() {
@@ -95,11 +95,11 @@ function setCellColor(d) {
   d.color.copy(computeCellColor(d.breed))
 }
 
-function getPool(sim, length) {
-  const bucket = bodyBucket(length)
+function getPool(sim, length, width) {
+  const bucket = bodyBucket(length, width)
   let entry = sim.bodyPools.get(bucket)
   if (!entry) {
-    entry = { bucket, geo: bodyGeoFor(length), chunks: [] }
+    entry = { bucket, geo: bodyGeoFor(length, width), chunks: [] }
     sim.bodyPools.set(bucket, entry)
   }
   return entry
@@ -191,7 +191,7 @@ export function zeroMatrix(sim, mesh, slot) {
 }
 
 export function addBody(sim, d, length) {
-  const entry = getPool(sim, length)
+  const entry = getPool(sim, length, d.width)
   const { chunk, slot } = allocChunkSlot(sim, entry)
   chunk.live++
   chunk.mesh.count = chunk.count
@@ -246,7 +246,7 @@ export function removeBody(sim, d) {
 }
 
 export function rehomeBody(sim, d, newLength) {
-  const nb = bodyBucket(newLength)
+  const nb = bodyBucket(newLength, d.width)
   if (d.bodyBucket == null) {
     addBody(sim, d, newLength)
     return
@@ -400,6 +400,7 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
   const chain = makeTailChain(pos, heading, length)
   const d = {
     radius: length,
+    width: WIDTH * sizeF(breed),
     energy: energyFromRadius(length, breed),
     mass: length * length * 0.25,
     color: new THREE.Color(),
@@ -421,6 +422,8 @@ export function createCell(sim, index, pos, heading, length, breed = Math.random
     foodDir: new THREE.Vector3(),
     foodAmt: 0,
     foodPeak: 0,
+    preyDir: new THREE.Vector3(),
+    preyAmt: 0,
     headingRate: 0,
     drive: 0,
     paralysed: false,
@@ -467,7 +470,7 @@ function setSize(sim, d, energy, checkSplit) {
   d.mass = Math.max(r * r * 0.25, 0.05)
   if (r !== d.radius) {
     d.radius = r
-    const nb = bodyBucket(r)
+    const nb = bodyBucket(r, d.width)
     if (nb !== d.bodyBucket) {
       setCellColor(d)
       rehomeBody(sim, d, r)
@@ -604,7 +607,7 @@ export function placeTail(sim, d) {
   const ts = sim.tailScale
   const a = sim._v1
     .copy(d.pos)
-    .addScaledVector(d.heading, -(d.radius - WIDTH * TAIL_HINGE))
+    .addScaledVector(d.heading, -(d.radius - d.width * TAIL_HINGE))
   a.setLength(SURFACE)
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
     const b = sim._v2.copy(a).addScaledVector(dirs[i], pitch)

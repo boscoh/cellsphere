@@ -2,7 +2,6 @@ import * as THREE from 'three'
 import {
   SURFACE,
   GRID,
-  WIDTH,
   SENSE_BOOST,
   ENERGY_MAX,
   ENERGY_PER_FOOD,
@@ -144,8 +143,8 @@ function overlapsAnyCell(sim, pos, r) {
   for (const cell of sim.cells) {
     const d = cell
     if (d.dead) continue
-    const halfLen = Math.max(d.radius - WIDTH, 0)
-    if (foodDist(sim, d, { pos, r }, halfLen) < WIDTH + r) return true
+    const halfLen = Math.max(d.radius - d.width, 0)
+    if (foodDist(sim, d, { pos, r }, halfLen) < d.width + r) return true
   }
   return false
 }
@@ -192,7 +191,7 @@ export function eatAndRespawn(sim, simDt) {
     // a full particle's worth is banked. Food it touches beyond that is eaten
     // but not converted — effectively wasted.
     d.absorbAcc = Math.min(d.absorbAcc + ABSORB_RATE * simDt, ENERGY_PER_FOOD)
-    const halfLen = Math.max(d.radius - WIDTH, 0)
+    const halfLen = Math.max(d.radius - d.width, 0)
     const cx = Math.floor(d.pos.x / GRID)
     const cy = Math.floor(d.pos.y / GRID)
     const cz = Math.floor(d.pos.z / GRID)
@@ -201,7 +200,7 @@ export function eatAndRespawn(sim, simDt) {
     sim._eatContact.length = 0
     const contact = sim._eatContact
     forEachNearbyFood(sim, cx, cy, cz, 1, (foodIndex, food) => {
-      if (foodDist(sim, d, food, halfLen) < WIDTH + food.r) contact.push(foodIndex)
+      if (foodDist(sim, d, food, halfLen) < d.width + food.r) contact.push(foodIndex)
     })
     for (let c = 0; c < contact.length; c++) {
       const foodIndex = contact[c]
@@ -234,8 +233,8 @@ export function concentration(sim) {
     let fx = 0
     let fy = 0
     let fz = 0
-    const halfLen = Math.max(d.radius - WIDTH, 0)
-    const sense = WIDTH + SENSE_BOOST
+    const halfLen = Math.max(d.radius - d.width, 0)
+    const sense = d.width + SENSE_BOOST
     const cx = Math.floor(d.pos.x / GRID)
     const cy = Math.floor(d.pos.y / GRID)
     const cz = Math.floor(d.pos.z / GRID)
