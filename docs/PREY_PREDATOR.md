@@ -10,6 +10,26 @@
 > `dying` at energy 0, `gainEnergy` + `PRED_EFF`). `sim.js`: `buildCellGrid()` is rebuilt
 > fresh at the top of `advance` (fixes the stale-index crash); red slows to `drive=0`
 > while feeding so the latch holds; `PRED_BITE` = `PRED_RANGE` so a latched prey is bitten.
+>
+> **Balance pass (2026-09, cell-v9d):** the original defaults starved reds out
+> (`PRED_METABOLISM 0.005` + `METABOLISM` vs `PRED_DRAIN 0.008`, and `PRED_DRIVE 0.7`
+> made reds slower than fleeing blues). A 180s headless run went 15 reds → 1 with 0
+> predator births. New defaults `PRED_DRAIN 0.012`, `PRED_METABOLISM 0.001`,
+> `PRED_DRIVE 0.9` (no change to `PRED_EFF`) give, over 600s across 3 seeds:
+> blue 50→213/236/256, red 15→73/66/53 (min 7–11 during the early dip), 48–68 predator
+> births, 110–140 kills, no NaN. A clump of prey still doesn't raise the *rate* — a red
+> drains one latched target at `PRED_DRAIN` — but faster drain + better survival makes
+> feeding worth it. Higher `PRED_EFF`/`PRED_DRIVE` overhunts blue long-term.
+>
+> **Coupling pass (2026-09, cell-dmd):** long runs still ended in boom-bust
+> extinction because intake saturates at one target per red (total kill rate
+> scales with predator count). Added **ratio-dependent predation** (`PRED_RATIO`,
+> Arditi–Ginzburg: per-capita attack falls as predators outnumber prey) and
+> lowered the default food (`FOOD_COUNT 7000 → 3000`) to give prey a carrying
+> capacity. Together these produce a sustained bounded cycle over 3600s
+> (blue 20–200, red 7–113, red lagging blue, no extinction/NaN). The earlier
+> artificial global refuge counter was rejected. Full write-up and all tested
+> stabilisers: `docs/PREDATOR_EXPLORATION.md`.
 
 
 ## Goal
@@ -102,10 +122,11 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
 | `PRED_RANGE` | Predator range | 0.18 | latch distance (capsule gap) |
 | `PRED_SENSE` | Predator sense | 1.5 | distance over which reds smell prey into a gradient |
 | `PRED_BITE` | Predator bite | 0.18 | distance at which draining proceeds |
-| `PRED_DRAIN` | Predator drain | 0.008 | prey energy drained per second |
+| `PRED_DRAIN` | Predator drain | 0.012 | prey energy drained per second |
 | `PRED_EFF` | Predator growth | 1 | energy red gains per second as a multiple of the drain (also division rate) |
-| `PRED_METABOLISM` | Predator metabolism | 0.005 | extra energy/s a red burns with no prey latched (starves quickly) |
-| `PRED_DRIVE` | Predator drive | 0.7 | red speed multiplier |
+| `PRED_METABOLISM` | Predator metabolism | 0.001 | extra energy/s a red burns with no prey latched (starves quickly) |
+| `PRED_DRIVE` | Predator drive | 0.9 | red speed multiplier |
+| `PRED_RATIO` | Ratio half-saturation | 1 | prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off |
 
 `d.paralysed`/`d.target` have no param. Add `predator` to `GROUPS`; wire live
 bindings + setters via the existing `export let` / `setters` pattern.

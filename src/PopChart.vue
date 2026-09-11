@@ -7,17 +7,11 @@ const props = defineProps({
 })
 
 const canvasRef = ref(null)
-const mode = ref('phase')
+const expanded = ref(true)
 const blueColor = '#' + computeCellColor(0).getHexString()
 const redColor = '#' + computeCellColor(1).getHexString()
 const axisColor = 'rgba(255, 255, 255, 0.12)'
 const labelColor = '#6b7484'
-const rateSeries = [
-  { key: 'alpha', label: 'α', color: '#6fd08c' },
-  { key: 'beta', label: 'β', color: '#ff9a5c' },
-  { key: 'gamma', label: 'γ', color: '#ff6f8c' },
-  { key: 'delta', label: 'δ', color: '#f2d35e' },
-]
 
 let ro
 
@@ -38,24 +32,6 @@ function maxOf(samples, key) {
   let m = 1
   for (let i = 0; i < samples.length; i++) if (samples[i][key] > m) m = samples[i][key]
   return m
-}
-
-function maxAbsOf(samples, key) {
-  let m = 1e-9
-  for (let i = 0; i < samples.length; i++) {
-    const a = Math.abs(samples[i][key])
-    if (a > m) m = a
-  }
-  return m
-}
-
-function fmtRate(v) {
-  if (!isFinite(v)) return '—'
-  const a = Math.abs(v)
-  if (a === 0) return '0'
-  if (a >= 0.01) return v.toFixed(3)
-  if (a >= 0.0001) return v.toFixed(4)
-  return v.toExponential(1)
 }
 
 function fmtTime(t) {
@@ -138,106 +114,6 @@ function drawTime(ctx, pad, w, h, samples) {
   }
 }
 
-function drawPhase(ctx, pad, w, h, samples) {
-  const maxB = maxOf(samples, 'blue')
-  const maxR = maxOf(samples, 'red')
-  const max = Math.max(maxB, maxR)
-  const pw = w - pad.l - pad.r
-  const ph = h - pad.t - pad.b
-  const X = (b) => pad.l + (b / max) * pw
-  const Y = (r) => pad.t + ph - (r / max) * ph
-
-  ctx.strokeStyle = axisColor
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(pad.l, h - pad.b)
-  ctx.lineTo(w - pad.r, h - pad.b)
-  ctx.stroke()
-  ctx.beginPath()
-  ctx.moveTo(pad.l, pad.t)
-  ctx.lineTo(pad.l, h - pad.b)
-  ctx.stroke()
-  drawYLabel(ctx, pad, h, 'pred')
-  drawAxisMax(ctx, pad.l - 3, pad.t, String(max), 'right', 'top')
-  drawAxisMax(ctx, w - pad.r, h - 3, String(max), 'right', 'bottom')
-  ctx.fillStyle = labelColor
-  ctx.font = '9px system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'bottom'
-  ctx.fillText('prey →', pad.l + 1, h - 3)
-
-  const n = samples.length
-  for (let i = 1; i < n; i++) {
-    const a = samples[i - 1]
-    const b = samples[i]
-    const alpha = 0.25 + 0.75 * (i / n)
-    ctx.strokeStyle = `rgba(111, 168, 255, ${alpha})`
-    ctx.beginPath()
-    ctx.moveTo(X(a.blue), Y(a.red))
-    ctx.lineTo(X(b.blue), Y(b.red))
-    ctx.stroke()
-  }
-
-  const last = samples[n - 1]
-  ctx.fillStyle = blueColor
-  ctx.beginPath()
-  ctx.arc(X(last.blue), Y(last.red), 2.5, 0, Math.PI * 2)
-  ctx.fill()
-}
-
-function drawRates(ctx, pad, w, h, samples) {
-  const top = pad.t + 12
-  const pw = w - pad.l - pad.r
-  const ph = h - top - pad.b
-  const mid = top + ph / 2
-  const t0 = samples[0].t
-  const t1 = samples[samples.length - 1].t
-  const X = (t) => pad.l + ((t - t0) / (t1 - t0 || 1)) * pw
-  // Each coefficient is scaled to its own peak so their shapes are comparable
-  // on one plot; the numeric legend carries the true magnitudes.
-  const maxes = {}
-  for (const s of rateSeries) maxes[s.key] = maxAbsOf(samples, s.key)
-
-  ctx.strokeStyle = axisColor
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(pad.l, mid)
-  ctx.lineTo(w - pad.r, mid)
-  ctx.stroke()
-  ctx.beginPath()
-  ctx.moveTo(pad.l, top)
-  ctx.lineTo(pad.l, h - pad.b)
-  ctx.stroke()
-
-  drawYLabel(ctx, pad, h, 'rate')
-  drawAxisMax(ctx, pad.l - 3, pad.t, '1', 'right', 'top')
-  drawAxisMax(ctx, w - pad.r, h - 3, fmtTime(t1), 'right', 'bottom')
-
-  for (const s of rateSeries) {
-    const m = maxes[s.key]
-    ctx.strokeStyle = s.color
-    ctx.lineWidth = 1.3
-    ctx.beginPath()
-    for (let i = 0; i < samples.length; i++) {
-      const x = X(samples[i].t)
-      const y = mid - (samples[i][s.key] / m) * (ph / 2)
-      if (i === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    }
-    ctx.stroke()
-  }
-
-  const last = samples[samples.length - 1]
-  ctx.font = '9px system-ui, sans-serif'
-  ctx.textBaseline = 'top'
-  ctx.textAlign = 'left'
-  const colW = pw / rateSeries.length
-  rateSeries.forEach((s, i) => {
-    ctx.fillStyle = s.color
-    ctx.fillText(`${s.label} ${fmtRate(last[s.key])}`, pad.l + 2 + i * colW, pad.t)
-  })
-}
-
 function draw() {
   const canvas = canvasRef.value
   if (!canvas) return
@@ -246,9 +122,7 @@ function draw() {
   const samples = props.samples
   if (samples.length < 2) return
   const pad = { l: 30, r: 10, t: 12, b: 16 }
-  if (mode.value === 'rates') drawRates(ctx, pad, w, h, samples)
-  else if (mode.value === 'time') drawTime(ctx, pad, w, h, samples)
-  else drawPhase(ctx, pad, w, h, samples)
+  drawTime(ctx, pad, w, h, samples)
 }
 
 watch(
@@ -256,7 +130,6 @@ watch(
   () => draw(),
   { flush: 'post' },
 )
-watch(mode, () => draw(), { flush: 'post' })
 
 onMounted(() => {
   ro = new ResizeObserver(() => draw())
@@ -272,44 +145,36 @@ onBeforeUnmount(() => {
 <template>
   <div class="pop-panel">
     <div class="pop-head">
+      <button
+        type="button"
+        class="expand-btn"
+        :class="{ collapsed: !expanded }"
+        :aria-expanded="String(expanded)"
+        :title="expanded ? 'Collapse graph' : 'Expand graph'"
+        @click="expanded = !expanded"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
       <span class="ctl">Graph</span>
-      <div class="tabs">
-        <button
-          type="button"
-          class="tab"
-          :class="{ active: mode === 'phase' }"
-          @click="mode = 'phase'"
-        >
-          Phase
-        </button>
-        <button
-          type="button"
-          class="tab"
-          :class="{ active: mode === 'time' }"
-          @click="mode = 'time'"
-        >
-          Time
-        </button>
-        <button
-          type="button"
-          class="tab"
-          :class="{ active: mode === 'rates' }"
-          @click="mode = 'rates'"
-        >
-          Rates
-        </button>
-      </div>
     </div>
-    <canvas ref="canvasRef" class="pop-canvas"></canvas>
+    <canvas v-show="expanded" ref="canvasRef" class="pop-canvas"></canvas>
   </div>
 </template>
 
 <style scoped>
 .pop-panel {
-  position: fixed;
-  left: 24px;
-  bottom: 18px;
-  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -321,13 +186,42 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(10px);
   font-family: system-ui, sans-serif;
   user-select: none;
+  pointer-events: auto;
 }
 
 .pop-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  color: #9aa6ba;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.expand-btn:hover {
+  color: #eef2f8;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.expand-btn svg {
+  transition: transform 0.15s ease;
+}
+
+.expand-btn.collapsed svg {
+  transform: rotate(180deg);
 }
 
 .ctl {
@@ -337,36 +231,9 @@ onBeforeUnmount(() => {
   color: #6b7484;
 }
 
-.tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.tab {
-  padding: 2px 7px;
-  font-size: 10px;
-  color: #9aa6ba;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.tab:hover {
-  color: #eef2f8;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.tab.active {
-  color: #eef2f8;
-  background: rgba(111, 168, 255, 0.18);
-  border-color: rgba(111, 168, 255, 0.45);
-}
-
 .pop-canvas {
   display: block;
-  width: 210px;
+  width: 250px;
   height: 130px;
 }
 </style>

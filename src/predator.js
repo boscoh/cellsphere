@@ -4,6 +4,7 @@ import {
   PRED_BITE,
   PRED_DRAIN,
   PRED_EFF,
+  PRED_RATIO,
   CELL_GRID,
 } from './constants'
 import { cellIndex } from './math'
@@ -78,9 +79,33 @@ export function predatorSense(sim) {
 export function predation(sim, simDt) {
   for (const cell of sim.cells) cell.paralysed = false
 
+  // Ratio-dependent predation (Arditi-Ginzburg): the per-capita attack falls
+  // as predators come to outnumber prey, so a shrinking prey population gets a
+  // refuge and the two populations can cycle instead of collapsing. Counts are
+  // computed once per frame.
+  let ratioAttack = 1
+  if (PRED_RATIO > 0) {
+    let preyCount = 0
+    let predCount = 0
+    for (const cell of sim.cells) {
+      if (validPrey(cell)) preyCount++
+      else if (validPredator(cell)) predCount++
+    }
+    if (predCount > 0) {
+      const ratio = preyCount / predCount
+      ratioAttack = ratio / (ratio + PRED_RATIO)
+    }
+  }
+
   for (const cell of sim.cells) {
     const red = cell
     if (!validPredator(red)) {
+      red.target = null
+      continue
+    }
+
+    // Ratio-dependent refuge: too few prey per predator -> do not hunt.
+    if (PRED_RATIO > 0 && ratioAttack < 0.5) {
       red.target = null
       continue
     }
@@ -118,7 +143,8 @@ export function predation(sim, simDt) {
     if (dist <= PRED_RANGE) {
       latch.paralysed = true
       if (dist <= PRED_BITE) {
-        drainEnergy(sim, latch, PRED_DRAIN * simDt)
+        const rate = PRED_DRAIN * simDt * ratioAttack
+        drainEnergy(sim, latch, rate)
         if (latch.energy <= 0) {
           latch.killedByPred = true
           if (!latch.dying) {
@@ -126,7 +152,7 @@ export function predation(sim, simDt) {
             latch.starveT = 0
           }
         }
-        gainEnergy(sim, red, PRED_DRAIN * simDt * PRED_EFF)
+        gainEnergy(sim, red, rate * PRED_EFF)
       }
     }
   }

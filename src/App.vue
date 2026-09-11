@@ -9,8 +9,6 @@ import PopChart from './PopChart.vue'
 const POP_SAMPLES = 1200
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
-const cyclesOpen = ref(true)
-const tunerOpen = ref(false)
 const tunerRef = ref(null)
 const simRate = ref(SIM_SPEED)
 const fps = ref(0)
@@ -48,7 +46,7 @@ let fpsTime = 0
 let prevSample = null
 const handleResize = () => sim.onResize()
 const onKey = (e) => {
-  if (e.key === 'Escape') tunerOpen.value = false
+  if (e.key === 'Escape') tunerRef.value?.collapse()
 }
 
 function onReset() {
@@ -214,54 +212,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="cell">
-      <span class="ctl">Graph</span>
+      <span class="ctl">Restart</span>
       <div class="row">
-        <input
-          type="checkbox"
-          class="checkbox"
-          :checked="cyclesOpen"
-          aria-label="Population cycles"
-          @change="cyclesOpen = $event.target.checked"
-        />
-      </div>
-    </div>
-    <span class="sep"></span>
-    <div class="cell">
-      <span class="ctl">Tuner</span>
-      <div class="row">
-        <button
-          type="button"
-          id="tune-toggle"
-          class="tune-btn"
-          :class="{ active: tunerOpen }"
-          :aria-expanded="String(tunerOpen)"
-          aria-controls="tuner-panel"
-          aria-label="Open or close the parameter tuner"
-          :title="tunerOpen ? 'Close parameter tuner' : 'Open parameter tuner'"
-          @click="tunerOpen = !tunerOpen"
-        >
-          <svg
-            class="icon"
-            viewBox="0 0 24 24"
-            width="15"
-            height="15"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            aria-hidden="true"
-          >
-            <line x1="21" y1="4" x2="14" y2="4" />
-            <line x1="10" y1="4" x2="3" y2="4" />
-            <line x1="14" y1="2" x2="14" y2="6" />
-            <line x1="21" y1="12" x2="12" y2="12" />
-            <line x1="8" y1="12" x2="3" y2="12" />
-            <line x1="12" y1="10" x2="12" y2="14" />
-            <line x1="21" y1="20" x2="16" y2="20" />
-            <line x1="12" y1="20" x2="3" y2="20" />
-            <line x1="16" y1="18" x2="16" y2="22" />
-          </svg>
-        </button>
         <button type="button" class="reset-btn" aria-label="Restart" title="Restart" @click="onRestart">
           <svg
             class="icon"
@@ -282,16 +234,18 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
-  <Tuner v-if="tunerOpen" ref="tunerRef" @rebuild="sim.reset()" @default="onReset" @param="onParamChange" />
-  <PopChart v-if="cyclesOpen" :samples="popHistory" />
-  <div class="perf-panel">
-    <span class="ctl">Perf ms</span>
-    <div class="perfs">
-      <template v-for="(ms, name) in perf" :key="name">
-        <span class="perf-name">{{ PERF_LABELS[name] || name }}</span>
-        <span class="perf-val">{{ ms.toFixed(1) }}</span>
-      </template>
+  <Tuner ref="tunerRef" @rebuild="onRestart" @default="onReset" @param="onParamChange" />
+  <div class="bottom-left">
+    <div class="perf-panel">
+      <span class="ctl">Perf ms</span>
+      <div class="perfs">
+        <template v-for="(ms, name) in perf" :key="name">
+          <span class="perf-name">{{ PERF_LABELS[name] || name }}</span>
+          <span class="perf-val">{{ ms.toFixed(1) }}</span>
+        </template>
+      </div>
     </div>
+    <PopChart :samples="popHistory" />
   </div>
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
@@ -400,7 +354,6 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 
-.tune-btn,
 .checkbox,
 .reset-btn {
   pointer-events: auto;
@@ -480,42 +433,19 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 
-.tune-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 24px;
-  padding: 0;
-  color: #b7c2d4;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.tune-btn:hover {
-  color: #eef2f8;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.tune-btn.active {
-  color: #eef2f8;
-  background: rgba(111, 168, 255, 0.18);
-  border-color: rgba(111, 168, 255, 0.45);
-}
-
-.tune-btn:focus-visible {
-  outline: 2px solid rgba(111, 168, 255, 0.7);
-  outline-offset: 2px;
+.bottom-left {
+  position: fixed;
+  left: 24px;
+  bottom: 18px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
 }
 
 .perf-panel {
-  position: fixed;
-  right: 20px;
-  bottom: 18px;
-  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: flex-start;

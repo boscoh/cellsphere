@@ -4,31 +4,24 @@ import { GROUPS, PARAMS, setParam } from './constants'
 
 const emit = defineEmits(['rebuild', 'default', 'param'])
 
+const expanded = ref(false)
+
 function syncValues() {
   for (const r of rows) r.value = r.def
 }
 
-defineExpose({ syncValues })
+function collapse() {
+  expanded.value = false
+}
+
+defineExpose({ syncValues, collapse })
 
 const panelEl = ref(null)
-const panelPos = ref({ top: 128, left: 24 })
+const panelPos = ref({ top: 20, left: 24 })
 
 onMounted(() => {
-  const hud = document.querySelector('.hud')
-  if (hud) {
-    const r = hud.getBoundingClientRect()
-    const w = panelEl.value?.getBoundingClientRect().width ?? 300
-    const left = Math.max(8, r.right - w)
-    panelPos.value = { top: r.bottom + 8, left }
-    return
-  }
-  const btn = document.getElementById('tune-toggle')
-  if (btn) {
-    const b = btn.getBoundingClientRect()
-    const w = panelEl.value?.getBoundingClientRect().width ?? 300
-    const left = Math.max(8, b.right - w)
-    panelPos.value = { top: b.bottom + 8, left }
-  }
+  const w = panelEl.value?.getBoundingClientRect().width ?? 300
+  panelPos.value = { top: 20, left: Math.max(8, window.innerWidth - w - 20) }
 })
 
 const rows = reactive(
@@ -74,10 +67,53 @@ function fmt(v) {
 <template>
   <aside id="tuner-panel" ref="panelEl" class="panel" :style="{ top: panelPos.top + 'px', left: panelPos.left + 'px' }">
     <header class="head">
-      <span class="title">Parameter Tuner</span>
-      <button type="button" class="reset-btn" :title="'Reset all parameters to defaults'" @click="emit('default')">Default</button>
+      <button
+        type="button"
+        class="icon-btn"
+        :class="{ collapsed: !expanded }"
+        :aria-expanded="String(expanded)"
+        :title="expanded ? 'Collapse parameters' : 'Expand parameters'"
+        @click="expanded = !expanded"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      <span class="title">Parameters</span>
     </header>
-    <div class="body">
+    <div v-show="expanded" class="body">
+      <button
+        type="button"
+        class="secondary-btn"
+        title="Reset all parameters to defaults"
+        @click="emit('default')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 12a9 9 0 1 0 3-6.7" />
+          <polyline points="3 3 3 9 9 9" />
+        </svg>
+        Reset
+      </button>
       <section v-for="g in groups" :key="g.label" class="group">
         <h2 class="group-title">{{ g.label }}</h2>
         <div v-for="p in g.params" :key="p.key" class="param" :title="p.desc">
@@ -124,27 +160,64 @@ function fmt(v) {
 .head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 8px;
   padding: 10px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .head .title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #eef2f8;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+  color: #6b7484;
+  line-height: 1.2;
 }
 
-.reset-btn {
+.icon-btn {
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 22px;
   height: 22px;
+  padding: 0;
+  color: #b7c2d4;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-btn:hover {
+  color: #eef2f8;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid rgba(111, 168, 255, 0.7);
+  outline-offset: 2px;
+}
+
+.icon-btn svg {
+  transition: transform 0.15s ease;
+}
+
+.icon-btn.collapsed svg {
+  transform: rotate(180deg);
+}
+
+.secondary-btn {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   box-sizing: border-box;
-  padding: 0 10px;
+  height: 26px;
+  padding: 0 12px;
+  margin: 2px 0 4px;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -156,12 +229,12 @@ function fmt(v) {
   transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-.reset-btn:hover {
+.secondary-btn:hover {
   color: #eef2f8;
   background: rgba(255, 255, 255, 0.12);
 }
 
-.reset-btn:focus-visible {
+.secondary-btn:focus-visible {
   outline: 2px solid rgba(111, 168, 255, 0.7);
   outline-offset: 2px;
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { ArcballControls } from 'three/addons/controls/ArcballControls.js'
 import { SPHERE_RADIUS } from './constants'
 
 export function createScene(container) {
@@ -32,10 +32,19 @@ export function createScene(container) {
   renderer.setSize(window.innerWidth, window.innerHeight)
   container.appendChild(renderer.domElement)
 
-  const controls = new OrbitControls(camera, renderer.domElement)
-  controls.enableDamping = true
-  controls.dampingFactor = 0.06
+  // ArcballControls rotates by accumulating relative quaternion deltas (a
+  // trackball), so unlike a spherical orbit there is no pole singularity to
+  // lock at directly above/below the target. It takes the scene so its (hidden)
+  // gizmo can be tracked.
+  const controls = new ArcballControls(camera, renderer.domElement, scene)
   controls.target.set(0, PIVOT_Y, 0)
+  controls.setGizmosVisible(false)
+  controls.enableFocus = false
+  controls.minDistance = 7
+  controls.maxDistance = 28
+  // Re-aim at the pivot now that the target is set (the constructor aims at the
+  // origin), then seed the interaction state.
+  controls.setCamera(camera)
   controls.update()
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.55))
