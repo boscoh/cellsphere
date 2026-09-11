@@ -732,10 +732,12 @@ export function updateTailState(sim, d, dt, waveDt = dt) {
     q[j].copy(cur)
     if (j < S) {
       // Phase-shifted wave: the crest travels from the root to the tip (base ->
-      // tip). The trailing bend arc is optional (TAIL_ARC toggle) and adds the
-      // slow drag curve.
+      // tip). The spatial phase is normalised by the tail (j/S), so the
+      // wavelength is the tail length divided by TAIL_WAVE and scales with the
+      // tail regardless of TAIL_SEGMENTS. The trailing bend arc is optional
+      // (TAIL_ARC toggle) and adds the slow drag curve.
       const ang =
-        TAIL_MOTOR_AMP * whip * Math.sin(d.tailPhase - TAIL_WAVE * j) -
+        TAIL_MOTOR_AMP * whip * Math.sin(d.tailPhase - TAIL_WAVE * Math.PI * 2 * (j / S)) -
         TAIL_ARC * bend * j * ramp
       const cq = Math.cos(ang)
       const sq = Math.sin(ang)

@@ -75,7 +75,7 @@ export const PARAM_DEFS = [
 
   { key: 'TAIL_OSC_FREQ', group: 'tail', label: 'Osc freq', desc: 'Tail wave frequency (rad/s) while driving or turning; scales with sim speed.', def: 4, min: 0, max: 20, step: 0.5 },
   { key: 'TAIL_WAVE_MAX_HZ', group: 'tail', label: 'Wave max Hz', desc: 'Cap on the visible wave frequency (Hz). Prevents high sim speeds from aliasing/flattening the oscillation.', def: 8, min: 1, max: 20, step: 1 },
-  { key: 'TAIL_WAVE', group: 'tail', label: 'Wave shift', desc: 'Phase shift per joint (rad). Positive travels base->tip, negative travels tip->base.', def: 0.35, min: -2, max: 2, step: 0.05 },
+  { key: 'TAIL_WAVE', group: 'tail', label: 'Waves', desc: 'Number of wavelengths along the tail; the wavelength is the tail length divided by this, so it scales with the tail.', def: 0.5, min: 0.1, max: 4, step: 0.05 },
   { key: 'TAIL_CARRIER_RATE', group: 'tail', label: 'Carrier rate', desc: 'Rate the tail axis re-aims toward the body heading.', def: 2, min: 0.1, max: 10, step: 0.1 },
   { key: 'TAIL_POSE_RATE', group: 'tail', label: 'Pose rate', desc: 'Lag rate (1/s) the rendered tail pose eases toward the analytic spine; higher = stiffer.', def: 20, min: 1, max: 80, step: 1 },
   { key: 'TAIL_TRAIL_RATE', group: 'tail', label: 'Trail rate', desc: 'How fast tail-lag memory decays after turns.', def: 1, min: 0.1, max: 5, step: 0.1 },

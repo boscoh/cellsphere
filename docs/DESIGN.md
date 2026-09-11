@@ -101,7 +101,7 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   (`!sideHidden`) cells. There is no spring chain: an analytic guide spine `q[j]`
   is built from the root at the body rear (hinge tucked by `TAIL_HINGE`), each
   step being the carrier direction rotated by
-  `TAIL_MOTOR_AMP·whip·sin(tailPhase − TAIL_WAVE·j)` (traveling wave) minus
+  `TAIL_MOTOR_AMP·whip·sin(tailPhase − 2π·TAIL_WAVE·(j/S))` (traveling wave) minus
   `TAIL_ARC·bend·j·ramp` (trailing arc), where `whip = max(drive, |bend|·1.5)`.
   The rendered pose eases toward `q[j]` at `TAIL_POSE_RATE` (exponential lag);
   `TAIL_CARRIER_RATE` is the orientation-memory re-aim (drag). `placeTail`
@@ -131,7 +131,7 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 | `WIDTH` | 0.085 | base body width; per-cell `d.width = WIDTH · RED_SIZE` for reds, so reds scale in both length and thickness |
 | `TAIL_SEGMENTS` / `TAIL_LINK` / `TAIL_MOTOR_AMP` | 9 / 0.05 / 0.349 | plain constants: segments (=round(1.5·MAX_RADIUS/TAIL_LINK)) / link pitch / wave amplitude (40°) |
 | `TAIL_BODY` / `TAIL_LINK_FILL` / `TAIL_HINGE` | 2 / 0.95 / 0.5 | tail length (× body length) / drawn fraction of each pitch / hinge tuck into body |
-| `TAIL_OSC_FREQ` / `TAIL_WAVE` / `TAIL_CARRIER_RATE` / `TAIL_POSE_RATE` | 4 / 0.35 / 2 / 20 | wave freq (Hz) / phase shift per joint / carrier re-aim rate / pose lag rate |
+| `TAIL_OSC_FREQ` / `TAIL_WAVE` / `TAIL_CARRIER_RATE` / `TAIL_POSE_RATE` | 4 / 0.5 / 2 / 20 | wave freq (rad/s) / wavelengths along the tail / carrier re-aim rate / pose lag rate |
 | `TAIL_TRAIL_RATE` / `TAIL_ARC` / `TAIL_ARC_MAX` / `TAIL_RUDDER_GAIN` / `TAIL_TURN` | 1 / 1 / 2 / 1 / 2.5 | lag decay / arc toggle / arc cap (rad) / steer→arc gain / bend→heading-rate gain |
 | `THRUST` / `DRAG` | 12 / 22 | linear propulsion / damping |
 | `GRAZE_RATE` / `GRAZE_GAIN` | 0.01 / 6.0 | slowdown floor / gain |

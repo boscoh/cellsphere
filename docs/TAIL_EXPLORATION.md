@@ -53,8 +53,9 @@ runs before the tail pass.)
 
 - Builds the analytic guide spine `q[j]` from the root at the body rear
   (`TAIL_HINGE` tuck). Each step is the carrier direction rotated by
-  `TAIL_MOTOR_AMP·whip·sin(tailPhase − TAIL_WAVE·j) − TAIL_ARC·bend·j·ramp`
-  (traveling wave minus trailing arc), where
+  `TAIL_MOTOR_AMP·whip·sin(tailPhase − 2π·TAIL_WAVE·(j/S)) − TAIL_ARC·bend·j·ramp`
+  (traveling wave minus trailing arc; the wavelength is the tail length divided
+  by `TAIL_WAVE`, so it scales with the tail), where
   `whip = max(drive, |bend|·1.5)` (`cells.js:725`).
 - Eases the rendered pose toward `q[j]`: `pts[j].lerp(q[j], kPose)` with
   `kPose = 1 − exp(−TAIL_POSE_RATE·dt)` (`cells.js:747`).
@@ -145,7 +146,7 @@ Plain constants: `TAIL_SEGMENTS` (9 = `round(1.5·MAX_RADIUS/TAIL_LINK)`),
 |---|---|---|
 | `TAIL_OSC_FREQ` | 4 | wave angular frequency (rad/s); scales with sim speed |
 | `TAIL_WAVE_MAX_HZ` | 8 | cap on visible wave frequency (Hz) |
-| `TAIL_WAVE` | 0.35 | phase shift per joint (travel direction) |
+| `TAIL_WAVE` | 0.5 | wavelengths along the tail (wavelength = tail length / this) |
 | `TAIL_CARRIER_RATE` | 2 | rate the tail axis re-aims to behind-heading |
 | `TAIL_POSE_RATE` | 20 | pose lag rate toward the analytic spine |
 | `TAIL_TRAIL_RATE` | 1 | decay of the turn-lag memory |
