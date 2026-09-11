@@ -4,9 +4,12 @@ import { Simulation } from './sim'
 import { FIXED_DT, SIM_SPEED, resetParams, setParam } from './constants'
 import { computeCellColor } from './cells'
 import Tuner from './Tuner.vue'
+import PopChart from './PopChart.vue'
 
+const POP_SAMPLES = 1200
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
+const cyclesOpen = ref(true)
 const tunerOpen = ref(false)
 const tunerRef = ref(null)
 const simRate = ref(SIM_SPEED)
@@ -15,11 +18,26 @@ const bacteriaCount = ref(0)
 const blueCount = ref(0)
 const redCount = ref(0)
 const foodCount = ref(0)
+const popHistory = ref([])
 const perf = ref({})
 const MAX_SIM_RATE = 50
 const MAX_BACKLOG = MAX_SIM_RATE * FIXED_DT
 const dotBlue = '#' + computeCellColor(0).getHexString()
 const dotRed = '#' + computeCellColor(1).getHexString()
+const PERF_LABELS = {
+  grid: 'grid (spatial hash)',
+  cells: 'cells (move+steer)',
+  collide: 'collide',
+  eat: 'eat (food)',
+  pred: 'pred (predation)',
+  sense: 'sense (chemotaxis)',
+  split: 'split (mitosis)',
+  tail: 'tail (control)',
+  vis: 'vis (cull)',
+  bodies: 'bodies (render)',
+  tails: 'tails (render)',
+  draw: 'draw',
+}
 
 let sim
 let animationId
@@ -27,6 +45,7 @@ let lastTime = performance.now()
 let accumulator = 0
 let fpsCount = 0
 let fpsTime = 0
+let prevSample = null
 const handleResize = () => sim.onResize()
 const onKey = (e) => {
   if (e.key === 'Escape') tunerOpen.value = false
@@ -36,11 +55,41 @@ function onReset() {
   resetParams()
   tunerRef.value?.syncValues()
   simRate.value = SIM_SPEED
+  popHistory.value = []
+  prevSample = null
   sim.reset()
 }
 
 function onRestart() {
+  popHistory.value = []
+  prevSample = null
   sim.reset()
+}
+
+// Effective Lotka-Volterra coefficients over the last sampling window, from
+// cumulative sim event counters and mean populations:
+//   dN/dt = alpha*N - beta*N*P,  dP/dt = delta*N*P - gamma*P
+function estimateRates(sim, blue, red) {
+  const ev = sim.events
+  const out = { alpha: 0, beta: 0, gamma: 0, delta: 0 }
+  if (prevSample) {
+    const dt = sim.simTime - prevSample.t
+    const nBar = (blue + prevSample.blue) / 2
+    const pBar = (red + prevSample.red) / 2
+    const preyBirths = ev.preyBirths - prevSample.events.preyBirths
+    const predBirths = ev.predBirths - prevSample.events.predBirths
+    const preyStarved = ev.preyStarved - prevSample.events.preyStarved
+    const predStarved = ev.predStarved - prevSample.events.predStarved
+    const predKills = ev.predKills - prevSample.events.predKills
+    if (dt > 0 && nBar > 0) out.alpha = (preyBirths - preyStarved) / (nBar * dt)
+    if (dt > 0 && pBar > 0) out.gamma = predStarved / (pBar * dt)
+    if (dt > 0 && nBar > 0 && pBar > 0) {
+      out.beta = predKills / (nBar * pBar * dt)
+      out.delta = predBirths / (nBar * pBar * dt)
+    }
+  }
+  prevSample = { t: sim.simTime, blue, red, events: { ...ev } }
+  return out
 }
 
 function onParamChange(key, value) {
@@ -72,7 +121,7 @@ onMounted(() => {
       sim.step(accumulator)
       accumulator = 0
     }
-    sim.render(tailsActive.value ? 1 : 0.0001)
+    sim.render(tailsActive.value ? 1 : 0.0001, rawDt)
 
     fpsCount++
     fpsTime += rawDt
@@ -89,6 +138,9 @@ onMounted(() => {
       }
       blueCount.value = blue
       redCount.value = red
+      const rates = estimateRates(sim, blue, red)
+      popHistory.value.push({ t: sim.simTime, blue, red, ...rates })
+      if (popHistory.value.length > POP_SAMPLES) popHistory.value.shift()
       foodCount.value = 0
       for (const f of sim.foods) if (f.visible) foodCount.value++
       perf.value = {}
@@ -132,12 +184,6 @@ onBeforeUnmount(() => {
       <span class="ctl">Food</span>
       <div class="row"><span class="num">{{ foodCount }}</span></div>
     </div>
-    <div class="cell">
-      <span class="ctl">Perf ms</span>
-      <div class="perfs">
-        <span v-for="(ms, name) in perf" :key="name" class="perf">{{ name }} {{ ms.toFixed(1) }}</span>
-      </div>
-    </div>
     <span class="sep"></span>
     <div class="cell">
       <label class="ctl" for="speed">Speed</label>
@@ -164,6 +210,18 @@ onBeforeUnmount(() => {
           :checked="tailsActive"
           aria-label="Tails"
           @change="tailsActive = $event.target.checked"
+        />
+      </div>
+    </div>
+    <div class="cell">
+      <span class="ctl">Graph</span>
+      <div class="row">
+        <input
+          type="checkbox"
+          class="checkbox"
+          :checked="cyclesOpen"
+          aria-label="Population cycles"
+          @change="cyclesOpen = $event.target.checked"
         />
       </div>
     </div>
@@ -225,6 +283,16 @@ onBeforeUnmount(() => {
     </div>
   </div>
   <Tuner v-if="tunerOpen" ref="tunerRef" @rebuild="sim.reset()" @default="onReset" @param="onParamChange" />
+  <PopChart v-if="cyclesOpen" :samples="popHistory" />
+  <div class="perf-panel">
+    <span class="ctl">Perf ms</span>
+    <div class="perfs">
+      <template v-for="(ms, name) in perf" :key="name">
+        <span class="perf-name">{{ PERF_LABELS[name] || name }}</span>
+        <span class="perf-val">{{ ms.toFixed(1) }}</span>
+      </template>
+    </div>
+  </div>
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
 
@@ -293,15 +361,20 @@ onBeforeUnmount(() => {
 .perfs {
   display: grid;
   grid-template-columns: auto auto;
-  gap: 0 10px;
+  gap: 1px 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.perf {
+.perf-name,
+.perf-val {
   font-size: 10px;
   color: #9aa6ba;
   line-height: 1.4;
   white-space: nowrap;
+}
+
+.perf-val {
+  text-align: right;
 }
 
 .row {
@@ -371,18 +444,18 @@ onBeforeUnmount(() => {
   position: relative;
   appearance: none;
   -webkit-appearance: none;
-  width: 24px;
+  width: 28px;
   height: 24px;
   margin: 0;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .checkbox:hover {
-  background: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .checkbox:checked {
@@ -393,13 +466,13 @@ onBeforeUnmount(() => {
 .checkbox:checked::after {
   content: '';
   position: absolute;
-  left: 8px;
-  top: 5px;
+  left: 50%;
+  top: 50%;
   width: 5px;
-  height: 11px;
+  height: 10px;
   border: solid #10141c;
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .checkbox:focus-visible {
@@ -436,6 +509,26 @@ onBeforeUnmount(() => {
 .tune-btn:focus-visible {
   outline: 2px solid rgba(111, 168, 255, 0.7);
   outline-offset: 2px;
+}
+
+.perf-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 18px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(10, 12, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  font-family: system-ui, sans-serif;
+  user-select: none;
 }
 
 .hint {
