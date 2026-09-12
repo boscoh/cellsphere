@@ -21,6 +21,7 @@ export const ENERGY_MAX = 1.0
 export const TAIL_LINK = 0.05
 export const TAIL_SEGMENTS = Math.round((1.5 * MAX_RADIUS) / TAIL_LINK)
 export const TAIL_MOTOR_AMP = Math.PI * (40 / 360)
+export const TAIL_DYN_SUB = 4
 export const CULL_COS = 0
 
 export const GROUPS = [
@@ -73,11 +74,18 @@ export const PARAM_DEFS = [
   { key: 'TURN_COST', group: 'survival', label: 'Turn cost', desc: 'Extra energy drained per second at full spin (scales with turning effort).', def: 0.001, min: 0, max: 0.1, step: 0.0005 },
   { key: 'STARVE_SLOW', group: 'survival', label: 'Starve slow frac', desc: 'Energy fraction below which a starving cell progressively slows (0 = no slowdown).', def: 0.3, min: 0, max: 1, step: 0.05 },
 
-  { key: 'TAIL_OSC_FREQ', group: 'tail', label: 'Osc freq', desc: 'Tail wave frequency (rad/s) while driving or turning; scales with sim speed.', def: 4, min: 0, max: 20, step: 0.5 },
-  { key: 'TAIL_WAVE_MAX_HZ', group: 'tail', label: 'Wave max Hz', desc: 'Cap on the visible wave frequency (Hz). Prevents high sim speeds from aliasing/flattening the oscillation.', def: 8, min: 1, max: 20, step: 1 },
-  { key: 'TAIL_WAVE', group: 'tail', label: 'Waves', desc: 'Number of wavelengths along the tail; the wavelength is the tail length divided by this, so it scales with the tail.', def: 0.5, min: 0.1, max: 4, step: 0.05 },
+  { key: 'TAIL_OSC_FREQ', group: 'tail', label: 'Osc freq', desc: 'Tail wave frequency (Hz) while driving or turning.', def: 4, min: 0, max: 20, step: 0.5 },
+  { key: 'TAIL_WAVE', group: 'tail', label: 'Wave shift', desc: 'Phase shift per joint (rad). Positive travels base->tip, negative travels tip->base.', def: 0.35, min: -2, max: 2, step: 0.05 },
   { key: 'TAIL_CARRIER_RATE', group: 'tail', label: 'Carrier rate', desc: 'Rate the tail axis re-aims toward the body heading.', def: 2, min: 0.1, max: 10, step: 0.1 },
-  { key: 'TAIL_POSE_RATE', group: 'tail', label: 'Pose rate', desc: 'Lag rate (1/s) the rendered tail pose eases toward the analytic spine; higher = stiffer.', def: 20, min: 1, max: 80, step: 1 },
+  { key: 'TAIL_DRAG_K', group: 'tail', label: 'Drag K', desc: 'Guide-spring stiffness along the tail (higher = the whole chain follows the wave, less drag lag).', def: 25, min: 0, max: 60, step: 1 },
+  { key: 'TAIL_MOTOR_K', group: 'tail', label: 'Motor K', desc: 'Guide stiffness at the root motor joints (whip).', def: 2200, min: 0, max: 8000, step: 100 },
+  { key: 'TAIL_MOTOR_JOINTS', group: 'tail', label: 'Motor joints', desc: 'Number of root joints driven by the head motor.', def: 3, min: 0, max: 10, step: 1 },
+  { key: 'TAIL_BEND_K', group: 'tail', label: 'Bend K', desc: 'Local beam stiffness resisting tail curvature.', def: 900, min: 0, max: 5000, step: 50 },
+  { key: 'TAIL_LEN_K', group: 'tail', label: 'Length K', desc: 'Spring keeping adjacent joints at the link spacing.', def: 4000, min: 0, max: 12000, step: 200 },
+  { key: 'TAIL_LEN_DAMP', group: 'tail', label: 'Length damp', desc: 'Damping of the tail length-spring oscillation.', def: 90, min: 0, max: 500, step: 10 },
+  { key: 'TAIL_DAMP', group: 'tail', label: 'Joint damp', desc: 'Velocity damping applied to tail joints per substep.', def: 1.2, min: 0.1, max: 5, step: 0.05 },
+  { key: 'TAIL_CONTACT_D', group: 'tail', label: 'Contact dist', desc: 'Contact distance for tail self-avoidance.', def: 0.04, min: 0, max: 0.2, step: 0.005 },
+  { key: 'TAIL_CONTACT_K', group: 'tail', label: 'Contact K', desc: 'Self-avoidance push strength on contact.', def: 400, min: 0, max: 3000, step: 50 },
   { key: 'TAIL_TRAIL_RATE', group: 'tail', label: 'Trail rate', desc: 'How fast tail-lag memory decays after turns.', def: 1, min: 0.1, max: 5, step: 0.1 },
   { key: 'TAIL_ARC_MAX', group: 'tail', label: 'Arc max', desc: 'Hard cap (rad) on the trailing arc bend.', def: 2, min: 0, max: 4, step: 0.1 },
   { key: 'TAIL_RUDDER_GAIN', group: 'tail', label: 'Rudder gain', desc: 'Maps accumulated heading turn into the arc bend.', def: 1, min: 0, max: 4, step: 0.1 },
@@ -126,10 +134,17 @@ export let STARVE_SLOW
 export let TAIL_LINK_FILL
 export let TAIL_BODY
 export let TAIL_OSC_FREQ
-export let TAIL_WAVE_MAX_HZ
 export let TAIL_WAVE
 export let TAIL_CARRIER_RATE
-export let TAIL_POSE_RATE
+export let TAIL_DRAG_K
+export let TAIL_MOTOR_K
+export let TAIL_MOTOR_JOINTS
+export let TAIL_BEND_K
+export let TAIL_LEN_K
+export let TAIL_LEN_DAMP
+export let TAIL_DAMP
+export let TAIL_CONTACT_D
+export let TAIL_CONTACT_K
 export let TAIL_TRAIL_RATE
 export let TAIL_ARC_MAX
 export let TAIL_RUDDER_GAIN
@@ -183,10 +198,17 @@ const setters = {
   TAIL_LINK_FILL: (v) => { TAIL_LINK_FILL = v },
   TAIL_BODY: (v) => { TAIL_BODY = v },
   TAIL_OSC_FREQ: (v) => { TAIL_OSC_FREQ = v },
-  TAIL_WAVE_MAX_HZ: (v) => { TAIL_WAVE_MAX_HZ = v },
   TAIL_WAVE: (v) => { TAIL_WAVE = v },
   TAIL_CARRIER_RATE: (v) => { TAIL_CARRIER_RATE = v },
-  TAIL_POSE_RATE: (v) => { TAIL_POSE_RATE = v },
+  TAIL_DRAG_K: (v) => { TAIL_DRAG_K = v },
+  TAIL_MOTOR_K: (v) => { TAIL_MOTOR_K = v },
+  TAIL_MOTOR_JOINTS: (v) => { TAIL_MOTOR_JOINTS = v },
+  TAIL_BEND_K: (v) => { TAIL_BEND_K = v },
+  TAIL_LEN_K: (v) => { TAIL_LEN_K = v },
+  TAIL_LEN_DAMP: (v) => { TAIL_LEN_DAMP = v },
+  TAIL_DAMP: (v) => { TAIL_DAMP = v },
+  TAIL_CONTACT_D: (v) => { TAIL_CONTACT_D = v },
+  TAIL_CONTACT_K: (v) => { TAIL_CONTACT_K = v },
   TAIL_TRAIL_RATE: (v) => { TAIL_TRAIL_RATE = v },
   TAIL_ARC_MAX: (v) => { TAIL_ARC_MAX = v },
   TAIL_RUDDER_GAIN: (v) => { TAIL_RUDDER_GAIN = v },

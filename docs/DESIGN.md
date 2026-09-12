@@ -28,8 +28,9 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 - **Data-object cells**: a bacterium is a plain data object (no `THREE.Group`):
   surface `pos`, tangent `vel`, tangent `heading`, `headingRate`, `quat`,
   `radius/mass/breed/color`, tail control (`tailPhase`, `tailLag`, `tailBend`,
-  `steer`) and pose (`tailCarrier`, `tailPts`, `tailQ`, `tailDirs`), growth and
-  mitosis state. Physics in `sim.js` reads/writes these directly.
+  `steer`) and the spring chain (`tailCarrier`, `tailPts`, `tailVel`, `tailVT`,
+  `tailQ`, `tailDirs`), growth and mitosis state. Physics in `sim.js`
+  reads/writes these directly.
 - **Bodies** render via **pooled `InstancedMesh`es** keyed by length bucket
   (`bodyGeoCache` + `bodyPools`): `addBody/removeBody/rehomeBody` manage a free
   list per bucket chunk; per-instance color + a custom `instanceOpacity`
@@ -37,13 +38,17 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   `renderBodies` composes each cell's matrix from `pos/quat`. Each bucket grows
   on demand in `BODY_CHUNK_CELLS` chunks rather than reserving `MAX_CELLS`
   up-front; a chunk is detached from the scene when it empties.
-- **Tails** render as **chunked `InstancedMesh`es** of capsule segments
-  (`TAIL_CHUNK_CELLS*TAIL_SEGMENTS` each); per-cell color set from
-  `createCell`/`setSize` (`setTailColor`), slots via `allocTailIndex` + free
-  list (a new chunk is grown lazily when the index high-water crosses a chunk
-  boundary). Tails hidden = skip `renderTails` (pose/placement) and hide the
-  chunk meshes (`tailsHidden`); the control scalar (`updateTailBend`) still runs
-  in `advance`, so steering is unaffected.
+- **Tails** render as **chunked `InstancedMesh`es** of capless-cylinder segments
+  (`TAIL_CHUNK_CELLS*TAIL_SEGMENTS` each, `MeshLambertMaterial`); per-cell color
+  set from `createCell`/`setSize` (`setTailColor`). Cell slots are packed
+  contiguously from `0..live-1` (`allocTailSlot`) and holes are closed by
+  swap-remove on death, so `mesh.count = live*TAIL_SEGMENTS` excludes every
+  unused instance (a chunk with no live cells draws nothing). `placeTail` writes
+  each segment matrix directly from its basis (no quaternion round-trip) and
+  uploads only the touched slots via `instanceMatrix.addUpdateRange`, batched to
+  one `needsUpdate` per chunk per frame. Tails hidden = skip `renderTails`
+  (placement) and hide the chunk meshes (`tailsHidden`); the chain
+  (`updateTailState`) still runs in `advance`, so steering is unaffected.
 - **Linear motion**: `drive = slow × (1 − coast) × fatigue`; thrust
   `THRUST*drive` along heading; high `DRAG` bleeds velocity. Three mostly-
   exclusive energy bands: near max (`coast`, above `MITO_SLOW_FRAC`) the cell
@@ -91,23 +96,24 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   releases the daughters (with a `MITO_REST` coast). Because metabolism keeps
   draining, a full cell that can't split (cap pressure) shrinks and resumes
   moving instead of parking at max and starving.
-- **Tail model (control/pose split)**: the tail is a physical CONTROL scalar
-  plus a purely visual POSE. `updateTailBend` (control) runs for every cell in
-  `sim.advance`: it advances `tailPhase` while driving/turning, integrates
-  `tailLag` from `steer + headingRate` (decaying at `TAIL_TRAIL_RATE`), and
-  derives `tailBend = clamp(TAIL_RUDDER_GAIN·tailLag, ±TAIL_ARC_MAX)`. `tailBend`
-  feeds the body as `headingRate += TAIL_TURN·tailBend`. The POSE is derived in
-  `updateTailState`, which now runs only in `sim.renderTails` for visible
-  (`!sideHidden`) cells. There is no spring chain: an analytic guide spine `q[j]`
-  is built from the root at the body rear (hinge tucked by `TAIL_HINGE`), each
-  step being the carrier direction rotated by
-  `TAIL_MOTOR_AMP·whip·sin(tailPhase − 2π·TAIL_WAVE·(j/S))` (traveling wave) minus
+- **Tail model (spring chain)**: the tail is a damped spring-mass chain
+  integrated every `sim.advance` for every cell. `updateTailState` first
+  advances `tailPhase` while driving/turning, integrates `tailLag` from
+  `steer + headingRate` (decaying at `TAIL_TRAIL_RATE`), and derives
+  `tailBend = clamp(TAIL_RUDDER_GAIN·tailLag, ±TAIL_ARC_MAX)`. `tailBend` feeds
+  the body as `headingRate += TAIL_TURN·tailBend` (the only physical coupling).
+  It then builds an analytic guide spine `q[j]` from the root at the body rear
+  (hinge tucked by `TAIL_HINGE`), each step being the carrier direction rotated
+  by `TAIL_MOTOR_AMP·whip·sin(tailPhase − TAIL_WAVE·j)` (traveling wave) minus
   `TAIL_ARC·bend·j·ramp` (trailing arc), where `whip = max(drive, |bend|·1.5)`.
-  The rendered pose eases toward `q[j]` at `TAIL_POSE_RATE` (exponential lag);
-  `TAIL_CARRIER_RATE` is the orientation-memory re-aim (drag). `placeTail`
-  projects every step back to `SURFACE` and draws `TAIL_LINK_FILL` of each
-  pitch. Tail length is `TAIL_BODY·2·radius` (scales with body size).
-  `warmTail` re-aims the POSE only (never `tailLag`/`tailBend`/`tailPhase`).
+  The chain `tailPts`/`tailVel` chases `q` over `TAIL_DYN_SUB` substeps with
+  guide springs (stiff at the root `TAIL_MOTOR_K`, weak drag `TAIL_DRAG_K`),
+  neighbour length springs (`TAIL_LEN_K`/`TAIL_LEN_DAMP`), local beam stiffness
+  (`TAIL_BEND_K`), and contact self-avoidance (`TAIL_CONTACT_D`/`K`); velocities
+  are damped (`TAIL_DAMP`) and positions projected to `SURFACE`. `placeTail`
+  draws `TAIL_LINK_FILL` of each pitch; tail length is `TAIL_BODY·2·radius`
+  (scales with body size). `warmTail` re-aims the chain and zeroes joint
+  velocities, never `tailLag`/`tailBend`/`tailPhase`.
 
 ## Current tuning constants (`src/constants.js`)
 
@@ -129,9 +135,11 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 | `MITO_SLOW_FRAC` / `MITO_REST` | 0.9 / 4 | decel into split (just before mitosis) / post-mitosis coast |
 | `STARVE_SLOW` | 0.3 | energy fraction below which a starving cell slows |
 | `WIDTH` | 0.085 | base body width; per-cell `d.width = WIDTH · RED_SIZE` for reds, so reds scale in both length and thickness |
-| `TAIL_SEGMENTS` / `TAIL_LINK` / `TAIL_MOTOR_AMP` | 9 / 0.05 / 0.349 | plain constants: segments (=round(1.5·MAX_RADIUS/TAIL_LINK)) / link pitch / wave amplitude (40°) |
+| `TAIL_SEGMENTS` / `TAIL_LINK` / `TAIL_MOTOR_AMP` / `TAIL_DYN_SUB` | 9 / 0.05 / 0.349 / 4 | plain constants: segments (=round(1.5·MAX_RADIUS/TAIL_LINK)) / link pitch / wave amplitude (40°) / chain substeps |
 | `TAIL_BODY` / `TAIL_LINK_FILL` / `TAIL_HINGE` | 2 / 0.95 / 0.5 | tail length (× body length) / drawn fraction of each pitch / hinge tuck into body |
-| `TAIL_OSC_FREQ` / `TAIL_WAVE` / `TAIL_CARRIER_RATE` / `TAIL_POSE_RATE` | 4 / 0.5 / 2 / 20 | wave freq (rad/s) / wavelengths along the tail / carrier re-aim rate / pose lag rate |
+| `TAIL_OSC_FREQ` / `TAIL_WAVE` / `TAIL_CARRIER_RATE` | 4 / 0.35 / 2 | wave freq (rad/s) / phase shift per joint (rad) / carrier re-aim rate |
+| `TAIL_DRAG_K` / `TAIL_MOTOR_K` / `TAIL_MOTOR_JOINTS` / `TAIL_BEND_K` | 25 / 2200 / 3 / 900 | guide stiffness along the tail / root motor stiffness / motor joints / beam stiffness |
+| `TAIL_LEN_K` / `TAIL_LEN_DAMP` / `TAIL_DAMP` / `TAIL_CONTACT_D` / `TAIL_CONTACT_K` | 4000 / 90 / 1.2 / 0.04 / 400 | link length spring / length damping / joint damping / self-avoidance distance / push |
 | `TAIL_TRAIL_RATE` / `TAIL_ARC` / `TAIL_ARC_MAX` / `TAIL_RUDDER_GAIN` / `TAIL_TURN` | 1 / 1 / 2 / 1 / 2.5 | lag decay / arc toggle / arc cap (rad) / steer→arc gain / bend→heading-rate gain |
 | `THRUST` / `DRAG` | 12 / 22 | linear propulsion / damping |
 | `GRAZE_RATE` / `GRAZE_GAIN` | 0.01 / 6.0 | slowdown floor / gain |
@@ -182,22 +190,26 @@ top-right, the population/rates chart bottom-left, drag hint bottom-center.
   parent's mesh/tail are dropped at fade end but the cell object stays as an
   **immovable collision proxy** (`mitoParent`, recentered on `m.startPos`) until
   the daughters separate — otherwise neighbours sail through the division.
-- **Tail slots** are monotonic + free-list (`allocTailIndex`); naive index reuse
-  collided with live cells' instances ("lost tails"). A daughter reuses the
-  parent's slot (`tailTransfer`), so `removeCell` must not free it.
-- **Tail ordering**: `updateTailBend` (control) runs as a pass after `updateMito`
-  in `advance()`, unconditionally, so `tailBend`→`headingRate` is preserved even
-  when tails are hidden. The pose (`updateTailState`) runs later in `renderTails`
-  for visible cells only, after the body pass has consumed the previous
-  substep's `tailBend`.
-- The **tails** toggle hides the mesh and skips pose/placement (`renderTails`),
-  but `updateTailBend` still runs in `advance` (steering is unaffected).
+- **Tail slots** are chunk-local and packed (`allocTailSlot`); a freed slot is
+  filled by moving the last live slot into it (`freeTailSlot`), keeping
+  `chunk.live` a contiguous high-water so `mesh.count` is exact. The front
+  daughter takes over the parent's slot (`tailTransfer`); the fading parent
+  drops its own `tailChunk`/`tailSlot` reference so the slot has a single owner,
+  and `releaseTail` must not free a transferred slot.
+- **Tail ordering**: `updateTailState` (chain + `tailBend`) runs as a pass after
+  `updateMito` in `advance()`, unconditionally, so `tailBend`→`headingRate` is
+  preserved even when tails are hidden. `renderTails` runs later and only places
+  segments, after the body pass has consumed the previous substep's `tailBend`.
+- The **tails** toggle hides the mesh and skips placement (`renderTails`), but
+  `updateTailState` still runs in `advance` (steering is unaffected).
 - Body-pool and tail capacities grow **on demand in fixed-size chunks**
   (`BODY_CHUNK_CELLS` / `TAIL_CHUNK_CELLS`), so buffers track the high-water
   mark of concurrent cells, not the `MAX_CELLS` ceiling. `MAX_CELLS` remains
-  only the logical tail-index ceiling. Empty body chunks are detached (not
-  drawn/uploaded) but kept for reuse. Reserved-but-unused slots are zero
-  matrices.
+  only the logical population ceiling. Empty body chunks are detached (not
+  drawn/uploaded) but kept for reuse. Empty tail chunks stay attached but set
+  `mesh.count = 0` and are skipped by `renderTails`/hidden in `renderView`; their
+  unused slots are zero matrices. A freed tail chunk is reused before a new one
+  is grown.
 
 ## Workflow
 
@@ -219,9 +231,10 @@ top-right, the population/rates chart bottom-left, drag hint bottom-center.
 
 - **Predator–prey** is implemented (red hunts/immobilises/eats blue; see
   `PREY_PREDATOR.md`).
-- **Tail** is now a control/pose split — visual-only apart from the `tailBend`
-  steering scalar (see `TAIL_EXPLORATION.md`).
+- **Tail** is a damped spring chain (restored) — visual-only apart from the
+  `tailBend` steering scalar (see `TAIL_EXPLORATION.md`).
 - Open follow-ups from the exploration docs: food-sensing scan-radius/efficiency
   (`FOOD_SENSING_EXPLORATION.md`), collision Tier-1 simplifications
-  (`COLLISION_EXPLORATION.md`), and a possible momentum-driven "C-start" whip
-  (`TAIL_EXPLORATION.md` §7.3). Open beads issue: `cell-fgh` (predator ambush).
+  (`COLLISION_EXPLORATION.md`), a vertex-shader tail (`TAIL_EXPLORATION.md`
+  §5.4), and a possible momentum-driven "C-start" whip (`TAIL_EXPLORATION.md`
+  §3). Open beads issue: `cell-fgh` (predator ambush).

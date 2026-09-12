@@ -33,11 +33,9 @@ import {
 import {
   makeCell,
   mitose,
-  clearTail,
+  releaseTail,
   placeTail,
-  warmTail,
   updateTailState,
-  updateTailBend,
   updateMito,
   updateEnergy,
   updateStarvation,
@@ -73,11 +71,9 @@ export class Simulation {
     this.simTime = 0
     this.tailScale = 1
     this.tailsHidden = false
-    this.nextTailIndex = 0
-    this.freeTailIndices = []
+    this._tailDirty = new Set()
     this.respawning = []
     this.senseAccum = 0
-    this.tailSimTime = 0
     this.events = {
       preyBirths: 0,
       predBirths: 0,
@@ -152,10 +148,7 @@ export class Simulation {
     this.simTime = 0
     this.tailScale = 1
     this.tailsHidden = false
-    this.nextTailIndex = 0
-    this.freeTailIndices = []
     this.senseAccum = 0
-    this.tailSimTime = 0
     this.events = {
       preyBirths: 0,
       predBirths: 0,
@@ -184,8 +177,7 @@ export class Simulation {
   removeCell(cell) {
     const d = cell
     removeBody(this, d)
-    clearTail(this, d)
-    if (!d.tailTransfer) this.freeTailIndices.push(d.index)
+    releaseTail(this, d)
   }
 
   signedAngleTo(d, target) {
@@ -555,30 +547,29 @@ export class Simulation {
     }
     this.perf.end('split')
 
-    // The tail's bend is a physical control (it steers the body via TAIL_TURN),
-    // so it always advances with the sim. The pose itself is derived for the
-    // render path only, and only for cells that are actually drawn.
+    // The tail is a physical control (it steers the body via TAIL_TURN), so it
+    // always advances with the sim, even while hidden, so toggling visibility
+    // doesn't snap the tail.
     this.perf.begin('tail')
-    for (const cell of this.cells) updateTailBend(this, cell, dt)
+    for (const cell of this.cells) updateTailState(this, cell, dt)
     this.perf.end('tail')
   }
 
-  renderTails(dt = 1 / 60) {
-    // Sim time since the previous render: the wave phase is advanced by this,
-    // so its frequency scales with sim speed (clamped inside updateTailState).
-    const waveDt = Math.max(0, this.simTime - this.tailSimTime)
-    this.tailSimTime = this.simTime
+  renderTails() {
+    const dirty = this._tailDirty
+    dirty.clear()
+    // Ranges only ever describe this frame's writes, so drop any left over from
+    // advance-time clears (or from a frame where tails were hidden).
+    for (const chunk of this.tailChunks) {
+      chunk.mesh.instanceMatrix.clearUpdateRanges()
+    }
     if (this.tailsHidden) return
     for (const cell of this.cells) {
-      if (cell.sideHidden) {
-        placeTail(this, cell)
-      } else {
-        if (cell.sideHiddenPrev) warmTail(this, cell)
-        updateTailState(this, cell, dt, waveDt)
-        placeTail(this, cell)
-      }
-      cell.sideHiddenPrev = cell.sideHidden
+      const chunk = placeTail(this, cell)
+      if (chunk) dirty.add(chunk)
     }
+    // One needsUpdate per touched chunk instead of per cell.
+    for (const chunk of dirty) chunk.mesh.instanceMatrix.needsUpdate = true
   }
 
   step(simDt) {

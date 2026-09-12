@@ -70,7 +70,7 @@ let code = 0
 try {
   const { Simulation } = await server.ssrLoadModule('/src/sim.js')
   const cells = await server.ssrLoadModule('/src/cells.js')
-  const { SURFACE, TAIL_OSC_FREQ, TAIL_WAVE_MAX_HZ } =
+  const { SURFACE, TAIL_OSC_FREQ } =
     await server.ssrLoadModule('/src/constants.js')
   // buildWorld and cell growth lazily create module-level geometry/tail pools,
   // each consuming PRNG draws. Run twice and discard so the cache has reached
@@ -167,9 +167,8 @@ try {
     )
   }
 
-  // The travelling wave advances by the SIM time since the last render, so its
-  // frequency scales with sim speed, but the per-frame step is capped so high
-  // sim speeds can't alias/flatten it. Control passes must never advance it.
+  // The chain advances its wave phase by dt * TAIL_OSC_FREQ per sim step while
+  // driving or turning, never when idle, and keeps every joint on the surface.
   const wave = (() => {
     const originalRandom = Math.random
     Math.random = mulberry32(SEED)
@@ -182,19 +181,22 @@ try {
       cell.drive = 1
       cell.headingRate = 0
       cell.tailPhase = 0
-      for (let i = 0; i < 10; i++) cells.updateTailBend(sim, cell, DT)
-      const afterControl = cell.tailPhase
-      cells.updateTailState(sim, cell, DT, DT)
-      const afterSlow = cell.tailPhase
-      cell.tailPhase = 0
-      cells.updateTailState(sim, cell, DT, 1.0)
-      const afterFast = cell.tailPhase
+      cells.updateTailState(sim, cell, DT)
+      const afterStep = cell.tailPhase
+      cell.drive = 0
+      cell.headingRate = 0
+      const idlePhase = cell.tailPhase
+      cells.updateTailState(sim, cell, DT)
+      const afterIdle = cell.tailPhase
+      const offSurface = cell.tailPts.some(
+        (p) => Math.abs(p.length() - SURFACE) > 1e-3,
+      )
       return {
-        afterControl,
-        afterSlow,
-        afterFast,
-        slowExpected: DT * TAIL_OSC_FREQ,
-        cap: Math.PI * 2 * TAIL_WAVE_MAX_HZ * DT,
+        afterStep,
+        idlePhase,
+        afterIdle,
+        expected: DT * TAIL_OSC_FREQ,
+        offSurface,
       }
     } finally {
       Math.random = originalRandom
@@ -202,26 +204,20 @@ try {
   })()
 
   const waveProblems = []
-  if (wave.afterControl !== 0) {
-    waveProblems.push(`tailPhase advanced on control passes (${wave.afterControl})`)
+  if (Math.abs(wave.afterStep - wave.expected) > 1e-9) {
+    waveProblems.push(`drive advance ${wave.afterStep} != ${wave.expected}`)
   }
-  if (Math.abs(wave.afterSlow - wave.slowExpected) > 1e-9) {
-    waveProblems.push(`slow advance ${wave.afterSlow} != ${wave.slowExpected}`)
+  if (wave.afterIdle !== wave.idlePhase) {
+    waveProblems.push(`tailPhase advanced while idle (${wave.afterIdle})`)
   }
-  if (Math.abs(wave.afterFast - wave.cap) > 1e-9) {
-    waveProblems.push(`fast advance ${wave.afterFast} not clamped to cap ${wave.cap}`)
-  }
-  if (wave.cap >= Math.PI) {
-    waveProblems.push(`cap ${wave.cap} not below Nyquist`)
-  }
-  if (wave.cap <= wave.slowExpected) {
-    waveProblems.push('cap does not exceed the slow step')
+  if (wave.offSurface) {
+    waveProblems.push('tail joints left the surface')
   }
   if (waveProblems.length) {
-    console.log(`FAIL wave scaling/clamp: ${waveProblems.join('; ')}`)
+    console.log(`FAIL wave phase/chain: ${waveProblems.join('; ')}`)
     code = 1
   } else {
-    console.log('PASS wave scaling/clamp: scales with sim dt, clamped below Nyquist')
+    console.log('PASS wave phase/chain: advances with sim dt, stays on the surface')
   }
 
   // Headless pose smoke: drive the render path directly (no WebGL), stepping a
@@ -235,7 +231,7 @@ try {
       sim.tailsHidden = false
       const totalSteps = Math.round(SIM_SECONDS / DT)
       for (let i = 0; i < totalSteps; i++) sim.step(DT)
-      for (let i = 0; i < 5; i++) sim.renderTails(DT)
+      for (let i = 0; i < 5; i++) sim.renderTails()
       for (const cell of sim.cells) {
         const fields = [cell.pos.x, cell.pos.y, cell.pos.z]
         for (const p of cell.tailPts) fields.push(p.x, p.y, p.z)
