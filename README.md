@@ -1,10 +1,15 @@
-# Cell
+# CellSphere
 
-A Vue 3 + Three.js interactive simulation: bacteria grazing on the surface
-of a solid opaque sphere. Each bacterium is an elongated capsule with a
-segmented flagellum tail that drives its (highly viscous) motion. The sphere
-is covered in clumped food that the bacteria eat to grow, divide, and — with
-predators enabled — hunt each other.
+CellSphere is a real-time predator-prey simulation that plays out on the
+surface of a sphere. Blue bacteria graze on scattered food; red predators hunt
+them and drain their energy. Every cell is an autonomous agent — it senses its
+surroundings, steers with an undulating tail, and grows, divides, or starves
+according to the energy it gains.
+
+Rather than snapping to a grid, cells move and sense continuously, so the swarm
+behaves like bacteria in a petri dish. Confining them to a sphere keeps the
+world closed and boundary-free: no walls and no wrap-around seams, just free
+motion in a finite space.
 
 The authoritative architecture, tuning values, and session state live in
 [`docs/DESIGN.md`](docs/DESIGN.md); this file is the quick overview.
@@ -133,7 +138,7 @@ registry. See `docs/DESIGN.md` for the full constant table and semantics.
 ## Project structure
 
 ```
-cell/
+cellsphere/
 ├── index.html
 ├── package.json
 ├── vite.config.js
