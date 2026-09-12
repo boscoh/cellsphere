@@ -2,11 +2,11 @@ import { makeGlowMesh, disposeGlowMesh } from './glow'
 
 const MAX_POPS = 96
 const POP_LIFE = 0.55
-// Grow the burst to ~2.1x as it fades, matching the cell's capsule shape.
-const POP_GROW = 1.1
+// Grow the burst to ~1.55x as it fades, as a uniform scale of the cell's
+// capsule (radius x width) so the burst stays an oval matching the body.
+const POP_GROW = 0.55
 const LEN_K = 1.5
 const WIDTH_K = 1.5
-const WIDTH_PAD_K = 0.2
 
 export function initPops(sim) {
   if (sim.popGlow) return
@@ -57,7 +57,7 @@ export function updatePops(sim, dt) {
     dummy.updateMatrix()
     mesh.setMatrixAt(n, dummy.matrix)
     halfLen.setX(n, p.radius * LEN_K * grow)
-    halfWidth.setX(n, (p.width * WIDTH_K + p.radius * WIDTH_PAD_K) * grow)
+    halfWidth.setX(n, p.width * WIDTH_K * grow)
     alpha.setX(n, a)
     color.setXYZ(n, p.r, p.g, p.b)
     axis.setXYZ(n, p.hx, p.hy, p.hz)
