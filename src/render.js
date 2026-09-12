@@ -1,6 +1,5 @@
 import { CULL_COS } from './constants'
 import { renderBodies, warmTail } from './cells'
-import { renderAura } from './aura'
 import { updatePops } from './pops'
 import { cosFace } from './math'
 
@@ -36,10 +35,6 @@ export function renderView(sim, tailScale, dt) {
   sim.perf.begin('bodies')
   renderBodies(sim)
   sim.perf.end('bodies')
-
-  sim.perf.begin('aura')
-  renderAura(sim)
-  sim.perf.end('aura')
 
   sim.perf.begin('pops')
   updatePops(sim, dt)

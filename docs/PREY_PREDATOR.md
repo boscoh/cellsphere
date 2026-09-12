@@ -44,8 +44,8 @@
 
 Everything is already keyed on `d.energy` (linear `radiusFromEnergy`), so
 "shrink the blue" is automatic if we drain the blue's energy — it shrinks and,
-at `energy <= 0`, already dies via the existing `dying → STARVE_FADE → dead`
-path. The predator gains that same energy (capped at `ENERGY_MAX`), so a red
+at `energy <= 0`, already dies instantly (existing `energy <= 0 → dead`
+path). The predator gains that same energy (capped at `ENERGY_MAX`), so a red
 that eats enough blue will grow and divide exactly like now.
 
 ## New cell state (add to `createCell` in `src/cells.js`)
@@ -64,11 +64,11 @@ There is currently **no** `forEachNearbyCell` for cells (only
 bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
 
 ### 1. Detection / targeting
-- For each red cell (breed `1`, not `mito/splitting/dying`), scan the
+- For each red cell (breed `1`, not `mito/splitting/dead`), scan the
   `cellGrid` buckets (radius ~1–2) for blue cells (breed `0`) within
   `PRED_RANGE` (capsule-gap; reuse `sim.capsuleDist`, which writes `_col`).
 - Track the nearest/latching prey on the red cell: `d.target`.
-- Target is invalid if: prey is `dead`, `dying`, `splitting`, or beyond a
+- Target is invalid if: prey is `dead`, `splitting`, or beyond a
   re-latch distance (`PRED_LOSE = 1.6 × PRED_RANGE`).
 - **Multiple reds on one blue is allowed** — each drains (keeps it simple). A
   red holds at most one target.
@@ -86,9 +86,9 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
 - While latched and within `PRED_BITE` distance, drain prey energy:
   - `drainEnergy(prey, PRED_DRAIN * dt)` → blue shrinks (existing linear path).
   - **Death:** `updateEnergy` returns early when `METABOLISM <= 0`, so DON'T rely
-    on it — in `predation`, when `prey.energy <= 0`, set `prey.dying = true`
-    (and `prey.starveT = 0`) if not already. `updateStarvation` then fades it
-    out and marks `dead` → removed. That's the "eats the blue" resolution.
+    on it — in `predation`, when `prey.energy <= 0`, set `prey.dead = true`
+    (and `prey.killedByPred = true`). The removal loop then spawns the death
+    burst and drops it. That's the "eats the blue" resolution.
   - `gainEnergy(red, PRED_DRAIN * dt * PRED_EFF)` so the predator grows from the
     meal; `PRED_EFF` may exceed 1 so growth is decoupled from (and can outpace)
     the drain. `gainEnergy` caps at `ENERGY_MAX` and flips `split`, so a

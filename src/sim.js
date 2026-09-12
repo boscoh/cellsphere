@@ -41,7 +41,6 @@ import {
   updateTailPose,
   updateMito,
   updateEnergy,
-  updateStarvation,
   initBodyPools,
   removeBody,
   disposeBodyPools,
@@ -57,7 +56,6 @@ import {
 } from './food'
 import { predation, predatorSense, forEachNearbyCell } from './predator'
 import { initPops, spawnPop, disposePops } from './pops'
-import { initAura, disposeAura } from './aura'
 import { disposeGlowMaterial } from './glow'
 import { createScene } from './sceneSetup'
 import { renderView } from './render'
@@ -131,7 +129,6 @@ export class Simulation {
     this.foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.scene.add(this.foodMesh)
     initPops(this)
-    initAura(this)
     generateClumps(this)
     for (let i = 0; i < FOOD_COUNT; i++) makeFood(this)
     buildFoodGrid(this)
@@ -419,9 +416,7 @@ export class Simulation {
         d.headingRate = 0
         d.vel.multiplyScalar(Math.exp(-50 * dt))
       } else {
-        if (d.dying) {
-          d.drive = 0
-        } else if (d.rest > 0) {
+        if (d.rest > 0) {
           d.rest -= dt
           d.drive = 0
         } else {
@@ -567,7 +562,6 @@ export class Simulation {
     this.processSplits()
     for (const cell of this.cells) updateMito(this, cell, dt)
     for (const cell of this.cells) updateEnergy(this, cell, dt)
-    for (const cell of this.cells) updateStarvation(this, cell, dt)
     for (let i = this.cells.length - 1; i >= 0; i--) {
       const d = this.cells[i]
       if (d.dead) {
@@ -644,7 +638,6 @@ export class Simulation {
     disposeBodyPools(this)
     disposeBodyGeos()
     disposePops(this)
-    disposeAura(this)
     disposeGlowMaterial()
     if (this.sphereShell) {
       this.sphereShell.geometry.dispose()

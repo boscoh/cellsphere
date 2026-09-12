@@ -53,10 +53,6 @@ const GEO_STEP = 0.01
 const TAIL_CHUNK_SIZE = TAIL_CHUNK_CELLS * TAIL_SEGMENTS
 const BREED_BLUE = 0
 const BREED_RED = 1
-const STARVE_FADE = 1.5
-// Bright aura pulse at the instant a cell commits to divide (no sustained
-// mitosis aura).
-const MITO_FLASH = 0.5
 const bodyGeoCache = new Map()
 
 export function makeBodyGeo(length, width) {
@@ -91,8 +87,7 @@ export function initBodyPools(sim) {
 }
 
 export function computeCellColor(breed) {
-  // Color is constant per breed — size already conveys growth, and the
-  // mitosis aura signals readiness. `length` is no longer a color driver.
+  // Color is constant per breed — size already conveys growth.
   if (breed === BREED_RED) return new THREE.Color().setHSL(0.015, 0.78, 0.5)
   return new THREE.Color().setHSL(0.37, 0.5, 0.5)
 }
@@ -216,14 +211,6 @@ export function setInstanceColor(sim, d) {
   setBodyColor(sim, d, d.color)
 }
 
-export function setBodyOpacity(sim, d, opacity) {
-  if (d.bodyBucket == null) return
-  const chunk = d.bodyChunk
-  if (!chunk || !chunk.mesh || !chunk.opacity) return
-  chunk.opacity.setX(d.bodySlot, opacity)
-  chunk.opacity.needsUpdate = true
-}
-
 export function removeBody(sim, d) {
   if (d.bodyBucket == null) return
   const entry = sim.bodyPools.get(d.bodyBucket)
@@ -252,25 +239,6 @@ export function rehomeBody(sim, d, newLength) {
   if (nb === d.bodyBucket) return
   removeBody(sim, d)
   addBody(sim, d, newLength)
-}
-
-// Aura intensity + colour for a cell, written into `out` (no allocation). The
-// aura is rendered as an additive billboard glow (see aura.js): a short flash at
-// the instant of division (no sustained mitosis aura) and a death flare that
-// fades over STARVE_FADE in sim time. The predator-latched ("immobile") purple
-// aura stays a fresnel rim on the body itself.
-export function cellAura(d, out) {
-  out.r = d.color.r
-  out.g = d.color.g
-  out.b = d.color.b
-  let intensity = 0
-  if (d.flashT > 0) intensity = d.flashT / MITO_FLASH
-  if (d.dying) {
-    const death = 1 - smoothstep(THREE.MathUtils.clamp(d.starveT / STARVE_FADE, 0, 1))
-    if (death > intensity) intensity = death
-  }
-  out.intensity = intensity
-  return out
 }
 
 export function renderBodies(sim) {
@@ -492,10 +460,7 @@ export function createCell(sim, tail, pos, heading, length, breed = Math.random(
     mito: null,
     splitting: false,
     dead: false,
-    dying: false,
     killedByPred: false,
-    starveT: 0,
-    flashT: 0,
     sideHidden: false,
     tailGrow: 1,
     fade: 1,
@@ -548,13 +513,6 @@ function setSize(sim, d, energy, checkSplit) {
 export function gainEnergy(sim, cell, amount) {
   const d = cell
   setSize(sim, d, d.energy + amount, true)
-  if (d.dying) {
-    d.dying = false
-    d.starveT = 0
-    d.killedByPred = false
-    d.tailGrow = 1
-    setBodyOpacity(sim, d, 1)
-  }
 }
 
 export function drainEnergy(sim, d, amount) {
@@ -576,24 +534,7 @@ export function updateEnergy(sim, d, dt) {
       METABOLISM + pred + MOVE_COST * Math.max(d.drive || 0, 0) + TURN_COST * spin
     drainEnergy(sim, d, cost * dt)
   }
-  if (d.energy <= 0 && !d.dying) {
-    d.dying = true
-    d.starveT = 0
-  }
-}
-
-export function updateStarvation(sim, d, dt) {
-  if (d.dying) {
-    d.starveT += dt
-    const k = Math.min(d.starveT / STARVE_FADE, 1)
-    d.tailGrow = 1 - k
-    if (k >= 1) {
-      d.dead = true
-      return
-    }
-    setBodyOpacity(sim, d, 1 - k)
-    return
-  }
+  if (d.energy <= 0) d.dead = true
 }
 
 // A predator that is about to divide while still feeding first lets go of its
@@ -625,8 +566,6 @@ export function mitose(sim, parent) {
   }
   d.splitPending = false
   d.split = false
-  // A quick aura flash marks the moment of division.
-  d.flashT = MITO_FLASH
   // Each daughter starts at half the parent's length so the two fit exactly
   // inside the parent's silhouette (2 x childLen == parent body length) — no pop.
   const childLen = d.radius * 0.5
@@ -1069,7 +1008,6 @@ export function updateMito(sim, d, simDt) {
   const dist = m.half * spread
 
   const pd = m.parent
-  if (pd.flashT > 0) pd.flashT = Math.max(0, pd.flashT - simDt)
   pd.pos.copy(m.startPos)
   placeMitoChild(m, m.back, -dist)
   placeMitoChild(m, m.front, dist)

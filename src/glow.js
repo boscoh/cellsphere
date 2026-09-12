@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-// A soft additive glow used for cell auras and death bursts. Each instance is a
+// A soft additive glow used for death bursts. Each instance is a
 // camera-facing quad: the vertex shader billboards it in view space, aligns its
 // local X axis with the cell's projected body axis, and scales it by the
 // per-instance half-length/half-width. The fragment shader turns the quad's

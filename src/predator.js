@@ -30,11 +30,11 @@ export function forEachNearbyCell(sim, cx, cy, cz, r, cb) {
 }
 
 function validPrey(d) {
-  return d.breed === 0 && !d.mito && !d.splitting && !d.dying && !d.dead
+  return d.breed === 0 && !d.mito && !d.splitting && !d.dead
 }
 
 function validPredator(d) {
-  return d.breed === 1 && !d.mito && !d.splitting && !d.detach && !d.dying && !d.dead
+  return d.breed === 1 && !d.mito && !d.splitting && !d.detach && !d.dead
 }
 
 // Smell the shoal: sum proximity-weighted unit vectors to every valid prey
@@ -134,7 +134,7 @@ export function predation(sim, simDt) {
     if (prey) red.target = prey
 
     const t = red.target
-    if (t == null || t.dead || t.dying || t.splitting) {
+    if (t == null || t.dead || t.splitting) {
       red.target = null
     } else {
       sim.capsuleDist(red, t)
@@ -162,10 +162,7 @@ export function predation(sim, simDt) {
         drainEnergy(sim, latch, rate)
         if (latch.energy <= 0) {
           latch.killedByPred = true
-          if (!latch.dying) {
-            latch.dying = true
-            latch.starveT = 0
-          }
+          latch.dead = true
         }
         gainEnergy(sim, red, rate * PRED_EFF)
       }
