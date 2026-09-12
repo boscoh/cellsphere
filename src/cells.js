@@ -18,7 +18,6 @@ import {
   MITO_NEAR,
   MITO_SEP,
   MITO_REST,
-  MITO_SLOW_FRAC,
   WIDTH,
   TAIL_SEGMENTS,
   TAIL_LINK,
@@ -54,7 +53,9 @@ const TAIL_CHUNK_SIZE = TAIL_CHUNK_CELLS * TAIL_SEGMENTS
 const BREED_BLUE = 0
 const BREED_RED = 1
 const STARVE_FADE = 1.5
-const STARVE_AURA = STARVE_FADE * 1.6
+// Bright aura pulse at the instant a cell commits to divide (no sustained
+// mitosis aura).
+const MITO_FLASH = 0.5
 const bodyGeoCache = new Map()
 
 export function makeBodyGeo(length, width) {
@@ -138,12 +139,6 @@ function createBodyChunk(sim, entry) {
   )
   opacity.setUsage(THREE.DynamicDrawUsage)
   mesh.geometry.setAttribute('instanceOpacity', opacity)
-  const mito = new THREE.InstancedBufferAttribute(
-    new Float32Array(BODY_CHUNK_CELLS).fill(0),
-    1,
-  )
-  mito.setUsage(THREE.DynamicDrawUsage)
-  mesh.geometry.setAttribute('instanceMito', mito)
   const paralysed = new THREE.InstancedBufferAttribute(
     new Float32Array(BODY_CHUNK_CELLS).fill(0),
     1,
@@ -156,7 +151,6 @@ function createBodyChunk(sim, entry) {
     live: 0,
     count: 0,
     opacity,
-    mito,
     paralysed,
     attached: false,
   }
@@ -203,7 +197,6 @@ export function addBody(sim, d, length) {
   d.bodyChunk = chunk
   d.bodySlot = slot
   if (chunk.opacity) chunk.opacity.setX(slot, 1)
-  if (chunk.mito) chunk.mito.setX(slot, 0)
   if (chunk.paralysed) chunk.paralysed.setX(slot, 0)
   setBodyColor(sim, d, d.color)
   chunk.mesh.instanceMatrix.needsUpdate = true
@@ -260,6 +253,25 @@ export function rehomeBody(sim, d, newLength) {
   addBody(sim, d, newLength)
 }
 
+// Aura intensity + colour for a cell, written into `out` (no allocation). The
+// aura is rendered as an additive billboard glow (see aura.js): a short flash at
+// the instant of division (no sustained mitosis aura) and a death flare that
+// fades over STARVE_FADE in sim time. The predator-latched ("immobile") purple
+// aura stays a fresnel rim on the body itself.
+export function cellAura(d, out) {
+  out.r = d.color.r
+  out.g = d.color.g
+  out.b = d.color.b
+  let intensity = 0
+  if (d.flashT > 0) intensity = d.flashT / MITO_FLASH
+  if (d.dying) {
+    const death = 1 - smoothstep(THREE.MathUtils.clamp(d.starveT / STARVE_FADE, 0, 1))
+    if (death > intensity) intensity = death
+  }
+  out.intensity = intensity
+  return out
+}
+
 export function renderBodies(sim) {
   for (const d of sim.cells) {
     if (d.bodyBucket == null) continue
@@ -270,30 +282,7 @@ export function renderBodies(sim) {
     sim._m.compose(d.pos, d.quat, sc)
     mesh.setMatrixAt(d.bodySlot, sim._m)
     mesh.instanceMatrix.needsUpdate = true
-    // Aura: only while a cell is actually in mitosis, or fading out on
-    // starvation. The energy ramp still drives mitosis intensity, so the
-    // full-size parent glows and the small daughters (energy ~0.25) don't; a
-    // near-full cell that isn't dividing has no aura. Dying cells ramp the Aura
-    // up over STARVE_FADE so they glow as they starve.
-    if (chunk.mito) {
-      const inMito = d.splitting || d.mito
-      const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
-      let ready = 0
-      if (inMito) {
-        ready = smoothstep(
-          THREE.MathUtils.clamp(
-            (frac - MITO_SLOW_FRAC) / (1 - MITO_SLOW_FRAC),
-            0,
-            1,
-          ),
-        )
-      } else if (d.dying) {
-        ready = smoothstep(THREE.MathUtils.clamp(d.starveT / STARVE_AURA, 0, 1))
-      }
-      chunk.mito.setX(d.bodySlot, ready)
-      chunk.mito.needsUpdate = true
-    }
-    // Predator-latched blue glows purple so it's obvious the prey is held.
+    // Predator-latched prey glows purple at the rim so it's obvious it's held.
     if (chunk.paralysed) {
       chunk.paralysed.setX(d.bodySlot, d.paralysed ? 1 : 0)
       chunk.paralysed.needsUpdate = true
@@ -475,6 +464,7 @@ export function createCell(sim, tail, pos, heading, length, breed = Math.random(
     dying: false,
     killedByPred: false,
     starveT: 0,
+    flashT: 0,
     sideHidden: false,
     tailGrow: 1,
     fade: 1,
@@ -584,6 +574,8 @@ export function mitose(sim, parent) {
   }
   d.splitPending = false
   d.split = false
+  // A quick aura flash marks the moment of division.
+  d.flashT = MITO_FLASH
   // Each daughter starts at half the parent's length so the two fit exactly
   // inside the parent's silhouette (2 x childLen == parent body length) — no pop.
   const childLen = d.radius * 0.5
@@ -990,6 +982,7 @@ export function updateMito(sim, d, simDt) {
   const dist = m.half * spread
 
   const pd = m.parent
+  if (pd.flashT > 0) pd.flashT = Math.max(0, pd.flashT - simDt)
   pd.pos.copy(m.startPos)
   placeMitoChild(m, m.back, -dist)
   placeMitoChild(m, m.front, dist)

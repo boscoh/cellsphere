@@ -1,5 +1,6 @@
 import { CULL_COS } from './constants'
-import { renderBodies, warmTail } from './cells'
+import { renderBodies } from './cells'
+import { renderAura } from './aura'
 import { updatePops } from './pops'
 import { cosFace } from './math'
 
@@ -21,14 +22,8 @@ export function renderView(sim, tailScale, dt) {
   sim.tailScale = tailScale
   sim.tailsHidden = tailScale < 0.5
   for (const chunk of sim.tailChunks) {
-    chunk.mesh.visible = !sim.tailsHidden
+    chunk.mesh.visible = !sim.tailsHidden && chunk.live > 0
   }
-  // Tail chains were frozen (integration skipped) while hidden; re-aim them at
-  // the body so re-showing can't snap in with a stale pose.
-  if (!sim.tailsHidden && sim.tailsHiddenPrev) {
-    for (const cell of sim.cells) warmTail(sim, cell)
-  }
-  sim.tailsHiddenPrev = sim.tailsHidden
   sim.perf.begin('vis')
   updateVisibility(sim)
   sim.perf.end('vis')
@@ -37,12 +32,16 @@ export function renderView(sim, tailScale, dt) {
   renderBodies(sim)
   sim.perf.end('bodies')
 
+  sim.perf.begin('aura')
+  renderAura(sim)
+  sim.perf.end('aura')
+
   sim.perf.begin('pops')
   updatePops(sim, dt)
   sim.perf.end('pops')
 
   sim.perf.begin('tails')
-  sim.renderTails(dt)
+  sim.renderTails()
   sim.perf.end('tails')
 
   if (sim.controls) sim.controls.update()

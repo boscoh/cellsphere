@@ -82,7 +82,8 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   second at full `MAX_SPIN` (turning effort). A cell therefore burns energy
   faster when it swims and turns hard, so a starved cell **shrinks**
   back toward `MIN_RADIUS`. At `energy <= 0` the cell reaches the smallest state,
-  `dying` fades it out (`STARVE_FADE`), then it dies. At `energy >= ENERGY_MAX` it
+  `dying` flares its **death aura** to full and fades body + aura together over
+  `STARVE_FADE` (simulation time, via `starveT`), then it dies. At `energy >= ENERGY_MAX` it
   goes `split` → mitosis. Food is **consumed on contact** (removed from the
   sphere), but the cell converts only up to `ABSORB_RATE` energy/s into energy —
   food beyond that (and food a nearly-full cell touches) is eaten but wasted.
@@ -168,8 +169,17 @@ top-right, the population/rates chart bottom-left, drag hint bottom-center.
 - Food material is olive/greenish (`0x56613c` + emissive `0x343d26`).
 - Bacteria colors: two **breeds** with a **constant** per-breed HSL — blue
   (`0.37/0.5/0.5`) and red (`0.015/0.78/0.5`). Size conveys growth (color no
-  longer varies with length); a subtle emissive fresnel **mitosis aura** brightens
-  the body at the rim as a cell charges toward division.
+  longer varies with length). **Auras are additive billboard glows** (`src/glow.js`
+  + `src/aura.js`): a camera-facing quad whose local X axis is aligned with the
+  cell's projected body axis, so the elliptical falloff **follows the capsule
+  shape** and the light spills past the silhouette instead of tracing a rim on
+  the body. A division fires a brief **aura flash** at the moment of mitosis
+  (`MITO_FLASH`, no sustained aura), and the **death aura** flares to full when a
+  cell starts dying then fades over `STARVE_FADE` in simulation time. A
+  predator-latched ("immobile") cell keeps
+  the original **purple fresnel rim** on the body (not a billboard). Deaths also
+  spawn a short additive **burst** in the cell's own capsule shape (`src/pops.js`,
+  grows and fades over `POP_LIFE`).
 - Lighting: **viewer-constant** — key + fill are `DirectionalLight`s parented to
   the camera (no distance falloff, so zoom never changes brightness). Key hangs
   top-left and behind the viewer; a soft magenta fill from the lower-right

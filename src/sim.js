@@ -54,6 +54,8 @@ import {
 } from './food'
 import { predation, predatorSense, forEachNearbyCell } from './predator'
 import { initPops, spawnPop, disposePops } from './pops'
+import { initAura, disposeAura } from './aura'
+import { disposeGlowMaterial } from './glow'
 import { createScene } from './sceneSetup'
 import { renderView } from './render'
 import { createPerf } from './perf'
@@ -126,6 +128,7 @@ export class Simulation {
     this.foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.scene.add(this.foodMesh)
     initPops(this)
+    initAura(this)
     generateClumps(this)
     for (let i = 0; i < FOOD_COUNT; i++) makeFood(this)
     buildFoodGrid(this)
@@ -602,6 +605,8 @@ export class Simulation {
     disposeBodyPools(this)
     disposeBodyGeos()
     disposePops(this)
+    disposeAura(this)
+    disposeGlowMaterial()
     if (this.sphereShell) {
       this.sphereShell.geometry.dispose()
       this.sphereShell.material.dispose()
