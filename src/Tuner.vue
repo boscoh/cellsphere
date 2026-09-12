@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, computed, ref, onMounted } from 'vue'
+import { reactive, computed, ref } from 'vue'
 import { GROUPS, PARAMS, setParam } from './constants'
 
 const emit = defineEmits(['rebuild', 'default', 'param'])
@@ -15,14 +15,6 @@ function collapse() {
 }
 
 defineExpose({ syncValues, collapse })
-
-const panelEl = ref(null)
-const panelPos = ref({ top: 20, left: 24 })
-
-onMounted(() => {
-  const w = panelEl.value?.getBoundingClientRect().width ?? 300
-  panelPos.value = { top: 20, left: Math.max(8, window.innerWidth - w - 20) }
-})
 
 const rows = reactive(
   PARAMS.map((p) => ({
@@ -65,8 +57,9 @@ function fmt(v) {
 </script>
 
 <template>
-  <aside id="tuner-panel" ref="panelEl" class="panel" :style="{ top: panelPos.top + 'px', left: panelPos.left + 'px' }">
+  <aside id="tuner-panel" class="panel">
     <header class="head">
+      <span class="title">Parameters</span>
       <button
         type="button"
         class="icon-btn"
@@ -89,7 +82,6 @@ function fmt(v) {
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      <span class="title">Parameters</span>
     </header>
     <div v-show="expanded" class="body">
       <button
@@ -142,14 +134,17 @@ function fmt(v) {
 <style scoped>
 .panel {
   position: fixed;
+  top: 20px;
+  right: 20px;
   z-index: 3;
-  width: 300px;
+  width: max-content;
+  max-width: calc(100vw - 40px);
   max-height: calc(100vh - 156px);
   display: flex;
   flex-direction: column;
   background: rgba(10, 12, 16, 0.62);
   border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(10px);
   font-family: system-ui, sans-serif;
@@ -160,10 +155,9 @@ function fmt(v) {
 .head {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 8px;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .head .title {
@@ -240,6 +234,9 @@ function fmt(v) {
 }
 
 .body {
+  width: 300px;
+  box-sizing: border-box;
+  margin-right: 14px;
   overflow-y: auto;
   padding: 6px 14px 16px;
 }
