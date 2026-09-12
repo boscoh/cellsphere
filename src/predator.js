@@ -2,13 +2,18 @@ import {
   PRED_RANGE,
   PRED_SENSE,
   PRED_BITE,
+  PRED_OVERLAP,
   PRED_DRAIN,
   PRED_EFF,
   PRED_RATIO,
+  SURFACE,
   CELL_GRID,
 } from './constants'
 import { cellIndex } from './math'
 import { drainEnergy, gainEnergy } from './cells'
+
+// How fast a feeding predator closes the last gap to sink into its prey.
+const LATCH_CLOSE_RATE = 0.5
 
 export function forEachNearbyCell(sim, cx, cy, cz, r, cb) {
   for (let ox = -r; ox <= r; ox++) {
@@ -29,7 +34,7 @@ function validPrey(d) {
 }
 
 function validPredator(d) {
-  return d.breed === 1 && !d.mito && !d.splitting && !d.dying && !d.dead
+  return d.breed === 1 && !d.mito && !d.splitting && !d.detach && !d.dying && !d.dead
 }
 
 // Smell the shoal: sum proximity-weighted unit vectors to every valid prey
@@ -142,6 +147,16 @@ export function predation(sim, simDt) {
     const dist = sim._col.dist
     if (dist <= PRED_RANGE) {
       latch.paralysed = true
+      // Sink the predator slightly into the prey so feeding reads as contact,
+      // not a gap. Collisions skip this pair while latched (see solveCollisions).
+      const desired = red.width + latch.width - PRED_OVERLAP
+      if (dist > desired) {
+        const step = Math.min(dist - desired, LATCH_CLOSE_RATE * simDt)
+        red.pos.x += sim._col.x * step
+        red.pos.y += sim._col.y * step
+        red.pos.z += sim._col.z * step
+        red.pos.setLength(SURFACE)
+      }
       if (dist <= PRED_BITE) {
         const rate = PRED_DRAIN * simDt * ratioAttack
         drainEnergy(sim, latch, rate)

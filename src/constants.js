@@ -67,6 +67,7 @@ export const PARAM_DEFS = [
   { key: 'MITO_FADE', group: 'mitosis', label: 'Mito fade', desc: 'Fraction of mitosis over which the parent fades out.', def: 0.4, min: 0.05, max: 1, step: 0.05 },
   { key: 'MITO_NEAR', group: 'mitosis', label: 'Mito near', desc: 'Starting separation (x half child length) as daughters form.', def: 2.1, min: 0.5, max: 6, step: 0.1 },
   { key: 'MITO_SEP', group: 'mitosis', label: 'Mito sep', desc: 'Final separation (x half child length) at division release.', def: 2.8, min: 0.5, max: 8, step: 0.1 },
+  { key: 'MITO_DETACH', group: 'mitosis', label: 'Mito detach', desc: 'Seconds a feeding predator spends separating from its prey before it can divide.', def: 0.8, min: 0, max: 10, step: 0.1 },
   { key: 'MITO_REST', group: 'mitosis', label: 'Mito rest', desc: 'Coast (no-drive) seconds for daughters right after division.', def: 4, min: 0, max: 20, step: 0.5 },
 
   { key: 'METABOLISM', group: 'survival', label: 'Metabolism', desc: 'Energy drained per second while alive (0 = no drain).', def: 0.0015, min: 0, max: 0.3, step: 0.0005 },
@@ -98,6 +99,7 @@ export const PARAM_DEFS = [
   { key: 'PRED_RANGE', group: 'predator', label: 'Predator range', desc: 'Latch distance to a blue (capsule gap).', def: 0.18, min: 0, max: 1, step: 0.01 },
   { key: 'PRED_SENSE', group: 'predator', label: 'Predator sense', desc: 'Distance over which a red smells prey; nearby blues are weighted into a gradient direction.', def: 1.5, min: 0, max: 5, step: 0.1 },
   { key: 'PRED_BITE', group: 'predator', label: 'Predator bite', desc: 'Distance at which draining proceeds (>= range so a latched prey is bitten).', def: 0.18, min: 0, max: 0.5, step: 0.01 },
+  { key: 'PRED_OVERLAP', group: 'predator', label: 'Predator overlap', desc: 'How far a feeding predator sinks into its latched prey (contact distance minus this).', def: 0.03, min: 0, max: 0.12, step: 0.005 },
   { key: 'PRED_DRAIN', group: 'predator', label: 'Predator drain', desc: 'Blue energy drained per second.', def: 0.012, min: 0, max: 1, step: 0.001 },
   { key: 'PRED_EFF', group: 'predator', label: 'Predator growth', desc: 'Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide.', def: 1, min: 0, max: 4, step: 0.1 },
   { key: 'PRED_METABOLISM', group: 'predator', label: 'Predator metabolism', desc: 'Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly.', def: 0.001, min: 0, max: 0.3, step: 0.001 },
@@ -125,6 +127,7 @@ export let MITO_HOLD
 export let MITO_FADE
 export let MITO_NEAR
 export let MITO_SEP
+export let MITO_DETACH
 export let MITO_SLOW_FRAC
 export let MITO_REST
 export let METABOLISM
@@ -165,6 +168,7 @@ export let SENSE_PERIOD
 export let PRED_RANGE
 export let PRED_SENSE
 export let PRED_BITE
+export let PRED_OVERLAP
 export let PRED_DRAIN
 export let PRED_EFF
 export let PRED_METABOLISM
@@ -189,6 +193,7 @@ const setters = {
   MITO_FADE: (v) => { MITO_FADE = v },
   MITO_NEAR: (v) => { MITO_NEAR = v },
   MITO_SEP: (v) => { MITO_SEP = v },
+  MITO_DETACH: (v) => { MITO_DETACH = v },
   MITO_SLOW_FRAC: (v) => { MITO_SLOW_FRAC = v },
   MITO_REST: (v) => { MITO_REST = v },
   METABOLISM: (v) => { METABOLISM = v },
@@ -229,6 +234,7 @@ const setters = {
   PRED_RANGE: (v) => { PRED_RANGE = v },
   PRED_SENSE: (v) => { PRED_SENSE = v },
   PRED_BITE: (v) => { PRED_BITE = v },
+  PRED_OVERLAP: (v) => { PRED_OVERLAP = v },
   PRED_DRAIN: (v) => { PRED_DRAIN = v },
   PRED_EFF: (v) => { PRED_EFF = v },
   PRED_METABOLISM: (v) => { PRED_METABOLISM = v },

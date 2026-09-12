@@ -33,6 +33,8 @@ import {
 import {
   makeCell,
   mitose,
+  beginDetach,
+  updateDetach,
   releaseTail,
   placeTail,
   updateTailControl,
@@ -169,12 +171,20 @@ export class Simulation {
   processSplits() {
     const snapshot = this.cells.slice()
     for (const cell of snapshot) {
+      if (cell.detach) continue
       if (cell.splitPending) {
         if (this.cells.length + 2 > MAX_CELLS) continue
         cell.splitPending = false
         cell.split = true
       }
-      if (cell.split) mitose(this, cell)
+      if (!cell.split) continue
+      // A feeding predator must let go and swim clear before it divides, so its
+      // daughters don't split out on top of the prey it was draining.
+      if (cell.breed === 1 && cell.target && cell.target.paralysed) {
+        beginDetach(this, cell)
+        continue
+      }
+      mitose(this, cell)
     }
   }
 
@@ -320,6 +330,14 @@ export class Simulation {
               if (j <= i) continue
               const b = this.cells[j]
               if ((b.mito || b.splitting) && !b.mitoParent) continue
+              // A latched predator/prey pair is allowed to overlap while feeding;
+              // the latch hold in predation owns their spacing.
+              if (
+                (a.breed === 1 && a.target === b && b.paralysed) ||
+                (b.breed === 1 && b.target === a && a.paralysed)
+              ) {
+                continue
+              }
               const cdx = b.pos.x - a.pos.x
               const cdy = b.pos.y - a.pos.y
               const cdz = b.pos.z - a.pos.z
@@ -466,11 +484,25 @@ export class Simulation {
         // (a weighted direction to nearby blues), so it tracks the shoal rather
         // than only the single nearest blue inside a hard cutoff. Once it has a
         // latched prey it stops steering and holds the latch.
-        if (d.breed === 1 && !(d.target && d.target.paralysed)) {
+        if (d.breed === 1 && !d.detach && !(d.target && d.target.paralysed)) {
           if (d.preyAmt > 0) {
             const ang = this.signedAngleTo(d, d.preyDir)
             if (ang != null) {
               d.steer = THREE.MathUtils.clamp(d.steer + ang * STEER_GAIN * 1.5, -1, 1)
+            }
+          }
+        }
+        // Detaching before division: swim away from the prey we just released.
+        if (d.detach) {
+          d.drive = d.slow * PRED_DRIVE
+          const from = d.detachFrom
+          if (from && !from.dead) {
+            const away = this._v7.subVectors(d.pos, from.pos)
+            if (away.lengthSq() > 1e-9) {
+              const ang = this.signedAngleTo(d, away.normalize())
+              if (ang != null) {
+                d.steer = THREE.MathUtils.clamp(ang * STEER_GAIN, -1, 1)
+              }
             }
           }
         }
@@ -531,6 +563,7 @@ export class Simulation {
     this.perf.end('sense')
 
     this.perf.begin('split')
+    for (const cell of this.cells) updateDetach(this, cell, dt)
     this.processSplits()
     for (const cell of this.cells) updateMito(this, cell, dt)
     for (const cell of this.cells) updateEnergy(this, cell, dt)

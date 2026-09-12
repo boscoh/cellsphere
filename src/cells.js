@@ -17,6 +17,7 @@ import {
   MITO_FADE,
   MITO_NEAR,
   MITO_SEP,
+  MITO_DETACH,
   MITO_REST,
   WIDTH,
   TAIL_SEGMENTS,
@@ -483,6 +484,9 @@ export function createCell(sim, tail, pos, heading, length, breed = Math.random(
     drive: 0,
     paralysed: false,
     target: null,
+    detach: false,
+    detachT: 0,
+    detachFrom: null,
     split: false,
     splitPending: false,
     mito: null,
@@ -589,6 +593,26 @@ export function updateStarvation(sim, d, dt) {
     }
     setBodyOpacity(sim, d, 1 - k)
     return
+  }
+}
+
+// A predator that is about to divide while still feeding first lets go of its
+// prey and swims clear for MITO_DETACH seconds, so the daughters don't split
+// out on top of the prey it was draining.
+export function beginDetach(sim, d) {
+  d.detach = true
+  d.detachT = 0
+  d.detachFrom = d.target
+  d.target = null
+  d.drive = 0
+}
+
+export function updateDetach(sim, d, dt) {
+  if (!d.detach) return
+  d.detachT += dt
+  if (d.detachT >= MITO_DETACH) {
+    d.detach = false
+    d.detachFrom = null
   }
 }
 
