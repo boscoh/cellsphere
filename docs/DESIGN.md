@@ -1,4 +1,4 @@
-# Cell — Design & Session State
+# CellSphere — Design & Session State
 
 This doc captures the current architecture, tuning values, decisions, gotchas,
 and in-progress work so a fresh session can pick up quickly.
@@ -162,7 +162,7 @@ All values above except the plain constants (`SPHERE_RADIUS`, `SURFACE`,
 `ENERGY_MAX`, `WIDTH`, `TAIL_SEGMENTS`, `TAIL_LINK`, `TAIL_MOTOR_AMP`) are
 runtime-tunable `PARAM_DEFS` (Tuner).
 
-Reactive UI: single-line **HUD top-left** — `Cell · Fps · Cells (blue/red) · Food
+Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (blue/red) · Food
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`
 default **1×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
 top-right, the population/rates chart bottom-left, drag hint bottom-center.

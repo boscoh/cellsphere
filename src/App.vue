@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="canvasHolder" class="canvas-holder"></div>
   <div class="hud">
-    <span class="brand">Cell</span>
+    <span class="brand">CellSphere</span>
     <span class="sep"></span>
     <div class="cell">
       <span class="ctl">Cells</span>

@@ -4,7 +4,7 @@ Follow these instructions precisely for all sessions.
 
 ## Project Overview
 
-"Cell" is a Vue 3 + Three.js interactive visualization: a glowing circle that
+"CellSphere" is a Vue 3 + Three.js interactive visualization: a glowing circle that
 circumscribes a swarm of softly colliding, floating cells drifting in a
 viscosity-controlled simulation.
 
