@@ -121,7 +121,7 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 |---|---|---|
 | `SPHERE_RADIUS` / `SURFACE` | 5 / 5.06 | sphere radius / surface offset |
 | `PREY_COUNT` / `PRED_COUNT` / `MAX_CELLS` | 50 / 15 / 500 | initial prey (blue) / predators (red) / max population |
-| `FOOD_COUNT` / `FOOD_CLUMPS` / `FOOD_SCATTER` / `FOOD_RESPAWN` | 7000 / 12 / 0.15 / 40 | food specks / clumps / uniform share / respawn seconds |
+| `FOOD_COUNT` / `FOOD_CLUMPS` / `FOOD_SCATTER` / `FOOD_RESPAWN` | 3000 / 12 / 0.15 / 40 | food specks / clumps / uniform share / respawn seconds |
 | `GRID` / `CELL_GRID` | 0.35 / 1.0 | food / cell spatial-hash cell size |
 | `SPRING` | 22 | cell–cell stiffness |
 | `FIXED_DT` / `MAX_STEPS` | 1/60 / 200 | physics substep / per-frame ceiling |
