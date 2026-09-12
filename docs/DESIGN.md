@@ -43,12 +43,15 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   set from `createCell`/`setSize` (`setTailColor`). Cell slots are packed
   contiguously from `0..live-1` (`allocTailSlot`) and holes are closed by
   swap-remove on death, so `mesh.count = live*TAIL_SEGMENTS` excludes every
-  unused instance (a chunk with no live cells draws nothing). `placeTail` writes
-  each segment matrix directly from its basis (no quaternion round-trip) and
-  uploads only the touched slots via `instanceMatrix.addUpdateRange`, batched to
-  one `needsUpdate` per chunk per frame. Tails hidden = skip `renderTails`
-  (placement) and hide the chunk meshes (`tailsHidden`); the chain
-  (`updateTailState`) still runs in `advance`, so steering is unaffected.
+  unused instance (a chunk with no live cells draws nothing). Each segment is one
+  instance but carries **no `instanceMatrix`**: `placeTail` writes four compact
+  instanced attributes (`aSegPos`, `aSegX`, `aSegY`, `aSegScale`) and the
+  `tailMat` vertex shader builds the transform (`z = x × y`), uploading only the
+  touched slots via `addUpdateRange` and batching one `needsUpdate` per chunk per
+  frame. Tails hidden = skip `renderTails` (placement), hide the chunk meshes
+  (`tailsHidden`), and skip the cosmetic pose (`updateTailPose`); the physical
+  control (`updateTailControl` → `tailBend`) always runs in `advance`, so
+  steering is unaffected. `warmTail` re-aims the frozen chain on re-show.
 - **Linear motion**: `drive = slow × (1 − coast) × fatigue`; thrust
   `THRUST*drive` along heading; high `DRAG` bleeds velocity. Three mostly-
   exclusive energy bands: near max (`coast`, above `MITO_SLOW_FRAC`) the cell
@@ -97,13 +100,14 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   releases the daughters (with a `MITO_REST` coast). Because metabolism keeps
   draining, a full cell that can't split (cap pressure) shrinks and resumes
   moving instead of parking at max and starving.
-- **Tail model (spring chain)**: the tail is a damped spring-mass chain
-  integrated every `sim.advance` for every cell. `updateTailState` first
-  advances `tailPhase` while driving/turning, integrates `tailLag` from
+- **Tail model (spring chain)**: `sim.advance` splits the tail into an O(1)
+  **control** pass (`updateTailControl`, every cell every step) and an
+  O(S²·substeps) **pose** pass (`updateTailPose`, only while tails are visible).
+  Control advances `tailPhase` while driving/turning, integrates `tailLag` from
   `steer + headingRate` (decaying at `TAIL_TRAIL_RATE`), and derives
   `tailBend = clamp(TAIL_RUDDER_GAIN·tailLag, ±TAIL_ARC_MAX)`. `tailBend` feeds
   the body as `headingRate += TAIL_TURN·tailBend` (the only physical coupling).
-  It then builds an analytic guide spine `q[j]` from the root at the body rear
+  Pose builds an analytic guide spine `q[j]` from the root at the body rear
   (hinge tucked by `TAIL_HINGE`), each step being the carrier direction rotated
   by `TAIL_MOTOR_AMP·whip·sin(tailPhase − TAIL_WAVE·j)` (traveling wave) minus
   `TAIL_ARC·bend·j·ramp` (trailing arc), where `whip = max(drive, |bend|·1.5)`.
@@ -206,12 +210,14 @@ top-right, the population/rates chart bottom-left, drag hint bottom-center.
   daughter takes over the parent's slot (`tailTransfer`); the fading parent
   drops its own `tailChunk`/`tailSlot` reference so the slot has a single owner,
   and `releaseTail` must not free a transferred slot.
-- **Tail ordering**: `updateTailState` (chain + `tailBend`) runs as a pass after
-  `updateMito` in `advance()`, unconditionally, so `tailBend`→`headingRate` is
-  preserved even when tails are hidden. `renderTails` runs later and only places
-  segments, after the body pass has consumed the previous substep's `tailBend`.
-- The **tails** toggle hides the mesh and skips placement (`renderTails`), but
-  `updateTailState` still runs in `advance` (steering is unaffected).
+- **Tail ordering**: after `updateMito`, `advance()` runs `updateTailControl`
+  unconditionally (so `tailBend`→`headingRate` is preserved even when tails are
+  hidden), then `updateTailPose` only when visible. `renderTails` runs later and
+  only places segments, after the body pass has consumed the previous substep's
+  `tailBend`. `updateTailState` = control + pose, kept for tests.
+- The **tails** toggle hides the mesh, skips placement (`renderTails`), and skips
+  the pose; control still runs, so steering is unaffected. `renderView` calls
+  `warmTail` on the hidden→visible edge to re-aim the frozen chain.
 - Body-pool and tail capacities grow **on demand in fixed-size chunks**
   (`BODY_CHUNK_CELLS` / `TAIL_CHUNK_CELLS`), so buffers track the high-water
   mark of concurrent cells, not the `MAX_CELLS` ceiling. `MAX_CELLS` remains

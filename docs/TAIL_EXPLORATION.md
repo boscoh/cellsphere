@@ -1,9 +1,10 @@
 # Tail — Model, Decoupling, Tuning & Rendering
 
 > **Status:** current (2026-09). The tail is a **damped spring-chain simulation**
-> integrated every sim step. It replaced an earlier analytic control/pose split
-> and was restored because the chain looks better. Rendering-efficiency epic
-> `cell-5tt`: **`.1`–`.4` shipped**, `.5` (GPU tail) remains.
+> whose O(1) control runs every sim step and whose O(S²) pose is integrated only
+> while tails are drawn. It replaced an earlier analytic control/pose split and
+> was restored because the chain looks better. Rendering-efficiency epic
+> `cell-5tt`: **`.1`–`.5` shipped** (a full GPU chain remains future work).
 
 The tail is a chain of joints on the sphere surface, driven toward an analytic
 guide spine `q[j]` and integrated with springs. It shapes the rendered flagellum
@@ -11,70 +12,80 @@ and provides the physical steering scalar `tailBend` that turns the body.
 
 ## TL;DR
 
-- **Chain, not a filter.** `updateTailState` runs every `advance` for every cell,
-  integrating a substep spring chain (guide + length + beam + self-avoidance)
-  toward `q[j]` (`cells.js`).
+- **Chain, not a filter.** `advance` splits the tail into `updateTailControl`
+  (O(1)) and `updateTailPose` (a substep spring chain: guide + length + beam +
+  self-avoidance toward `q[j]`). The pose runs only while tails are visible
+  (`cells.js`).
 - **Only `tailBend` feeds motion.** `headingRate += TAIL_TURN·tailBend·dt`
   (`sim.js`); everything else (`tailPts`, `tailDirs`, `tailPhase`, the wave) is
   cosmetic.
 - **Toggling tails cannot change the simulation.** `advance` always runs the
-  chain; `renderTails` only draws. Guarded by `npm run test:tail`.
+  control; only the pose and `renderTails` are gated. Guarded by
+  `npm run test:tail`.
 - **Wave frequency scales with sim speed for free** — the phase advances by
   `dt·TAIL_OSC_FREQ` in the sim step (no render-time Nyquist cap needed).
-- **Rendering is the remaining cost.** `cell-5tt.1`–`.4` made draws and uploads
-  proportional to live cells (packed slots, exact `mesh.count`, partial uploads,
-  cheaper geometry/material); a GPU tail (`cell-5tt.5`) is the only big win left
-  — see [§5](#5-cost).
+- **Rendering is the remaining cost.** `cell-5tt.1`–`.5` made draws and uploads
+  proportional to live cells and moved the per-segment transform to the vertex
+  shader (packed slots, exact `mesh.count`, partial uploads, compact basis
+  attributes, cheaper geometry/material) — see [§5](#5-cost). The CPU still
+  writes `O(cells·S)` attributes; a full GPU chain is the only path to
+  `O(cells)`.
 
 ## 1. Model (spring chain)
 
 ### 1.1 Step (every `advance`)
 
-`updateTailState(sim, d, dt)` (`cells.js`) runs in `sim.advance` for **every**
-cell, even when tails are hidden (`sim.js`):
+`sim.advance` splits the tail into two passes (`cells.js`):
 
-- re-aims `tailCarrier` toward behind-heading at `TAIL_CARRIER_RATE`
-  (orientation memory / drag);
-- advances `tailPhase += dt·TAIL_OSC_FREQ` when `drive > 0.02` or
-  `|headingRate| > 0.05`;
-- integrates `tailLag` from `steer + headingRate`, decaying at `TAIL_TRAIL_RATE`,
-  and sets `tailBend = clamp(TAIL_RUDDER_GAIN·tailLag, ±TAIL_ARC_MAX)`;
-- builds the analytic guide spine `q[j]` from the root at the body rear
-  (`TAIL_HINGE` tuck): each step is the carrier rotated by
+- **`updateTailControl`** — O(1), runs for **every** cell on **every** step,
+  even while tails are hidden. It re-aims `tailCarrier` toward behind-heading at
+  `TAIL_CARRIER_RATE` (orientation memory / drag); advances
+  `tailPhase += dt·TAIL_OSC_FREQ` when `drive > 0.02` or `|headingRate| > 0.05`;
+  and integrates `tailLag` from `steer + headingRate`, decaying at
+  `TAIL_TRAIL_RATE`, setting `tailBend = clamp(TAIL_RUDDER_GAIN·tailLag,
+  ±TAIL_ARC_MAX)`. This is the physical actuator the body reads.
+- **`updateTailPose`** — O(S²·TAIL_DYN_SUB), runs only while tails are visible
+  (`!sim.tailsHidden`). It builds the analytic guide spine `q[j]` from the root
+  at the body rear (`TAIL_HINGE` tuck) — each step is the carrier rotated by
   `TAIL_MOTOR_AMP·whip·sin(tailPhase − TAIL_WAVE·j) − TAIL_ARC·bend·j·ramp`,
-  where `whip = max(drive, |bend|·1.5)`;
-- integrates the chain `tailPts`/`tailVel` toward `q` over `TAIL_DYN_SUB`
-  substeps.
+  `whip = max(drive, |bend|·1.5)` — then integrates the chain
+  `tailPts`/`tailVel` toward `q` over `TAIL_DYN_SUB` substeps.
+
+The chain reads `tailBend`/`tailPhase`/`tailCarrier` but never writes back to
+them, so the two passes are independent: skipping the pose cannot change motion.
+`updateTailState` remains as a thin `control + pose` wrapper for tests. On the
+hidden→visible edge `renderView` calls `warmTail` once per cell to re-aim the
+frozen chain and avoid a snap.
 
 In outline:
 
 ```text
-updateTailState(sim, d, dt):
+# always, even while hidden:
+updateTailControl(sim, d, dt):
   n0     = normalize(d.pos)                       # local surface normal
   behind = tangent-project(-d.heading, n0)        # desired drag direction
   if |behind| ~ 0: return
   pitch  = TAIL_BODY * 2 * d.radius / S * d.tailGrow
-
-  # --- control scalars ---------------------------------------------------
+  if pitch < 1e-6 or dt <= 0: return
   tailCarrier -> behind          at TAIL_CARRIER_RATE   # orientation memory
   if drive > 0.02 or |headingRate| > 0.05:
       tailPhase += dt * TAIL_OSC_FREQ                   # wave phase
   tailLag += (steer + headingRate) * dt;  tailLag -= TAIL_TRAIL_RATE * tailLag
   tailBend = clamp(TAIL_RUDDER_GAIN * tailLag, ±TAIL_ARC_MAX)
 
-  # --- analytic guide spine q[0..S] --------------------------------------
+# only while tails are visible:
+updateTailPose(sim, d, dt):
+  (recompute n0, behind, pitch as above)
   side = cross(n0, tailCarrier)                   # lateral sweep axis
   root = project(pos - heading * (radius - width*TAIL_HINGE))
   cur  = root
-  for j in 0..S:
+  for j in 0..S:                                  # analytic guide spine
       q[j] = cur
       if j < S:
           ang = TAIL_MOTOR_AMP*whip*sin(tailPhase - TAIL_WAVE*j)
                 - TAIL_ARC*bend*j*ramp          # ramp = 1/(S-1)
           cur = project(cur + rotate(carrier, ang, side) * pitch)
-
-  # --- integrate the chain toward q --------------------------------------
-  repeat TAIL_DYN_SUB times:
+  repeat TAIL_DYN_SUB times:                      # integrate chain toward q
       gather guide + length + beam forces -> acc[j]
       add self-avoidance contacts         -> acc[]
       integrate v[j] then p[j]            # damp, tangent-project, clamp VMAX
@@ -121,8 +132,9 @@ step.
 
 ### 1.3 Tail data structures
 
-There are two representations: a **per-cell CPU chain** (integrated every step)
-and a **shared GPU instance pool** (written once per frame by `placeTail`).
+There are two representations: a **per-cell CPU chain** (integrated while tails
+are visible) and a **shared GPU instance pool** (written once per frame by
+`placeTail`).
 
 #### Per-cell CPU state
 
@@ -130,52 +142,62 @@ and a **shared GPU instance pool** (written once per frame by `placeTail`).
 stores it on the cell as plain fields (`cells.js`). `S = TAIL_SEGMENTS = 9`, so
 there are `S+1 = 10` joints and `S = 9` segments.
 
-| Field | Type | Size | Role |
-|---|---|---|---|
-| `tailPts` | `Vector3[]` | S+1 | joint positions on the sphere; `tailPts[0]` is the root at the body rear |
-| `tailVel` | `Vector3[]` | S+1 | joint velocities, always tangent to the sphere (index 0 unused) |
-| `tailVT` | `Vector3[]` | S+1 | per-substep acceleration accumulator (index 0 unused) |
-| `tailQ` | `Vector3[]` | S+1 | analytic guide targets `q[j]`, rebuilt every step |
-| `tailDirs` | `Vector3[]` | S | unit segment tangents `normalize(pts[i+1]−pts[i])`, the render input |
-| `tailCarrier` | `Vector3` | 1 | drag axis / orientation memory; re-aims toward behind-heading |
-| `tailPhase` | number | 1 | traveling-wave phase (rad); advances only while driving/turning |
-| `tailLag` | number | 1 | turn-lag memory driven by `steer + headingRate`, decayed each step |
-| `tailBend` | number | 1 | clamped arc bend `= TAIL_RUDDER_GAIN·tailLag`; the only field the body reads |
-| `tailGrow` | number | 1 | 0..1 tail-length scale (0 while dividing, ramps down while starving) |
-| `tailTransfer` | bool | 1 | set when the parent hands its render slot to the front daughter |
+| Field | Type | Size | Pass | Role |
+|---|---|---|---|---|
+| `tailPts` | `Vector3[]` | S+1 | pose | joint positions on the sphere; `tailPts[0]` is the root at the body rear |
+| `tailVel` | `Vector3[]` | S+1 | pose | joint velocities, always tangent to the sphere (index 0 unused) |
+| `tailVT` | `Vector3[]` | S+1 | pose | per-substep acceleration accumulator (index 0 unused) |
+| `tailQ` | `Vector3[]` | S+1 | pose | analytic guide targets `q[j]`, rebuilt each pose step |
+| `tailDirs` | `Vector3[]` | S | pose | unit segment tangents `normalize(pts[i+1]−pts[i])`, the render input |
+| `tailCarrier` | `Vector3` | 1 | control | drag axis / orientation memory; re-aims toward behind-heading (read by pose) |
+| `tailPhase` | number | 1 | control | traveling-wave phase (rad); advances only while driving/turning (read by pose) |
+| `tailLag` | number | 1 | control | turn-lag memory driven by `steer + headingRate`, decayed each step |
+| `tailBend` | number | 1 | control | clamped arc bend `= TAIL_RUDDER_GAIN·tailLag`; the only field the body reads |
+| `tailGrow` | number | 1 | shared | 0..1 tail-length scale (0 while dividing, ramps down while starving) |
+| `tailTransfer` | bool | 1 | sim | set when the parent hands its render slot to the front daughter |
+
+The **control** fields are the only ones that survive a hidden-tail step; the
+**pose** fields are frozen while hidden and re-aimed by `warmTail` on re-show.
 
 `makeTailChain` allocates the four `Vector3[]` arrays (40 `Vector3`s total) and
 lays the initial chain out along `−heading`, projected to `SURFACE`;
 `makeTailDirs` allocates the 9 tangent vectors. `warmTail(sim, d)` re-aims the
 chain along behind-heading and zeroes `tailVel`/`tailVT`, but never touches
 `tailLag`/`tailBend`/`tailPhase`. The arrays are allocated once at birth and
-mutated in place — `updateTailState` allocates nothing per step.
+mutated in place — `updateTailPose` allocates nothing per step.
 
 #### Shared scratch buffers
 
 The chain math reuses scratch objects owned by the simulation (`sim.js`) instead
 of allocating: `sim._v1`–`sim._v9` (`Vector3`), `sim._m` (`Matrix4`), `sim._q`
 (`Quaternion`), `sim._dummy` (`Object3D`), and `sim._tailDirty` (`Set`).
-`updateTailState` writes through these; the known `sim._v1` aliasing in the
-self-avoidance loop is noted in §7.
+`updateTailControl`/`updateTailPose` write through these; the known `sim._v1`
+aliasing in the self-avoidance loop is noted in §7.
 
 #### GPU representation (instanced chunks)
 
 - `tailGeo` is a **capless cylinder** (radius 0.014, length 1.0, 6 radial
   segments) rotated so its local **X axis is the segment direction**;
   `tailMat` is a `MeshLambertMaterial` with per-instance color.
-- `sim.tailChunks` is an array of chunks `{ mesh, live, owners }` where `mesh` is
-  an `InstancedMesh(tailGeo, tailMat, TAIL_CHUNK_SIZE)` with
+- Each segment is one instance, but there is **no `instanceMatrix`**: the chunk
+  carries four compact `InstancedBufferAttribute`s — `aSegPos` (vec3 midpoint),
+  `aSegX` (vec3 unit axis), `aSegY` (vec3 unit up), `aSegScale` (vec2 = length,
+  radius). The vertex shader builds the transform from these (`z = x × y`), so
+  only `3+3+3+2 = 11` floats/segment are uploaded instead of 16.
+- `sim.tailChunks` is an array of chunks `{ mesh, live, owners, attrs, attrList }`
+  where `mesh` is an `InstancedMesh(geo, tailMat, TAIL_CHUNK_SIZE)` with
   `TAIL_CHUNK_SIZE = TAIL_CHUNK_CELLS · S = 64 · 9 = 576`, `frustumCulled =
-  false`, and `DynamicDrawUsage`.
+  false`, and `DynamicDrawUsage`. `geo` is a **per-chunk clone** of `tailGeo`
+  (the attributes are per-chunk, so they can't live on the shared template).
 - A cell holds `tailChunk` (chunk ref) and `tailSlot` (cell slot within it,
   `0..TAIL_CHUNK_CELLS-1`). Its segment `i` lives at flat instance index
   `tailSlot · S + i`, spanning `tailPts[i] → tailPts[i+1]`.
 - `owners[slot]` maps a slot back to its cell (needed by swap-remove
   compaction). Slots are packed `0..live-1`, so `mesh.count = live · S`; a freed
-  slot is filled by moving the last live slot into it. Empty chunks draw nothing
-  and are reused before growing a new chunk. See §5.2 for the per-frame write
-  path.
+  slot is filled by moving the last live slot into it (its attributes are
+  recomputed by `placeTail` next frame; its color is rewritten immediately).
+  Empty chunks draw nothing and are reused before growing a new chunk. See §5.2
+  for the per-frame write path.
 
 ### 1.4 Phase timing vs sim speed
 
@@ -189,7 +211,10 @@ that cap is not needed.
 Only `tailBend` feeds motion, and `tailPts`/`tailDirs`/`tailPhase` are cosmetic,
 so **toggling the tail display must not change `pos`/`vel`/`heading`/
 `headingRate`**. This holds structurally: `advance` always runs
-`updateTailState`, and `renderTails` returns early when `tailsHidden`.
+`updateTailControl` (which alone sets `tailBend`), while only `updateTailPose`
+and `renderTails` are gated on `tailsHidden`. The chain never feeds back into
+the control scalars, so hiding tails can skip the expensive pose but not change
+motion.
 
 Guard: `npm run test:tail` (`scripts/tail-equivalence.mjs`) checks
 
@@ -258,40 +283,48 @@ Everything below is a runtime `PARAM_DEFS` entry (Tuner, group `tail`).
 
 ### 5.1 Sim
 
-Chain integration is `O(S²·TAIL_DYN_SUB)` per cell per sim step (self-avoidance
-dominates), S = 9, substeps = 4 — small but nonzero, and paid even when tails
-are hidden.
+Control is `O(1)` per cell per step and always runs. Chain integration is
+`O(S²·TAIL_DYN_SUB)` per cell per sim step (self-avoidance dominates), S = 9,
+substeps = 4 — paid **only while tails are visible** (`updateTailPose`), so the
+hidden-tail case now costs just the control pass.
 
 ### 5.2 Render path
 
-Tracked as epic `cell-5tt` ("Tail rendering efficiency"). **`.1`–`.4` shipped
-2026-09**; `.5` remains.
+Tracked as epic `cell-5tt` ("Tail rendering efficiency"). **`.1`–`.5` shipped
+2026-09**; only a full GPU chain remains.
 
-- `renderTails()` (`sim.js`): clears each chunk's `instanceMatrix` update ranges,
-  then for every cell calls `placeTail`, collecting touched chunks in
-  `sim._tailDirty`; one `needsUpdate` per dirty chunk per frame. Returns early
-  when `tailsHidden` (ranges already cleared, so nothing leaks).
-- `placeTail` (`cells.js`): 9 segment transforms per cell. Writes the instance
-  matrix directly into `sim._m.elements` from basis columns `(x·draw, y·ts,
-  z·ts)` + midpoint (no quaternion round-trip); the up vector is the outward
-  sphere normal projected off the segment axis (no reference-axis cross). Adds
-  `instanceMatrix.addUpdateRange(slot·16, S·16)` when `sim.renderer` is set.
-  `sideHidden` cells are zeroed in the same slot.
+- `renderTails()` (`sim.js`): clears each chunk's attribute update ranges, then
+  for every cell calls `placeTail`, collecting touched chunks in
+  `sim._tailDirty`; one `needsUpdate` per attribute per dirty chunk per frame.
+  Returns early when `tailsHidden` (ranges already cleared, so nothing leaks).
+- `placeTail` (`cells.js`): 9 segments per cell. For each it writes `aSegPos`
+  (midpoint), `aSegX` (unit axis), `aSegY` (up = sphere normal projected off the
+  axis), and `aSegScale` (`draw`, `ts`) straight into the typed arrays; `z` is
+  derived in the shader, so no cross product is needed. Adds update ranges
+  (`base·3`, `S·3` for vec3; `base·2`, `S·2` for scale) when `sim.renderer` is
+  set. `sideHidden` cells get `aSegScale = 0` (degenerate, not drawn).
+- `tailMat.onBeforeCompile` (materials.js) declares the four attributes and
+  replaces `project_vertex` / `worldpos_vertex` with `aSegPos + aSegX·(x·sx) +
+  aSegY·(y·sy) + aSegZ·(z·sy)`, and `defaultnormal_vertex` with the inverse-scale
+  basis (so the unused zero `instanceMatrix` is never read).
 - Slots: `allocTailSlot` packs cell slots contiguously `0..live-1`;
   `freeTailSlot` swap-removes the last live slot into a freed hole (updating
-  `owner.tailSlot`); `mesh.count = live·TAIL_SEGMENTS`. A chunk with no live
-  cells draws nothing (`count = 0`, hidden in `renderView`) and is reused before
-  a new chunk is grown. A cell stores `tailChunk`/`tailSlot` (no global index).
+  `owner.tailSlot` + its color); `mesh.count = live·TAIL_SEGMENTS`. A chunk with
+  no live cells draws nothing (`count = 0`, hidden in `renderView`) and is reused
+  before a new chunk is grown. A cell stores `tailChunk`/`tailSlot` (no global
+  index).
 - Geometry/material: `tailGeo = CylinderGeometry(0.014, 0.014, 1, 6, 1,
   openEnded)` (the capsule caps were hidden by overlapping segments); `tailMat`
   is a `MeshLambertMaterial`.
 
-### 5.3 Render cost (after `.1`–`.4`)
+### 5.3 Render cost (after `.1`–`.5`)
 
-- **CPU** `placeTail`: still 9 segment transforms per visible cell, but cheaper
-  per segment (direct matrix, no quaternion or reference cross).
-- **Bandwidth:** only `live·S` matrices uploaded per chunk via update ranges,
-  instead of the whole 576-instance (~36 KB) buffer every frame.
+- **CPU** `placeTail`: still `O(cells·S)` (9 segments per visible cell), but each
+  segment is 11 float writes with no matrix build and no cross product (z is
+  derived in the shader). Truly `O(cells)` CPU needs the GPU chain.
+- **Bandwidth:** `live·S · 11` floats uploaded per chunk via update ranges
+  (vs `live·S · 16` matrices before `.5`, and the whole 576-instance ~36 KB
+  buffer before `.2`). The unused `instanceMatrix` is never re-uploaded.
 - **Draw:** only `live·S` instances submitted per chunk; zeroed far-side and
   reserved slots are excluded from `count`.
 - At default ~65 cells → 2 chunks → 585 instances submitted (was 1152, ~half
@@ -300,21 +333,17 @@ Tracked as epic `cell-5tt` ("Tail rendering efficiency"). **`.1`–`.4` shipped
 
 ### 5.4 Remaining options
 
-| # | Task | Change | Impact |
-|---|---|---|---|
-| 5 | `cell-5tt.5` | vertex-shader/procedural tail (below) | biggest win |
+**Medium options:** fewer segments (S 9→6) and/or size/distance LOD (reds are
+half-size); update tails at 30 Hz; merge each cell's 9 segments into one tube (or
+skinned tube) → 1 instance per cell.
 
-**Other medium options:** fewer segments (S 9→6) and/or size/distance LOD (reds
-are half-size); update tails at 30 Hz; merge each cell's 9 capsules into one
-tube (or skinned tube) → 1 instance per cell.
-
-**Biggest win — `cell-5tt.5` vertex-shader tail.** Upload a handful of per-cell
-scalars as instanced attributes and compute each segment transform in the vertex
-shader (or drive a skinned tube): CPU becomes O(cells) attribute writes, with no
-per-segment matrices and no large uploads. With the chain this is harder than for
-the old analytic spine — the chain state is `O(S)` per cell, not a few scalars —
-so a GPU chain (below) or a skinned tube that samples the CPU chain is the
-realistic path.
+**`cell-5tt.5` (shipped) moved the transform to the GPU** but still writes
+`O(cells·S)` compact attributes on the CPU. The remaining big win is a **GPU
+chain**: integrate the spring chain in a compute/transform-feedback pass so the
+CPU only updates a few per-cell scalars (`O(cells)`), or a skinned tube that
+samples the CPU chain. With the chain this is harder than for the old analytic
+spine — the chain state is `O(S)` per cell, not a few scalars — and is the
+highest-ceiling / highest-complexity option (see §6).
 
 **Not useful:** per-chunk `frustumCulled` (chunks span the sphere, so it can't
 cull). A `sideHidden` cell still submits a degenerate (zero-scaled) instance —
@@ -354,17 +383,29 @@ only a fully empty chunk drops to `count = 0`.
 - "Stage B" (compute the turn driver before the tail animation, removing the
   one-substep lag) was **dropped**: the lag is harmless and removing it changes
   loop gain.
-- Rendering efficiency `cell-5tt.1`–`.4` shipped: chunk-local packed tail slots
-  with exact `mesh.count` and swap-remove compaction, per-slot partial
-  `instanceMatrix` uploads (one `needsUpdate` per chunk per frame), direct
-  matrix build + sphere-normal up vector, and a capless-cylinder
-  `MeshLambertMaterial` segment. Submitted instances and upload bytes now scale
-  with live cells. Headless 240s churn verifies the slot/owner invariant; the
-  motion equivalence test (`npm run test:tail`) is unchanged.
+- Control/pose split: `updateTailState` was split into `updateTailControl`
+  (O(1), always runs) and `updateTailPose` (O(S²·substeps), only while tails are
+  visible). The chain reads control scalars but never writes them, so the pose
+  can be skipped without changing motion; `warmTail` is called on the
+  hidden→visible edge to re-aim the frozen chain.
+- Rendering efficiency `cell-5tt.1`–`.5` shipped:
+  - `.1` chunk-local packed tail slots with exact `mesh.count` and swap-remove
+    compaction;
+  - `.2` per-slot partial uploads (one `needsUpdate` per chunk per frame);
+  - `.3` direct basis build + sphere-normal up vector;
+  - `.4` capless-cylinder `MeshLambertMaterial` segment;
+  - `.5` per-segment transform moved to the vertex shader via four compact
+    instanced attributes (11 floats/segment, no `instanceMatrix`, `z = x × y`).
+
+  Submitted instances and upload bytes scale with live cells. Headless churn
+  verifies the slot/owner invariant and attribute finiteness/orthonormality; the
+  motion equivalence test (`npm run test:tail`) is unchanged. Full `O(cells)`
+  CPU still requires a GPU chain (§5.4).
 
 ## 8. Open follow-ups
 
 - Fix the `_v1` aliasing in the self-avoidance loop (use a second scratch
   vector); check it doesn't change the look.
-- Vertex-shader/procedural tail: `cell-5tt.5` (§5.4).
+- GPU spring chain (compute/transform-feedback) for `O(cells)` CPU render —
+  `cell-5tt.5` shipped only the transform side (§5.4).
 - Optional: momentum-driven "C-start" whip (design note §3).

@@ -303,18 +303,51 @@ export function disposeBodyPools(sim) {
   sim.bodyPools.clear()
 }
 
+function makeTailAttrs() {
+  const pos = new THREE.InstancedBufferAttribute(
+    new Float32Array(TAIL_CHUNK_SIZE * 3),
+    3,
+  )
+  const x = new THREE.InstancedBufferAttribute(
+    new Float32Array(TAIL_CHUNK_SIZE * 3),
+    3,
+  )
+  const y = new THREE.InstancedBufferAttribute(
+    new Float32Array(TAIL_CHUNK_SIZE * 3),
+    3,
+  )
+  const scale = new THREE.InstancedBufferAttribute(
+    new Float32Array(TAIL_CHUNK_SIZE * 2),
+    2,
+  )
+  for (const a of [pos, x, y, scale]) a.setUsage(THREE.DynamicDrawUsage)
+  return { pos, x, y, scale }
+}
+
 export function createTailChunk(sim) {
-  const mesh = new THREE.InstancedMesh(tailGeo, tailMat, TAIL_CHUNK_SIZE)
+  // Each chunk owns a geometry clone so its compact per-segment attributes
+  // (midpoint, axis X, up Y, scale) are independent of other chunks.
+  const geo = tailGeo.clone()
+  const attrs = makeTailAttrs()
+  geo.setAttribute('aSegPos', attrs.pos)
+  geo.setAttribute('aSegX', attrs.x)
+  geo.setAttribute('aSegY', attrs.y)
+  geo.setAttribute('aSegScale', attrs.scale)
+  const mesh = new THREE.InstancedMesh(geo, tailMat, TAIL_CHUNK_SIZE)
   // Tail segments are spread across the whole sphere; the cached bounding
   // sphere is wrong/stale, so a zoom-in would cull visible segments.
   mesh.frustumCulled = false
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   mesh.setColorAt(0, new THREE.Color(1, 1, 1))
   mesh.instanceColor.needsUpdate = true
-  for (let i = 0; i < TAIL_CHUNK_SIZE; i++) zeroMatrix(sim, mesh, i)
   mesh.count = 0
   sim.scene.add(mesh)
-  const chunk = { mesh, live: 0, owners: new Array(TAIL_CHUNK_CELLS).fill(null) }
+  const chunk = {
+    mesh,
+    live: 0,
+    owners: new Array(TAIL_CHUNK_CELLS).fill(null),
+    attrs,
+    attrList: [attrs.pos, attrs.x, attrs.y, attrs.scale],
+  }
   sim.tailChunks.push(chunk)
   return chunk
 }
@@ -338,19 +371,12 @@ export function allocTailSlot(sim) {
 function freeTailSlot(sim, d) {
   const chunk = d.tailChunk
   if (!chunk || !chunk.mesh) return
-  const mesh = chunk.mesh
   const slot = d.tailSlot
   const last = chunk.live - 1
   if (slot !== last) {
-    // Move the last live slot into the hole so live slots stay contiguous.
-    const from = last * TAIL_SEGMENTS
-    const to = slot * TAIL_SEGMENTS
-    for (let i = 0; i < TAIL_SEGMENTS; i++) {
-      mesh.getMatrixAt(from + i, sim._m)
-      mesh.setMatrixAt(to + i, sim._m)
-    }
-    if (sim.renderer) mesh.instanceMatrix.addUpdateRange(to * 16, TAIL_SEGMENTS * 16)
-    mesh.instanceMatrix.needsUpdate = true
+    // Move the last live slot into the hole so live slots stay contiguous. Its
+    // segment attributes are recomputed by placeTail each frame, but the
+    // per-instance color lives outside placeTail and must be rewritten.
     const owner = chunk.owners[last]
     chunk.owners[slot] = owner
     if (owner) {
@@ -360,7 +386,7 @@ function freeTailSlot(sim, d) {
   }
   chunk.owners[last] = null
   chunk.live = last
-  mesh.count = last * TAIL_SEGMENTS
+  chunk.mesh.count = last * TAIL_SEGMENTS
   d.tailChunk = null
   d.tailSlot = -1
 }
@@ -375,6 +401,7 @@ export function disposeTailPool(sim) {
   for (const chunk of sim.tailChunks) {
     if (chunk.mesh) {
       sim.scene.remove(chunk.mesh)
+      chunk.mesh.geometry.dispose()
       chunk.mesh.dispose()
       chunk.mesh = null
     }
@@ -638,28 +665,41 @@ export function setTailColor(sim, d) {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
 }
 
+function markTailRange(sim, chunk, base) {
+  if (!sim.renderer) return
+  const S = TAIL_SEGMENTS
+  chunk.attrs.pos.addUpdateRange(base * 3, S * 3)
+  chunk.attrs.x.addUpdateRange(base * 3, S * 3)
+  chunk.attrs.y.addUpdateRange(base * 3, S * 3)
+  chunk.attrs.scale.addUpdateRange(base * 2, S * 2)
+}
+
+// Collapse a cell's segments to zero scale so they draw nothing. Positions and
+// axes are left stale; the shader multiplies them by the zero scale.
+function hideTailSegments(chunk, base) {
+  const s = chunk.attrs.scale.array
+  for (let i = 0; i < TAIL_SEGMENTS; i++) {
+    s[(base + i) * 2] = 0
+    s[(base + i) * 2 + 1] = 0
+  }
+}
+
 export function clearTail(sim, d) {
   const chunk = d.tailChunk
   if (!chunk || !chunk.mesh) return
-  const mesh = chunk.mesh
   const base = d.tailSlot * TAIL_SEGMENTS
-  for (let i = 0; i < TAIL_SEGMENTS; i++) {
-    zeroMatrix(sim, mesh, base + i)
-  }
-  if (sim.renderer) mesh.instanceMatrix.addUpdateRange(base * 16, TAIL_SEGMENTS * 16)
-  mesh.instanceMatrix.needsUpdate = true
+  hideTailSegments(chunk, base)
+  markTailRange(sim, chunk, base)
+  for (const a of chunk.attrList) a.needsUpdate = true
 }
 
 export function placeTail(sim, d) {
   const chunk = d.tailChunk
   if (!chunk || !chunk.mesh) return null
-  const tailMesh = chunk.mesh
   const base = d.tailSlot * TAIL_SEGMENTS
   if (d.sideHidden) {
-    for (let i = 0; i < TAIL_SEGMENTS; i++) {
-      zeroMatrix(sim, tailMesh, base + i)
-    }
-    if (sim.renderer) tailMesh.instanceMatrix.addUpdateRange(base * 16, TAIL_SEGMENTS * 16)
+    hideTailSegments(chunk, base)
+    markTailRange(sim, chunk, base)
     return chunk
   }
   const dirs = d.tailDirs
@@ -668,45 +708,41 @@ export function placeTail(sim, d) {
   const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   const draw = pitch * TAIL_LINK_FILL
   const ts = sim.tailScale
+  const { pos, x: ax, y: ay, scale } = chunk.attrs
+  const posArr = pos.array
+  const xArr = ax.array
+  const yArr = ay.array
+  const sArr = scale.array
   const a = sim._v1
     .copy(d.pos)
     .addScaledVector(d.heading, -(d.radius - d.width * TAIL_HINGE))
   a.setLength(SURFACE)
-  const e = sim._m.elements
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
     const b = sim._v2.copy(a).addScaledVector(dirs[i], pitch)
     b.setLength(SURFACE)
     const x = sim._v3.subVectors(b, a).normalize()
     // The cross-section is circular, so only the segment axis matters: use the
-    // outward sphere normal as the up vector instead of a reference-axis
-    // round-trip (saves two crosses per segment).
+    // outward sphere normal as the up vector (z is derived in the shader).
     const n = sim._v4.copy(a).add(b).normalize()
     const y = sim._v5.copy(n).addScaledVector(x, -n.dot(x))
     if (y.lengthSq() < 1e-12) y.set(0, 1, 0).addScaledVector(x, -x.y)
     y.normalize()
-    const z = sim._v6.crossVectors(x, y)
-    // Basis (x·draw, y·ts, z·ts) with the segment midpoint as translation,
-    // written directly into the column-major matrix (no quaternion round-trip).
-    e[0] = x.x * draw
-    e[1] = x.y * draw
-    e[2] = x.z * draw
-    e[3] = 0
-    e[4] = y.x * ts
-    e[5] = y.y * ts
-    e[6] = y.z * ts
-    e[7] = 0
-    e[8] = z.x * ts
-    e[9] = z.y * ts
-    e[10] = z.z * ts
-    e[11] = 0
-    e[12] = (a.x + b.x) * 0.5
-    e[13] = (a.y + b.y) * 0.5
-    e[14] = (a.z + b.z) * 0.5
-    e[15] = 1
-    tailMesh.setMatrixAt(base + i, sim._m)
+    const k = base + i
+    const p = k * 3
+    posArr[p] = (a.x + b.x) * 0.5
+    posArr[p + 1] = (a.y + b.y) * 0.5
+    posArr[p + 2] = (a.z + b.z) * 0.5
+    xArr[p] = x.x
+    xArr[p + 1] = x.y
+    xArr[p + 2] = x.z
+    yArr[p] = y.x
+    yArr[p + 1] = y.y
+    yArr[p + 2] = y.z
+    sArr[k * 2] = draw
+    sArr[k * 2 + 1] = ts
     a.copy(b)
   }
-  if (sim.renderer) tailMesh.instanceMatrix.addUpdateRange(base * 16, TAIL_SEGMENTS * 16)
+  markTailRange(sim, chunk, base)
   return chunk
 }
 
@@ -737,14 +773,18 @@ export function warmTail(sim, d) {
   }
 }
 
+// Full tail update = physical control + cosmetic pose. Kept as the single
+// entry point for tests/back-compat; `advance` calls the two halves directly so
+// the pose can be skipped when tails are hidden.
 export function updateTailState(sim, d, dt) {
-  const S = TAIL_SEGMENTS
-  const dirs = d.tailDirs
-  const pts = d.tailPts
-  const vels = d.tailVel
-  const acc = d.tailVT
-  const q = d.tailQ
+  updateTailControl(sim, d, dt)
+  updateTailPose(sim, d, dt)
+}
 
+// Physical control, O(1) per cell. `tailBend` is the only tail state the body
+// reads, so this always runs in `advance` even while tails are hidden —
+// toggling the tail display can never change motion.
+export function updateTailControl(sim, d, dt) {
   const n0 = sim._v1.copy(d.pos).normalize()
   const behind = sim._v3.copy(d.heading).negate()
   behind.addScaledVector(n0, -behind.dot(n0))
@@ -766,8 +806,6 @@ export function updateTailState(sim, d, dt) {
   if (carrier.lengthSq() < 1e-8) carrier.copy(behind)
   else carrier.normalize()
 
-  const ramp = S > 1 ? 1 / (S - 1) : 0
-
   const turning = Math.abs(d.headingRate) > 0.05
   if (d.drive > 0.02 || turning) d.tailPhase += dt * TAIL_OSC_FREQ
 
@@ -781,12 +819,37 @@ export function updateTailState(sim, d, dt) {
     -lagMax,
     lagMax,
   )
-  const bend = THREE.MathUtils.clamp(
+  d.tailBend = THREE.MathUtils.clamp(
     TAIL_RUDDER_GAIN * d.tailLag,
     -TAIL_ARC_MAX,
     TAIL_ARC_MAX,
   )
-  d.tailBend = bend
+}
+
+// Cosmetic pose, O(S²·TAIL_DYN_SUB) per cell: builds the analytic guide spine
+// and integrates the spring chain that `placeTail` renders. Skipped while tails
+// are hidden; call `warmTail` on the hidden→visible edge to avoid a snap.
+export function updateTailPose(sim, d, dt) {
+  const S = TAIL_SEGMENTS
+  const dirs = d.tailDirs
+  const pts = d.tailPts
+  const vels = d.tailVel
+  const acc = d.tailVT
+  const q = d.tailQ
+
+  const n0 = sim._v1.copy(d.pos).normalize()
+  const behind = sim._v3.copy(d.heading).negate()
+  behind.addScaledVector(n0, -behind.dot(n0))
+  if (behind.lengthSq() < 1e-8) return
+  behind.normalize()
+
+  // Tail length is TAIL_BODY × body length (pitch scales with radius).
+  const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
+  if (pitch < 1e-6 || dt <= 0) return
+
+  const carrier = d.tailCarrier
+  const ramp = S > 1 ? 1 / (S - 1) : 0
+  const bend = d.tailBend
 
   const side = sim._v5.crossVectors(n0, carrier)
   const root = sim._v2

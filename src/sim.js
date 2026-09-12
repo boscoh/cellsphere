@@ -35,7 +35,8 @@ import {
   mitose,
   releaseTail,
   placeTail,
-  updateTailState,
+  updateTailControl,
+  updateTailPose,
   updateMito,
   updateEnergy,
   updateStarvation,
@@ -550,11 +551,14 @@ export class Simulation {
     }
     this.perf.end('split')
 
-    // The tail is a physical control (it steers the body via TAIL_TURN), so it
-    // always advances with the sim, even while hidden, so toggling visibility
-    // doesn't snap the tail.
+    // Tail control (the `tailBend` steering actuator) always advances with the
+    // sim, even while hidden, so toggling visibility never changes motion. The
+    // cosmetic spring-chain pose is only integrated when tails are drawn.
     this.perf.begin('tail')
-    for (const cell of this.cells) updateTailState(this, cell, dt)
+    for (const cell of this.cells) updateTailControl(this, cell, dt)
+    if (!this.tailsHidden) {
+      for (const cell of this.cells) updateTailPose(this, cell, dt)
+    }
     this.perf.end('tail')
   }
 
@@ -564,15 +568,17 @@ export class Simulation {
     // Ranges only ever describe this frame's writes, so drop any left over from
     // advance-time clears (or from a frame where tails were hidden).
     for (const chunk of this.tailChunks) {
-      chunk.mesh.instanceMatrix.clearUpdateRanges()
+      for (const a of chunk.attrList) a.clearUpdateRanges()
     }
     if (this.tailsHidden) return
     for (const cell of this.cells) {
       const chunk = placeTail(this, cell)
       if (chunk) dirty.add(chunk)
     }
-    // One needsUpdate per touched chunk instead of per cell.
-    for (const chunk of dirty) chunk.mesh.instanceMatrix.needsUpdate = true
+    // One needsUpdate per attribute per touched chunk instead of per cell.
+    for (const chunk of dirty) {
+      for (const a of chunk.attrList) a.needsUpdate = true
+    }
   }
 
   step(simDt) {

@@ -52,6 +52,59 @@ export const tailMat = new THREE.MeshLambertMaterial({
   emissiveIntensity: 0.6,
 })
 
+// Procedural tail segment: instead of a 16-float instance matrix per segment,
+// the CPU uploads a compact basis (midpoint, axis X, up Y) + scale, and the
+// vertex shader builds the transform. Z is derived from X x Y.
+tailMat.onBeforeCompile = (shader) => {
+  shader.vertexShader =
+    'attribute vec3 aSegPos;\nattribute vec3 aSegX;\nattribute vec3 aSegY;\nattribute vec2 aSegScale;\n' +
+    shader.vertexShader
+
+  // Normals are in the segment's local (cylinder) frame; apply the inverse
+  // scale of the basis. Scale can be 0 for collapsed/hidden segments.
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <beginnormal_vertex>',
+    `#include <beginnormal_vertex>
+	vec3 aSegZ = normalize(cross(aSegX, aSegY));
+	float aInvLen = 1.0 / max(aSegScale.x, 1e-5);
+	float aInvRad = 1.0 / max(aSegScale.y, 1e-5);
+	objectNormal = aSegX * (objectNormal.x * aInvLen)
+		+ aSegY * (objectNormal.y * aInvRad)
+		+ aSegZ * (objectNormal.z * aInvRad);`,
+  )
+
+  // The basis above already replaces the instance matrix, so skip its normal
+  // path (which would divide by zero on the unused, all-zero instanceMatrix).
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <defaultnormal_vertex>',
+    `vec3 transformedNormal = objectNormal;
+	transformedNormal = normalMatrix * transformedNormal;
+	#ifdef FLIP_SIDED
+		transformedNormal = - transformedNormal;
+	#endif`,
+  )
+
+  const transform =
+    'aSegPos + aSegX * (transformed.x * aSegScale.x) + aSegY * (transformed.y * aSegScale.y) + aSegZ * (transformed.z * aSegScale.y)'
+
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <project_vertex>',
+    `vec4 mvPosition = vec4( transformed, 1.0 );
+	mvPosition.xyz = ${transform};
+	mvPosition = modelViewMatrix * mvPosition;
+	gl_Position = projectionMatrix * mvPosition;`,
+  )
+
+  shader.vertexShader = shader.vertexShader.replace(
+    '#include <worldpos_vertex>',
+    `#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0
+	vec4 worldPosition = vec4( transformed, 1.0 );
+	worldPosition.xyz = ${transform};
+	worldPosition = modelMatrix * worldPosition;
+#endif`,
+  )
+}
+
 export function disposeSharedMaterials() {
   foodGeo.dispose()
   tailGeo.dispose()

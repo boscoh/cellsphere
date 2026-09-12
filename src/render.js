@@ -1,5 +1,5 @@
 import { CULL_COS } from './constants'
-import { renderBodies } from './cells'
+import { renderBodies, warmTail } from './cells'
 import { renderAura } from './aura'
 import { updatePops } from './pops'
 import { cosFace } from './math'
@@ -20,7 +20,12 @@ function updateVisibility(sim) {
 
 export function renderView(sim, tailScale, dt) {
   sim.tailScale = tailScale
-  sim.tailsHidden = tailScale < 0.5
+  const hidden = tailScale < 0.5
+  // The pose was frozen while hidden; re-aim the chain before it is drawn again.
+  if (sim.tailsHidden && !hidden) {
+    for (const cell of sim.cells) warmTail(sim, cell)
+  }
+  sim.tailsHidden = hidden
   for (const chunk of sim.tailChunks) {
     chunk.mesh.visible = !sim.tailsHidden && chunk.live > 0
   }
