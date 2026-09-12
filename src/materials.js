@@ -32,10 +32,12 @@ bodyMat.onBeforeCompile = (shader) => {
     '#include <color_fragment>',
     '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;\n\tif (diffuseColor.a < 0.1) discard;'
   )
-  // Predator-latched ("immobile") prey keeps the original purple fresnel rim.
+  // Predator-latched ("immobile") prey tints dark red at the rim. Mixing the
+  // surface colour (rather than adding emissive) keeps the edge dark instead of
+  // washing the green body out toward white.
   shader.fragmentShader = shader.fragmentShader.replace(
     '#include <emissivemap_fragment>',
-    '#include <emissivemap_fragment>\n\t{\n\t\tfloat rim = 1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);\n\t\ttotalEmissiveRadiance += vInstanceParalysed * rim * rim * vec3(0.55, 0.30, 0.95) * 1.4;\n\t}'
+    '#include <emissivemap_fragment>\n\t{\n\t\tfloat ndv = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);\n\t\tfloat rim = smoothstep(0.95, 0.5, ndv);\n\t\tdiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.89, 0.18, 0.11), vInstanceParalysed * rim);\n\t}'
   )
 }
 
