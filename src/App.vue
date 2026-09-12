@@ -11,7 +11,7 @@ const canvasHolder = ref(null)
 const tailsActive = ref(true)
 const tunerRef = ref(null)
 const simRate = ref(SIM_SPEED)
-const fps = ref(0)
+const frameMs = ref(0)
 const bacteriaCount = ref(0)
 const blueCount = ref(0)
 const redCount = ref(0)
@@ -124,7 +124,7 @@ onMounted(() => {
     fpsCount++
     fpsTime += rawDt
     if (fpsTime >= 0.5) {
-      fps.value = Math.round(fpsCount / fpsTime)
+      frameMs.value = (fpsTime / fpsCount) * 1000
       fpsCount = 0
       fpsTime = 0
       bacteriaCount.value = sim.cells.length
@@ -167,10 +167,6 @@ onBeforeUnmount(() => {
   <div class="hud">
     <span class="brand">Cell</span>
     <span class="sep"></span>
-    <div class="cell">
-      <span class="ctl">Fps</span>
-      <div class="row"><span class="num">{{ fps }}</span></div>
-    </div>
     <div class="cell">
       <span class="ctl">Cells</span>
       <div class="row">
@@ -236,6 +232,8 @@ onBeforeUnmount(() => {
     <div class="perf-panel">
       <span class="ctl">Perf ms</span>
       <div class="perfs">
+        <span class="perf-name">frame</span>
+        <span class="perf-val">{{ frameMs.toFixed(1) }}</span>
         <template v-for="(ms, name) in perf" :key="name">
           <span class="perf-name">{{ PERF_LABELS[name] || name }}</span>
           <span class="perf-val">{{ ms.toFixed(1) }}</span>
