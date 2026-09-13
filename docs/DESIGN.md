@@ -235,7 +235,9 @@ top-right, the population/rates chart bottom-left, drag hint bottom-center.
 > nucleus. The render pipeline is now an explicit, toggleable `src/render.js`
 > with pure headless-testable helpers.
 
-- Git: commit semantically per subsystem; no git origin configured (local only).
+- Git: commit semantically per subsystem. Origin is
+  `https://github.com/boscoh/cellsphere.git`; `npm run build` publishes `docs/`
+  as the GitHub Pages site.
 - Dev: `npm run dev` (Vite). Build: `npm run build` (final tree verified).
 
 ## In progress / next steps
