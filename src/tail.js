@@ -12,6 +12,13 @@ import {
 // cells.js so the chain integration can be read (and tested) on its own
 // (cell-cv6.4).
 
+// Per-joint surface normals, recomputed once per substep and shared by the
+// accumulate, self-avoidance and integrate loops instead of each normalizing
+// the same joint positions again (cell-bjm). Sized lazily; the chain length is
+// fixed at TAIL_SEGMENTS + 1 joints.
+let _norm = []
+for (let i = 0; i <= TAIL_SEGMENTS; i++) _norm.push(new THREE.Vector3())
+
 // Full tail update = physical control + cosmetic pose. Kept as the single
 // entry point for tests/back-compat; `advance` calls the two halves directly so
 // the pose can be skipped when tails are hidden.
@@ -154,11 +161,14 @@ export function updateTailPose(sim, d, dt) {
   const h = dt / TAIL_DYN_SUB
   const damp = Math.exp(-TAIL_DAMP * h)
   const VMAX = 40
+  const contactD2 = TAIL_CONTACT_D * TAIL_CONTACT_D
   for (let s = 0; s < TAIL_DYN_SUB; s++) {
+    // 0. refresh the per-joint normals once; all three loops below read them
+    for (let j = 0; j <= S; j++) _norm[j].copy(pts[j]).normalize()
     // 1. accumulate accelerations: guide + length springs + local beam
     for (let j = 1; j <= S; j++) {
       const pj = pts[j]
-      const nj = sim._v1.copy(pj).normalize()
+      const nj = _norm[j]
       const stiff = j <= TAIL_MOTOR_JOINTS ? TAIL_MOTOR_K : TAIL_DRAG_K
       let ax = stiff * (q[j].x - pj.x)
       let ay = stiff * (q[j].y - pj.y)
@@ -209,16 +219,20 @@ export function updateTailPose(sim, d, dt) {
       ac.y = ay - rad * nj.y
       ac.z = az - rad * nj.z
     }
-    // 2. (C) self-avoidance: push non-adjacent joints apart only on contact
+    // 2. (C) self-avoidance: push non-adjacent joints apart only on contact.
+    // The squared-distance reject runs before any sqrt or normalize, so a
+    // non-contacting pair costs three subtractions and a compare (cell-bjm).
     for (let i = 0; i < S; i++) {
       const pi = pts[i]
-      const ni = sim._v1.copy(pi).normalize()
+      const ni = _norm[i]
       for (let k = i + 2; k <= S; k++) {
         const pk = pts[k]
         const dx = pk.x - pi.x
         const dy = pk.y - pi.y
         const dz = pk.z - pi.z
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+        const d2 = dx * dx + dy * dy + dz * dz
+        if (d2 >= contactD2) continue
+        const dist = Math.sqrt(d2)
         const need = TAIL_CONTACT_D - dist
         if (need <= 0) continue
         const f = TAIL_CONTACT_K * need
@@ -235,7 +249,7 @@ export function updateTailPose(sim, d, dt) {
             acc[i].z -= uz * sc
           }
         }
-        const nk = sim._v1.copy(pk).normalize()
+        const nk = _norm[k]
         const projK = -(dx * nk.x + dy * nk.y + dz * nk.z)
         const wx = -dx - projK * nk.x
         const wy = -dy - projK * nk.y
@@ -251,7 +265,7 @@ export function updateTailPose(sim, d, dt) {
     }
     // 3. integrate accelerations into velocities/positions (tangent, clamped)
     for (let j = 1; j <= S; j++) {
-      const nj = sim._v1.copy(pts[j]).normalize()
+      const nj = _norm[j]
       const ac = acc[j]
       let vx = (vels[j].x + ac.x * h) * damp
       let vy = (vels[j].y + ac.y * h) * damp
@@ -273,7 +287,12 @@ export function updateTailPose(sim, d, dt) {
       pts[j].x += vx * h
       pts[j].y += vy * h
       pts[j].z += vz * h
-      pts[j].setLength(SURFACE)
+      // Re-project onto the shell with a fast inverse length. Computed from the
+      // moved position, so tangential motion is preserved; this only replaces
+      // repeated setLength() calls with one sqrt (cell-bjm).
+      const len2 = pts[j].lengthSq()
+      if (len2 > 1e-12) pts[j].multiplyScalar(SURFACE / Math.sqrt(len2))
+      else pts[j].copy(nj).multiplyScalar(SURFACE)
     }
   }
 

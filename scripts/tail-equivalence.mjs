@@ -60,6 +60,32 @@ function run(Simulation, tailsHidden) {
   }
 }
 
+// Per-joint surface normals are computed once per substep and shared by the
+// accumulate, self-avoid and integrate loops (cell-bjm). The budget below is
+// the exact shared-normal design, with a little headroom:
+//   (S+1)*SUB shared normals + S+1 tangents + ~4 for n0/behind/root
+// Reintroducing a per-loop normalize() (the old design did ~165) trips it.
+function checkNormalizeBudget(sim, updateTailPose, segments, substeps) {
+  const perCellLimit = (segments + 1) * substeps + segments + 14
+  let n = 0
+  const proto = Object.getPrototypeOf(sim._v1)
+  const orig = proto.normalize
+  proto.normalize = function () {
+    n++
+    return orig.call(this)
+  }
+  try {
+    for (const d of sim.cells) updateTailPose(sim, d, DT)
+  } finally {
+    proto.normalize = orig
+  }
+  const perCell = n / Math.max(1, sim.cells.length)
+  if (perCell > perCellLimit) {
+    return `tail pose does ${perCell.toFixed(1)} normalize() per cell, budget ${perCellLimit}`
+  }
+  return null
+}
+
 const server = await createServer({
   server: { middlewareMode: true },
   appType: 'custom',
@@ -70,7 +96,7 @@ let code = 0
 try {
   const { Simulation } = await server.ssrLoadModule('/src/sim.js')
   const constants = await server.ssrLoadModule('/src/constants.js')
-  const { SURFACE, TAIL_OSC_FREQ, TAIL_SEGMENTS } = constants
+  const { SURFACE, TAIL_OSC_FREQ, TAIL_SEGMENTS, TAIL_DYN_SUB } = constants
   const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
   const cells = await server.ssrLoadModule('/src/cells.js')
   const tail = await server.ssrLoadModule('/src/tail.js')
@@ -482,6 +508,29 @@ try {
     code = 1
   } else {
     console.log('PASS headless tail-pose smoke: finite pose after 120s + renderTails')
+  }
+
+  const budget = checkNormalizeBudget(
+    (() => {
+      const originalRandom = Math.random
+      Math.random = mulberry32(SEED)
+      try {
+        const sim = new Simulation()
+        sim.buildWorld()
+        return sim
+      } finally {
+        Math.random = originalRandom
+      }
+    })(),
+    tail.updateTailPose,
+    TAIL_SEGMENTS,
+    TAIL_DYN_SUB,
+  )
+  if (budget) {
+    console.log(`FAIL tail pose normalize budget: ${budget}`)
+    code = 1
+  } else {
+    console.log('PASS tail pose normalize budget: per-joint normals shared across loops')
   }
 
 } finally {
