@@ -72,6 +72,7 @@ try {
   const cells = await server.ssrLoadModule('/src/cells.js')
   const constants = await server.ssrLoadModule('/src/constants.js')
   const { SURFACE, TAIL_OSC_FREQ } = constants
+  const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
 
   // PARAM_DEFS, the exported bindings and the setters map are three parallel
   // lists kept in sync by hand. Check them first: a missing setter leaves the
@@ -133,6 +134,56 @@ try {
   } else {
     console.log(
       `PASS params registry: ${constants.PARAM_DEFS.length} keys have a binding and a working setter`,
+    )
+  }
+
+  // capsuleDist is the invariant AGENTS.md calls out: using a spherical radius
+  // caused phantom contacts and spurious rotation. Check parallel, collinear,
+  // crossing and overlapping capsules against hand-computed gaps (cell-cv6.3).
+  const cap = (x, y, z, hx, hy, hz) => ({
+    pos: { x, y, z },
+    heading: { x: hx, y: hy, z: hz },
+    radius: 0.3,
+    width: 0.1,
+  })
+  const probe = { _col: { dist: 0, x: 0, y: 0, z: 0 } }
+  // radius 0.3, width 0.1 -> each capsule segment spans +/-0.2 along its heading
+  const capsuleCases = [
+    ['parallel, side by side', cap(0, 0, 0, 1, 0, 0), cap(0, 0.5, 0, 1, 0, 0), 0.5],
+    ['collinear, end to end', cap(0, 0, 0, 1, 0, 0), cap(0.9, 0, 0, 1, 0, 0), 0.5],
+    ['collinear, almost touching', cap(0, 0, 0, 1, 0, 0), cap(0.5, 0, 0, 1, 0, 0), 0.1],
+    ['crossing with an offset', cap(0, 0, 0, 1, 0, 0), cap(0, 0, 0.3, 0, 1, 0), 0.3],
+  ]
+  const capsuleProblems = []
+  for (const [label, a, b, expected] of capsuleCases) {
+    capsuleDist(probe, a, b)
+    if (Math.abs(probe._col.dist - expected) > 1e-6) {
+      capsuleProblems.push(`${label}: got ${probe._col.dist}, want ${expected}`)
+    }
+  }
+  // The direction must run from a to b and be usable even when the capsules
+  // overlap and the closest points coincide (dist 0 falls back to the centres).
+  capsuleDist(probe, cap(0, 0, 0, 1, 0, 0), cap(0, 0.5, 0, 1, 0, 0))
+  if (Math.abs(probe._col.y - 1) > 1e-6) {
+    capsuleProblems.push(`direction not +y (${probe._col.y})`)
+  }
+  capsuleDist(probe, cap(0, 0, 0, 1, 0, 0), cap(0.05, 0, 0, 1, 0, 0))
+  const overlapDir = Math.hypot(probe._col.x, probe._col.y, probe._col.z)
+  if (probe._col.dist !== 0) {
+    capsuleProblems.push(`overlapping capsules: got dist ${probe._col.dist}, want 0`)
+  }
+  if (Math.abs(overlapDir - 1) > 1e-6) {
+    capsuleProblems.push(`overlap direction not unit (${overlapDir})`)
+  }
+  if (Math.abs(probe._col.x - 1) > 1e-6) {
+    capsuleProblems.push(`overlap direction not +x (${probe._col.x})`)
+  }
+  if (capsuleProblems.length) {
+    console.log(`FAIL capsule distance: ${capsuleProblems.join('; ')}`)
+    code = 1
+  } else {
+    console.log(
+      `PASS capsule distance: ${capsuleCases.length} gaps + overlap direction match`,
     )
   }
 

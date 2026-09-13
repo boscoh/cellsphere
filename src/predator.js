@@ -11,6 +11,7 @@ import {
 } from './constants'
 import { cellIndex } from './math'
 import { drainEnergy, gainEnergy } from './cells'
+import { capsuleDist } from './collision'
 
 // How fast a feeding predator closes the last gap to sink into its prey.
 const LATCH_CLOSE_RATE = 0.5
@@ -63,7 +64,7 @@ export function predatorSense(sim) {
     forEachNearbyCell(sim, cx, cy, cz, r, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
-      sim.capsuleDist(red, d)
+      capsuleDist(sim, red, d)
       const dist = sim._col.dist
       if (dist < sense) {
         const w = 1 - dist / sense
@@ -124,7 +125,7 @@ export function predation(sim, simDt) {
     forEachNearbyCell(sim, cx, cy, cz, 1, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
-      sim.capsuleDist(red, d)
+      capsuleDist(sim, red, d)
       if (sim._col.dist < best) {
         best = sim._col.dist
         prey = d
@@ -137,13 +138,13 @@ export function predation(sim, simDt) {
     if (t == null || t.dead || t.splitting) {
       red.target = null
     } else {
-      sim.capsuleDist(red, t)
+      capsuleDist(sim, red, t)
       if (sim._col.dist > PRED_RANGE * 1.6) red.target = null
     }
 
     const latch = red.target
     if (!latch) continue
-    sim.capsuleDist(red, latch)
+    capsuleDist(sim, red, latch)
     const dist = sim._col.dist
     if (dist <= PRED_RANGE) {
       latch.paralysed = true

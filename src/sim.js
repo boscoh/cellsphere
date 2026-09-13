@@ -5,7 +5,6 @@ import {
   PRED_COUNT,
   MAX_CELLS,
   FOOD_COUNT,
-  SPRING,
   FIXED_DT,
   MAX_STEPS,
   ENERGY_MAX,
@@ -16,7 +15,6 @@ import {
   ANG_DRAG,
   STEER_GAIN,
   TAIL_TURN,
-  COLLISION_KICK,
   MAX_SPIN,
   PEAK_MIN,
   SENSE_PERIOD,
@@ -24,7 +22,13 @@ import {
   PRED_RANGE,
   PRED_DRIVE,
 } from './constants'
-import { smoothstep, cellIndex } from './math'
+import { smoothstep } from './math'
+import {
+  buildCellGrid,
+  capsuleDist,
+  signedAngleTo,
+  solveCollisions,
+} from './collision'
 import {
   foodGeo,
   foodMat,
@@ -191,213 +195,12 @@ export class Simulation {
     releaseTail(this, d)
   }
 
-  signedAngleTo(d, target) {
-    const n = this._v3.copy(d.pos).normalize()
-    const t = target.clone().addScaledVector(n, -target.dot(n))
-    if (t.lengthSq() < 1e-6) return null
-    t.normalize()
-    const head = d.heading.clone().addScaledVector(n, -d.heading.dot(n))
-    if (head.lengthSq() < 1e-6) return null
-    head.normalize()
-    const cross = this._v4.crossVectors(head, t)
-    return Math.atan2(cross.dot(n), head.dot(t))
-  }
-
-  deflectHeading(d, awayWorld, intensity) {
-    if (d.paralysed) return
-    const ang = this.signedAngleTo(d, awayWorld)
-    if (ang == null) return
-    d.headingRate += THREE.MathUtils.clamp(ang * COLLISION_KICK, -0.4, 0.4) * intensity
-  }
-
-  capsuleDist(a, b) {
-    const ha = Math.max(a.radius - a.width, 0)
-    const hb = Math.max(b.radius - b.width, 0)
-    const dhx = a.heading.x * ha
-    const dhy = a.heading.y * ha
-    const dhz = a.heading.z * ha
-    const ehx = b.heading.x * hb
-    const ehy = b.heading.y * hb
-    const ehz = b.heading.z * hb
-    const p1x = a.pos.x - dhx
-    const p1y = a.pos.y - dhy
-    const p1z = a.pos.z - dhz
-    const d1x = 2 * dhx
-    const d1y = 2 * dhy
-    const d1z = 2 * dhz
-    const p2x = b.pos.x - ehx
-    const p2y = b.pos.y - ehy
-    const p2z = b.pos.z - ehz
-    const d2x = 2 * ehx
-    const d2y = 2 * ehy
-    const d2z = 2 * ehz
-    const rx = p1x - p2x
-    const ry = p1y - p2y
-    const rz = p1z - p2z
-    const a1 = d1x * d1x + d1y * d1y + d1z * d1z
-    const e = d2x * d2x + d2y * d2y + d2z * d2z
-    const f = d2x * rx + d2y * ry + d2z * rz
-    const EPS = 1e-9
-    let s = 0
-    let t = 0
-    if (a1 <= EPS && e <= EPS) {
-      s = 0
-      t = 0
-    } else if (a1 <= EPS) {
-      t = THREE.MathUtils.clamp(f / e, 0, 1)
-    } else {
-      const c = d1x * rx + d1y * ry + d1z * rz
-      if (e <= EPS) {
-        s = THREE.MathUtils.clamp(-c / a1, 0, 1)
-      } else {
-        const bb = d1x * d2x + d1y * d2y + d1z * d2z
-        const denom = a1 * e - bb * bb
-        s = denom > EPS ? THREE.MathUtils.clamp((bb * f - c * e) / denom, 0, 1) : 0
-        t = (bb * s + f) / e
-        if (t < 0) {
-          t = 0
-          s = THREE.MathUtils.clamp(-c / a1, 0, 1)
-        } else if (t > 1) {
-          t = 1
-          s = THREE.MathUtils.clamp((bb - c) / a1, 0, 1)
-        }
-      }
-    }
-    const c1x = p1x + d1x * s
-    const c1y = p1y + d1y * s
-    const c1z = p1z + d1z * s
-    const c2x = p2x + d2x * t
-    const c2y = p2y + d2y * t
-    const c2z = p2z + d2z * t
-    const dx = c2x - c1x
-    const dy = c2y - c1y
-    const dz = c2z - c1z
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-    if (dist > 1e-9) {
-      this._col.dist = dist
-      this._col.x = dx / dist
-      this._col.y = dy / dist
-      this._col.z = dz / dist
-    } else {
-      this._col.dist = 0
-      const ddx = b.pos.x - a.pos.x
-      const ddy = b.pos.y - a.pos.y
-      const ddz = b.pos.z - a.pos.z
-      const dd = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz) || 1
-      this._col.x = ddx / dd
-      this._col.y = ddy / dd
-      this._col.z = ddz / dd
-    }
-  }
-
-  buildCellGrid() {
-    this.cellGrid.clear()
-    const n = this.cells.length
-    for (let i = 0; i < n; i++) {
-      const d = this.cells[i]
-      if ((d.mito || d.splitting) && !d.mitoParent) continue
-      const key = cellIndex(
-        Math.floor(d.pos.x / CELL_GRID),
-        Math.floor(d.pos.y / CELL_GRID),
-        Math.floor(d.pos.z / CELL_GRID),
-      )
-      const bucket = this.cellGrid.get(key)
-      if (bucket) bucket.push(i)
-      else this.cellGrid.set(key, [i])
-    }
-  }
-
-  solveCollisions(simDt) {
-    const n = this.cells.length
-    for (let i = 0; i < n; i++) {
-      const a = this.cells[i]
-      if ((a.mito || a.splitting) && !a.mitoParent) continue
-      const cx = Math.floor(a.pos.x / CELL_GRID)
-      const cy = Math.floor(a.pos.y / CELL_GRID)
-      const cz = Math.floor(a.pos.z / CELL_GRID)
-      for (let ox = -1; ox <= 1; ox++) {
-        for (let oy = -1; oy <= 1; oy++) {
-          for (let oz = -1; oz <= 1; oz++) {
-            const bucket = this.cellGrid.get(
-              cellIndex(cx + ox, cy + oy, cz + oz),
-            )
-            if (!bucket) continue
-            for (let k = 0; k < bucket.length; k++) {
-              const j = bucket[k]
-              if (j <= i) continue
-              const b = this.cells[j]
-              if ((b.mito || b.splitting) && !b.mitoParent) continue
-              // A latched predator/prey pair is allowed to overlap while feeding;
-              // the latch hold in predation owns their spacing.
-              if (
-                (a.breed === 1 && a.target === b && b.paralysed) ||
-                (b.breed === 1 && b.target === a && a.paralysed)
-              ) {
-                continue
-              }
-              const cdx = b.pos.x - a.pos.x
-              const cdy = b.pos.y - a.pos.y
-              const cdz = b.pos.z - a.pos.z
-              const bound = a.radius + b.radius + a.width + b.width
-              if (cdx * cdx + cdy * cdy + cdz * cdz >= bound * bound) continue
-
-              this.capsuleDist(a, b)
-              const contact = a.width + b.width
-              if (this._col.dist >= contact) continue
-              const overlap = contact - this._col.dist
-              const nx = this._col.x
-              const ny = this._col.y
-              const nz = this._col.z
-              const invA = a.mitoParent ? 0 : 1 / a.mass
-              const invB = b.mitoParent ? 0 : 1 / b.mass
-              const invSum = invA + invB
-              if (invSum <= 0) continue
-
-              const impulse = (overlap * SPRING) / invSum
-              a.vel.x -= nx * impulse * invA * simDt
-              a.vel.y -= ny * impulse * invA * simDt
-              a.vel.z -= nz * impulse * invA * simDt
-              b.vel.x += nx * impulse * invB * simDt
-              b.vel.y += ny * impulse * invB * simDt
-              b.vel.z += nz * impulse * invB * simDt
-
-              if (!a.mitoParent) {
-                this.deflectHeading(
-                  a,
-                  this._v6.set(-nx, -ny, -nz),
-                  Math.min(overlap * 8, 1),
-                )
-              }
-              if (!b.mitoParent) {
-                this.deflectHeading(
-                  b,
-                  this._v5.set(nx, ny, nz),
-                  Math.min(overlap * 8, 1),
-                )
-              }
-
-              const corr = (overlap * 0.5 * simDt) / invSum
-              a.pos.x -= nx * corr * invA
-              a.pos.y -= ny * corr * invA
-              a.pos.z -= nz * corr * invA
-              b.pos.x += nx * corr * invB
-              b.pos.y += ny * corr * invB
-              b.pos.z += nz * corr * invB
-              a.pos.setLength(SURFACE)
-              b.pos.setLength(SURFACE)
-            }
-          }
-        }
-      }
-    }
-  }
-
   advance(dt) {
     this.simTime += dt
     // Fresh spatial grid for this frame so camera-relevant queries (blue flee,
     // red hunt) and predation never see stale/removed cell indices.
     this.perf.begin('grid')
-    this.buildCellGrid()
+    buildCellGrid(this)
     this.perf.end('grid')
 
     this.perf.begin('cells')
@@ -447,7 +250,7 @@ export class Simulation {
         // damps it, so rotation is generated by tail motion rather than directly.
         d.steer = 0
         if (d.foodAmt > 0.01 && d.foodPeak > PEAK_MIN) {
-          const ang = this.signedAngleTo(d, d.foodDir)
+          const ang = signedAngleTo(this, d, d.foodDir)
           if (ang != null) {
             d.steer = THREE.MathUtils.clamp(ang * STEER_GAIN, -1, 1)
           }
@@ -461,7 +264,7 @@ export class Simulation {
           forEachNearbyCell(this, cx, cy, cz, 1, (index) => {
             const other = this.cells[index]
             if (other.breed !== 1) return
-            this.capsuleDist(d, other)
+            capsuleDist(this, d, other)
             if (this._col.dist < best) {
               best = this._col.dist
               red = other
@@ -469,7 +272,7 @@ export class Simulation {
           })
           if (red) {
             const away = this._v7.subVectors(d.pos, red.pos).normalize()
-            const ang = this.signedAngleTo(d, away)
+            const ang = signedAngleTo(this, d, away)
             if (ang != null) {
               d.steer = THREE.MathUtils.clamp(d.steer + ang * STEER_GAIN, -1, 1)
             }
@@ -481,7 +284,7 @@ export class Simulation {
         // latched prey it stops steering and holds the latch.
         if (d.breed === 1 && !d.detach && !(d.target && d.target.paralysed)) {
           if (d.preyAmt > 0) {
-            const ang = this.signedAngleTo(d, d.preyDir)
+            const ang = signedAngleTo(this, d, d.preyDir)
             if (ang != null) {
               d.steer = THREE.MathUtils.clamp(d.steer + ang * STEER_GAIN * 1.5, -1, 1)
             }
@@ -494,7 +297,7 @@ export class Simulation {
           if (from && !from.dead) {
             const away = this._v7.subVectors(d.pos, from.pos)
             if (away.lengthSq() > 1e-9) {
-              const ang = this.signedAngleTo(d, away.normalize())
+              const ang = signedAngleTo(this, d, away.normalize())
               if (ang != null) {
                 d.steer = THREE.MathUtils.clamp(ang * STEER_GAIN, -1, 1)
               }
@@ -537,7 +340,7 @@ export class Simulation {
     this.perf.end('cells')
 
     this.perf.begin('collide')
-    this.solveCollisions(dt)
+    solveCollisions(this, dt)
     this.perf.end('collide')
 
     this.perf.begin('eat')
