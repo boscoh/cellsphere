@@ -156,7 +156,7 @@ function onSpeed(event) {
 }
 
 .slider {
-  width: 110px;
+  width: 80px;
   height: 20px;
   accent-color: #6fa8ff;
   cursor: pointer;

@@ -59,7 +59,6 @@ function fmt(v) {
 <template>
   <aside id="tuner-panel" class="panel">
     <header class="head">
-      <span class="title">Parameters</span>
       <button
         type="button"
         class="icon-btn"
@@ -82,6 +81,7 @@ function fmt(v) {
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
+      <span class="title">Parameters</span>
     </header>
     <div v-show="expanded" class="body">
       <button
@@ -134,12 +134,12 @@ function fmt(v) {
 <style scoped>
 .panel {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  top: 74px;
+  left: 24px;
   z-index: 3;
   width: max-content;
-  max-width: calc(100vw - 40px);
-  max-height: calc(100vh - 156px);
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 172px);
   display: flex;
   flex-direction: column;
   background: rgba(10, 12, 16, 0.62);
@@ -155,7 +155,7 @@ function fmt(v) {
 .head {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   padding: 10px 14px;
 }
@@ -236,7 +236,7 @@ function fmt(v) {
 .body {
   width: 300px;
   box-sizing: border-box;
-  margin-right: 14px;
+  margin-left: 14px;
   overflow-y: auto;
   padding: 6px 14px 16px;
 }
