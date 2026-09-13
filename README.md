@@ -29,38 +29,23 @@ meant to reinforce each other rather than compete.
 
 ## Features
 
-- **Opaque sphere** — bacteria and food live on the front surface; the solid
-  sphere occludes anything on the far side
-- **Two breeds** — blue prey that graze food, and red predators that hunt and
-  drain blue cells; each breed has a constant color
-- **Bacteria** — capsule-shaped bodies (tube with rounded ends), oriented along
-  their direction of travel
-- **Flagellum tails** — thin segmented "whisker" tails that undulate while
-  swimming; the steering bend they carry generates the body's rotation
-- **Food distribution** — thousands of tiny muted specks scattered in uneven
-  clumps across the sphere
-- **Chemotaxis & grazing** — a bacterium senses local food concentration and
-  only turns toward food when the gradient is **strongly peaked**; it slows
-  gradually with concentration until it nearly stops inside a clump
-- **Energy → growth → mitosis** — eating banks energy that linearly grows the
-  body length; at max energy the cell **splits into two daughters** (each half
-  the parent's length), with a per-instance opacity fade and an immovable
-  parent collision proxy until the daughters separate
-- **Starvation & predation** — `METABOLISM` drains energy, a starved cell
-  shrinks and dies at zero (no fade), and predation drains prey straight into
-  the predator
-- **Heavy drag** — strong linear drag plus a separate **angular drag**, so
-  bacteria stop quickly when their tail stops
-- **Soft collision physics** — bacteria repel via a mass-weighted spring; contact
-  uses accurate **capsule–capsule** distance
-- **Chunked render pools** — body and tail `InstancedMesh`es grow on demand in
-  fixed-size chunks, so memory/upload scale with the high-water mark of
-  concurrent cells, not a hard ceiling
-- **Live parameter tuner** — a runtime panel with grouped sliders over the
-  tuning registry in `src/constants.js`
-- **Perf panel & population chart** — per-frame timings plus a live
-  population/rate chart, both collapsible
-- **Orbit camera** — drag to orbit, scroll to zoom
+- **Boundary-free sphere** — a closed surface with no grid, walls, or
+  wrap-around seams; cells move and sense continuously
+- **Tail-driven steering** — the undulating flagellum is the actuator:
+  chemotaxis and collisions bend it, and the bend generates the body's rotation
+- **One energy currency** — a single `energy` value drives size, speed, growth,
+  mitosis, and death, fed by both grazing and predation
+- **Growth & mitosis** — eating linearly lengthens the body; at full energy it
+  splits into two daughters while the parent lingers as an immovable collision
+  proxy until they separate
+- **Chemotaxis on a peaked gradient** — cells only turn toward food when the
+  local gradient is sharply peaked, and slow to a near-stop inside a clump
+- **Capsule–capsule collisions** — a mass-weighted soft spring on true capsule
+  distance, so elongated bodies repel without phantom contact
+- **Chunked instanced rendering** — body/tail `InstancedMesh`es grow on demand,
+  tracking the high-water mark of concurrent cells instead of a hard ceiling
+- **Live tuning** — every runtime parameter is exposed in a grouped slider panel
+  (`src/constants.js` registry)
 
 ## Tech stack
 
