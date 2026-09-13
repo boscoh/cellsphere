@@ -25,16 +25,16 @@ import {
   mitose,
   beginDetach,
   updateDetach,
-  releaseTail,
-  placeTail,
   updateMito,
   updateEnergy,
+} from './cells'
+import {
   initBodyPools,
   removeBody,
   disposeBodyPools,
   disposeBodyGeos,
-  disposeTailPool,
-} from './cells'
+} from './bodyPool'
+import { releaseTail, placeTail, disposeTailPool } from './tailPool'
 import { updateTailControl, updateTailPose } from './tail'
 import {
   generateClumps,

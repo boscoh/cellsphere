@@ -1,5 +1,5 @@
 import { CULL_COS } from './constants'
-import { renderBodies } from './cells'
+import { renderBodies } from './bodyPool'
 import { warmTail } from './tail'
 import { updatePops } from './pops'
 import { cosFace } from './math'

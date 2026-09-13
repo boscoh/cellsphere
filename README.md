@@ -97,7 +97,8 @@ The simulation is split into focused modules rather than living all in `App.vue`
 - `src/main.js` — app bootstrap
 - `src/App.vue` — thin shell: lifecycle, HUD, frame timing, overlay
 - `src/sim.js` — `Simulation` orchestrator: collision, physics loop, render lifecycle
-- `src/cells.js` — cell domain: create/grow/mitose, body pools, tail control + pose
+- `src/cells.js` — cell domain: create/grow/mitose (bodies and tails live in the
+  pools below)
 - `src/food.js` — food domain: spatial grid, eating + sensing, clumps
 - `src/predator.js` — predation: latch + drain
 - `src/constants.js` — tuning registry (`PARAM_DEFS` / `P` / `GROUPS`) + plain consts

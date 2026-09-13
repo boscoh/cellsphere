@@ -16,9 +16,10 @@ sense food, slow down, turn toward concentration, eat to grow, and eventually
 timing). The simulation is split into modules: `src/sim.js` (`Simulation`
 orchestrator: physics loop, render lifecycle), `src/collision.js` (capsule
 distance, cell hash, collision solve), `src/grid.js` (spatial hash key packing
-and neighbourhood scan), `src/cells.js` (cell domain —
-create/grow/mitose, body and tail pools, tail placement), `src/tail.js` (tail
-physics — steering control and spring-chain pose), `src/food.js` (food
+and neighbourhood scan), `src/cells.js` (cell domain — create/grow/mitose),
+`src/bodyPool.js` (pooled body instances per length bucket), `src/tailPool.js`
+(tail instance pool, slot claims/transfers, segment placement), `src/tail.js`
+(tail physics — steering control and spring-chain pose), `src/food.js` (food
 grid, eating + sensing, clumps); tuning constants in `src/constants.js`;
 scene/lights in `src/sceneSetup.js`; shared geos/materials in
 `src/materials.js`; pure helpers in `src/math.js`.
@@ -45,8 +46,8 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   independent) and is detached from the scene when it empties.
 - **Tails** render as **chunked `InstancedMesh`es** of capless-cylinder segments
   (`TAIL_CHUNK_CELLS*TAIL_SEGMENTS` each, `MeshLambertMaterial`); per-cell color
-  set from `createCell`/`setSize` (`setTailColor`). Cell slots are packed
-  contiguously from `0..live-1` (`allocTailSlot`) and holes are closed by
+  set from `createCell`/`setSize` (`setTailColor`, pool-owned). Cell slots are packed
+  contiguously from `0..live-1` (`claimTailSlot`) and holes are closed by
   swap-remove on death, so `mesh.count = live*TAIL_SEGMENTS` excludes every
   unused instance (a chunk with no live cells draws nothing). Each segment is one
   instance but carries **no `instanceMatrix`**: `placeTail` writes four compact
@@ -295,12 +296,13 @@ top-right, the population chart bottom-left, drag hint bottom-center.
   mesh/tail are dropped at fade end but the cell object stays as an
   **immovable collision proxy** (`mitoParent`, recentered on `m.startPos`) until
   the daughters separate — otherwise neighbours sail through the division.
-- **Tail slots** are chunk-local and packed (`allocTailSlot`); a freed slot is
+- **Tail slots** live in `tailPool.js`, chunk-local and packed; a freed slot is
   filled by moving the last live slot into it (`freeTailSlot`), keeping
-  `chunk.live` a contiguous high-water so `mesh.count` is exact. The front
-  daughter takes over the parent's slot (`tailTransfer`); the fading parent
-  drops its own `tailChunk`/`tailSlot` reference so the slot has a single owner,
-  and `releaseTail` must not free a transferred slot.
+  `chunk.live` a contiguous high-water so `mesh.count` is exact. Cell code never
+  touches `chunk.owners`: `createCell`/`makeCell` call `claimTailSlot`, and a
+  dividing cell calls `inheritTailSlot` so the front daughter takes the parent's
+  slot and the fading parent is left slotless. That makes `releaseTail` and
+  `clearTail` no-ops for the parent, so no transfer flag is needed.
 - **Tail ordering**: after `updateMito`, `advance()` runs `updateTailControl`
   unconditionally (so `tailBend`→`headingRate` is preserved even when tails are
   hidden), then `updateTailPose` only when visible. `renderTails` runs later and

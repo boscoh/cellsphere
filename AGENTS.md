@@ -31,7 +31,9 @@ historical design notes.
 - `src/sim.js` — `Simulation` orchestrator: physics loop, render lifecycle
 - `src/collision.js` — capsule distance, cell hash, collision solve
 - `src/grid.js` — spatial hash: key packing + neighbourhood scan
-- `src/cells.js` — cell domain: create/grow/mitose, body + tail pools, tail placement
+- `src/cells.js` — cell domain: create/grow/mitose (bodies and tails are separate)
+- `src/bodyPool.js` — pooled body `InstancedMesh`es, one pool per length bucket
+- `src/tailPool.js` — tail instance pool, slot claims/transfers, segment placement
 - `src/tail.js` — tail physics: steering control, spring-chain pose, re-aim
 - `src/food.js` — food grid, eating + sensing, clumps
 - `src/predator.js` — predation: latch + drain

@@ -70,8 +70,9 @@ let code = 0
 try {
   const { Simulation } = await server.ssrLoadModule('/src/sim.js')
   const constants = await server.ssrLoadModule('/src/constants.js')
-  const { SURFACE, TAIL_OSC_FREQ } = constants
+  const { SURFACE, TAIL_OSC_FREQ, TAIL_SEGMENTS } = constants
   const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
+  const cells = await server.ssrLoadModule('/src/cells.js')
   const tail = await server.ssrLoadModule('/src/tail.js')
 
   // PARAM_DEFS, the exported bindings and the setters map are three parallel
@@ -333,6 +334,120 @@ try {
     code = 1
   } else {
     console.log('PASS wave phase/chain: advances with sim dt, stays on the surface')
+  }
+
+  // The tail pool's mitosis handover is the one path that could leak or
+  // double-book a slot: the front daughter inherits the parent's slot while the
+  // parent must end up slotless, so its releaseTail/clearTail become no-ops.
+  // Drive one cell to full energy so the division is deterministic, because the
+  // long runs above do not reliably mitose (cell-cv6.5).
+  const handover = (() => {
+    const originalRandom = Math.random
+    Math.random = mulberry32(SEED)
+    try {
+      const sim = new Simulation()
+      sim.buildWorld()
+      const parent = sim.cells[0]
+      const chunk = parent.tailChunk
+      const slot = parent.tailSlot
+      const before = sim.cells.length
+      // Any amount above the remaining energy clamps to ENERGY_MAX and flags split.
+      cells.gainEnergy(sim, parent, 100)
+      if (!parent.split) return { skipped: 'parent did not reach the split threshold' }
+      sim.step(DT)
+      const front = sim.cells.find((c) => c.mito && c.mito.parent === parent)
+      return {
+        chunk,
+        slot,
+        front,
+        parent,
+        divided: sim.cells.length === before + 2,
+      }
+    } finally {
+      Math.random = originalRandom
+    }
+  })()
+  const handoverProblems = []
+  if (handover.skipped) {
+    handoverProblems.push(handover.skipped)
+  } else {
+    const { front, parent, chunk, slot, divided } = handover
+    if (!divided) handoverProblems.push('parent did not divide')
+    if (!front) {
+      handoverProblems.push('no front daughter found')
+    } else {
+      if (front.tailChunk !== chunk || front.tailSlot !== slot) {
+        handoverProblems.push('front daughter did not inherit the parent slot')
+      }
+      if (chunk.owners[slot] !== front) {
+        handoverProblems.push('front daughter is not the recorded slot owner')
+      }
+    }
+    if (parent.tailChunk !== null || parent.tailSlot !== -1) {
+      handoverProblems.push('parent kept its tail slot after handing it over')
+    }
+  }
+  if (handoverProblems.length) {
+    console.log(`FAIL tail slot handover: ${handoverProblems.join('; ')}`)
+    code = 1
+  } else {
+    console.log('PASS tail slot handover: front daughter inherits, parent goes slotless')
+  }
+
+  // Pool invariants after a long run: every live cell owns exactly one packed
+  // slot, chunk.live matches the number of cells pointing at the chunk, and
+  // mesh.count stays exact.
+  const poolProblems = []
+  {
+    const originalRandom = Math.random
+    Math.random = mulberry32(SEED)
+    let sim
+    try {
+      sim = new Simulation()
+      sim.buildWorld()
+      for (let i = 0; i < Math.round(SIM_SECONDS / DT); i++) sim.step(DT)
+    } finally {
+      Math.random = originalRandom
+    }
+    const claimed = new Map()
+    const perChunk = new Map()
+    for (let i = 0; i < sim.cells.length; i++) {
+      const d = sim.cells[i]
+      if (!d.tailChunk || d.tailSlot < 0) {
+        poolProblems.push(`cell ${i} has no tail slot`)
+        continue
+      }
+      const ci = sim.tailChunks.indexOf(d.tailChunk)
+      const key = `${ci}:${d.tailSlot}`
+      if (claimed.has(key)) poolProblems.push(`slot ${key} claimed by two cells`)
+      claimed.set(key, i)
+      perChunk.set(ci, (perChunk.get(ci) || 0) + 1)
+      if (d.tailSlot >= d.tailChunk.live) {
+        poolProblems.push(`cell ${i} slot ${d.tailSlot} is at or beyond live ${d.tailChunk.live}`)
+      }
+      if (d.tailChunk.owners[d.tailSlot] !== d) {
+        poolProblems.push(`cell ${i} is not the owner of its slot`)
+      }
+    }
+    for (let ci = 0; ci < sim.tailChunks.length; ci++) {
+      const chunk = sim.tailChunks[ci]
+      const live = perChunk.get(ci) || 0
+      if (chunk.live !== live) {
+        poolProblems.push(`chunk ${ci} live=${chunk.live} but ${live} cells point at it`)
+      }
+      if (chunk.mesh.count !== chunk.live * TAIL_SEGMENTS) {
+        poolProblems.push(`chunk ${ci} mesh.count=${chunk.mesh.count} != live*segments`)
+      }
+      for (let s = chunk.live; s < chunk.owners.length; s++) {
+        if (chunk.owners[s]) poolProblems.push(`chunk ${ci} slot ${s} beyond live is still owned`)
+      }
+    }
+  }
+  if (poolProblems.length) {
+    console.log(`FAIL tail pool invariants: ${poolProblems.slice(0, 5).join('; ')}`)
+    code = 1
+  } else {
+    console.log('PASS tail pool invariants: slots unique, packed, owners and counts consistent')
   }
 
   // Headless pose smoke: drive the render path directly (no WebGL), stepping a
