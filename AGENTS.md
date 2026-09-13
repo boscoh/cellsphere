@@ -1,104 +1,67 @@
-# AGENT.md - Development Guide
+# AGENTS.md — Development Guide
 
-Follow these instructions precisely for all sessions.
+CellSphere is a Vue 3 + Vite + Three.js real-time **predator–prey simulation on
+the surface of a solid sphere**. Blue prey graze food; red predators hunt them.
+There is no boundary — the surface is a closed periodic domain.
 
-## Project Overview
-
-"CellSphere" is a Vue 3 + Three.js interactive visualization: a glowing circle that
-circumscribes a swarm of softly colliding, floating cells drifting in a
-viscosity-controlled simulation.
-
-- **Framework**: Vue 3 with Vite, `<script setup>` SFCs
-- **Rendering**: Three.js (WebGLRenderer, OrbitControls from `three/addons`)
-- **Physics**: custom velocity-based particle model (soft spring collisions, ring-wall bounces)
-
-## Project Structure
-
-- `src/App.vue` — thin Vue shell: lifecycle, reactive overlay UI, frame timing
-- `src/sim.js` — `Simulation` orchestrator: collision, physics loop, render lifecycle
-- `src/cells.js` — cell domain: create, grow, mitosis, tails
-- `src/food.js` — food domain: spatial grid, eating + sensing, clumps
-- `src/constants.js` — all tuning constants
-- `src/sceneSetup.js` — Three.js scene / renderer / camera / controls / sphere
-- `src/materials.js` — shared geometries & materials
-- `src/math.js` — pure helpers (random vectors, smoothstep, spatial-hash key)
-- `src/main.js` — app bootstrap
-- `src/style.css` — global reset / base styles
-- `index.html` — entry HTML
+`docs/DESIGN.md` is the authoritative architecture + tuning + gotchas reference;
+read it before touching physics. Other `docs/*_EXPLORATION.md` files are
+historical design notes.
 
 ## Commands
 
-- **Dev**: `npm run dev` — Start dev server (http://localhost:5173)
-- **Build**: `npm run build` — Production build to `dist/`
-- **Preview**: `npm run preview` — Preview production build
+- `npm run dev` — Vite dev server at http://localhost:5173
+- `npm run build` — runs `scripts/clean-docs.mjs`, then `vite build` **into `docs/`**
+  (the committed GitHub Pages site, base `/cellsphere/`). This is the only quality
+  gate; there is no lint/typecheck. Do not confuse `docs/` with the ignored `dist/`.
+- `npm run preview` — preview the built site
+- `npm run test:tail` — the only test. Headless Vite-SSR checks: tail visible/hidden
+  physics equivalence, `warmTail` decoupling, wave phase, and a pose smoke test.
+  Run it after changing `sim.js`, `cells.js`, tail code, or `constants.js`.
 
-## Beads Workflow (MANDATORY)
+## Architecture
 
-This project uses [Beads](https://github.com/steveyegge/beads) for issue tracking.
-**Use `bd` commands instead of markdown TODOs.**
+- `src/App.vue` — thin shell: lifecycle, HUD, frame timing, overlay
+- `src/sim.js` — `Simulation` orchestrator: collision, physics loop, render lifecycle
+- `src/cells.js` — cell domain: create/grow/mitose, body pools, tail control + pose
+- `src/food.js` — food grid, eating + sensing, clumps
+- `src/predator.js` — predation: latch + drain
+- `src/constants.js` — tuning registry (`PARAM_DEFS`/`PARAMS`/`GROUPS`) + plain consts
+- `src/sceneSetup.js` — scene / renderer / camera / controls / sphere shell
+- `src/materials.js` — shared geometries & materials (body shader hooks)
+- `src/render.js` — visibility culling + render pass
+- `src/glow.js`, `src/pops.js` — death-burst billboards
+- `src/perf.js` — per-frame timing; `src/Tuner.vue`, `src/PopChart.vue` — UI
+- `src/math.js` — pure helpers
 
-### Session Start
-1. Run `bd ready` to list unblocked issues
-2. Select highest-priority matching issue
-3. Claim it: `bd update <id> --status=in_progress`
+Invariants an agent must not break:
 
-### During Work
-- Create issues: `bd create --title="..." --type=task --priority=2`
-- Update progress: `bd update <id> --notes="Progress..."`
-- Add dependencies: `bd dep add <child> <blocks>`
-- Types: task, bug, feature, epic, question, docs
-- Priorities: P0 (critical) → P4 (backlog)
+- Cells are **plain data objects, not `THREE.Group`**. Physics reads/writes their
+  fields directly (`pos`, tangent `vel`/`heading`, `energy`, tail state, `quat`).
+- **Time loop**: `App.vue` banks real time and calls `sim.step(simDt * simRate)`;
+  `step` subdivides into `clamp(ceil(simDt/FIXED_DT), 1, MAX_STEPS)` substeps of
+  `advance(dt)`. Rendering is a separate `sim.render(tailScale)`.
+- **Headless physics**: `new Simulation(); sim.buildWorld(); sim.step(dt)` works
+  with no WebGL/`attach()`. Use this for tests and debugging.
+- `energy` in `[0, ENERGY_MAX]` drives size linearly; `ENERGY_MAX` → mitosis,
+  `0` → immediate death (no fade).
+- Cell–cell collision must use **capsule–capsule** distance, not sphere distance.
+- Tails are visual-only except the `tailBend` scalar that drives `headingRate`;
+  tail control runs even while tails are hidden, so steering is unaffected.
+- Body/tail `InstancedMesh`es grow on demand in fixed-size chunks; they are not
+  sized to `MAX_CELLS`.
 
-### After Each Task (MANDATORY)
-1. Close the issue: `bd close <id> --reason="..."`
-2. Stage and commit: `git add -A && git commit -m "Close cell-<id>: description"`
-3. Only then move to the next task
+## Tuning & code style
 
-### Session End (Landing the Plane)
-1. File issues for any remaining/follow-up work
-2. Run quality gates: `npm run build`
-3. Close finished issues, update in-progress items
-4. Push to remote: `git pull --rebase && bd sync && git push`
-5. Verify: `git status` shows "up to date with origin"
-
-## Tuning Parameters
-
-Defined in `src/constants.js`:
-
-- `SPRING` — collision stiffness
-- `RESTORE_RATE` — how fast cells return to base speed
-- `WALL_RESTITUTION` — bounciness of the circle boundary
-- `DAMPING` — velocity damping per second
-- `CELL_COUNT` — number of cells
-- `viscosity` (reactive) — scales the simulation clock; adjustable via overlay slider
-
-## Code Style
-
+- All runtime-tunable values live in `src/constants.js` (`PARAM_DEFS`/`PARAMS`/
+  `GROUPS`) and are editable live in the Tuner panel. Structural constants (sphere
+  radius, counts, grid/chunk sizes) are plain `const`s outside the registry. Full
+  table in `docs/DESIGN.md`. The HUD speed slider is `simRate` (`SIM_SPEED`,
+  1–50×), not a "viscosity".
 - 2 spaces, no semicolons, single quotes
-- Vue Composition API with `<script setup>`
-- `camelCase` for variables/functions, `PascalCase` for components
+- Vue Composition API with `<script setup>`; `camelCase` functions, `PascalCase` components
 - No comments unless the logic genuinely needs them
-- Keep the physics state in each cell's `userData` (position/velocity in XZ, radius, mass, base speed, bob params)
-
-## Subagents (opencode)
-
-Use the `task` tool to run subagents for work the orchestrator can delegate. Each
-subagent runs in a fresh context and returns one message; the orchestrator merges
-results and shows you only the combined output.
-
-### Types
-
-- `explore` — fast codebase search: find files, grep, answer "how does X work".
-  Use for broad sweeps (e.g. "find every place we write the tail matrix").
-- `general` — multi-step research or execution for complex questions.
-
-### Patterns
-
-- Launch several independent subagents in ONE message (parallel) for independent
-  sweeps, then wait for their results.
-- Give each a precise task AND the exact value to return (no guesswork).
-- Delegate research/search; do the implementation yourself in the shared context.
-- Verify subagent findings — they can't see this session's state.
+- Match the patterns of a neighboring file before adding code
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:full hash:f2c52d34 -->
 ## Issue Tracking with bd (beads)
