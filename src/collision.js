@@ -9,10 +9,10 @@ import { gridKey } from './grid'
 
 export function signedAngleTo(sim, d, target) {
   const n = sim._v3.copy(d.pos).normalize()
-  const t = target.clone().addScaledVector(n, -target.dot(n))
+  const t = sim._v11.copy(target).addScaledVector(n, -target.dot(n))
   if (t.lengthSq() < 1e-6) return null
   t.normalize()
-  const head = d.heading.clone().addScaledVector(n, -d.heading.dot(n))
+  const head = sim._v12.copy(d.heading).addScaledVector(n, -d.heading.dot(n))
   if (head.lengthSq() < 1e-6) return null
   head.normalize()
   const cross = sim._v4.crossVectors(head, t)

@@ -82,6 +82,18 @@ export class Simulation {
     this.respawning = []
     this.senseAccum = 0
 
+    // Scratch vectors and objects, allocated once per Simulation and reused every
+    // step so the physics path allocates nothing. The rule: never hold one across
+    // a call into another module. Different phases of a step may reuse the same
+    // vector (they never overlap), but two live references in one phase must not.
+    //   movement/collision  _v1 normal, _v2 right, _v3/_v4 angle cross,
+    //                       _v5 normal2, _v6 deflect direction, _v10 forward,
+    //                       _v11/_v12 angle temporaries, _col
+    //   tails               _v1 root joint, _v2 root, _v3 behind, _v5 side,
+    //                       _v7 spine, _v8 wave step
+    //   mitosis             _v10/_v11/_v12 basis, _m
+    //   food                _fd
+    //   render              _v9 fade scale, _m, _dummy, _q, _one, _camDir
     this._v1 = new THREE.Vector3()
     this._v2 = new THREE.Vector3()
     this._v3 = new THREE.Vector3()
@@ -91,6 +103,9 @@ export class Simulation {
     this._v7 = new THREE.Vector3()
     this._v8 = new THREE.Vector3()
     this._v9 = new THREE.Vector3()
+    this._v10 = new THREE.Vector3()
+    this._v11 = new THREE.Vector3()
+    this._v12 = new THREE.Vector3()
     this._q = new THREE.Quaternion()
     this._m = new THREE.Matrix4()
     this._dummy = new THREE.Object3D()
@@ -310,8 +325,8 @@ export class Simulation {
       d.pos.setLength(SURFACE)
 
       const normal2 = this._v5.copy(d.pos).normalize()
-      const fwd = d.heading
-        .clone()
+      const fwd = this._v10
+        .copy(d.heading)
         .addScaledVector(normal2, -d.heading.dot(normal2))
         .normalize()
       const right = this._v2.crossVectors(fwd, normal2)

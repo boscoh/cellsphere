@@ -701,8 +701,8 @@ export function updateMito(sim, d, simDt) {
 
   const pd = m.parent
   pd.pos.copy(m.startPos)
-  placeMitoChild(m, m.back, -dist)
-  placeMitoChild(m, m.front, dist)
+  placeMitoChild(sim, m, m.back, -dist)
+  placeMitoChild(sim, m, m.front, dist)
 
   m.back.tailGrow = fadeK
   m.back.drive = 0
@@ -731,18 +731,20 @@ function finalizeMito(d, m) {
   m.parent.dead = true
 }
 
-function placeMitoChild(m, cell, dist) {
+function placeMitoChild(sim, m, cell, dist) {
   const d = cell
   d.pos.copy(m.startPos).addScaledVector(m.headBack, dist)
   d.pos.setLength(SURFACE)
-  const n = d.pos.clone().normalize()
-  const fwd = d.heading.clone().addScaledVector(n, -d.heading.dot(n)).normalize()
-  const right = new THREE.Vector3().crossVectors(fwd, n)
+  const n = sim._v10.copy(d.pos).normalize()
+  const fwd = sim._v11
+    .copy(d.heading)
+    .addScaledVector(n, -d.heading.dot(n))
+    .normalize()
+  const right = sim._v12.crossVectors(fwd, n)
   if (right.lengthSq() < 1e-6) {
     right.set(0, 1, 0).addScaledVector(n, -n.y).normalize()
   } else {
     right.normalize()
   }
-  const mtx = new THREE.Matrix4().makeBasis(fwd, n, right)
-  d.quat.setFromRotationMatrix(mtx)
+  d.quat.setFromRotationMatrix(sim._m.makeBasis(fwd, n, right))
 }
