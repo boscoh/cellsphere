@@ -125,45 +125,137 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 
 ## Current tuning constants (`src/constants.js`)
 
-| Constant | Value | Role |
-|---|---|---|
-| `SPHERE_RADIUS` / `SURFACE` | 5 / 5.06 | sphere radius / surface offset |
-| `PREY_COUNT` / `PRED_COUNT` / `MAX_CELLS` | 50 / 15 / 500 | initial prey (blue) / predators (red) / max population |
-| `FOOD_COUNT` / `FOOD_CLUMPS` / `FOOD_SCATTER` / `FOOD_RESPAWN` | 3000 / 12 / 0.15 / 40 | food specks / clumps / uniform share / respawn seconds |
-| `GRID` / `CELL_GRID` | 0.35 / 1.0 | food / cell spatial-hash cell size |
-| `SPRING` | 22 | cell–cell stiffness |
-| `FIXED_DT` / `MAX_STEPS` | 1/60 / 200 | physics substep / per-frame ceiling |
-| `MIN_RADIUS` / `MAX_RADIUS` / `START_RADIUS` | 0.10 / 0.30 / 0.13 | size gradient (MAX chosen so a full cell exactly spans both daughters) |
-| `ENERGY_MAX` | 1.0 | energy at which a cell divides (linear size: radius = MIN + (energy/MAX)·(MAX−MIN)) |
-| `ENERGY_PER_FOOD` / `ABSORB_RATE` | 0.05 / 0.10 | energy per food / always-on absorption rate (energy/s) |
-| `METABOLISM` | 0.0015 | energy drained per second (0 = off) |
-| `MOVE_COST` / `TURN_COST` | 0.001 / 0.001 | extra energy/s at full drive / full spin |
-| `MITO_TIME` / `MITO_HOLD` / `MITO_FADE` | 5 / 0.2 / 0.4 | mitosis duration; hold; fade fraction |
-| `MITO_NEAR` / `MITO_SEP` | 2.1 / 2.8 | child held spread / separated spread |
-| `MITO_SLOW_FRAC` / `MITO_REST` | 0.9 / 4 | decel into split (just before mitosis) / post-mitosis coast |
-| `STARVE_SLOW` | 0.3 | energy fraction below which a starving cell slows |
-| `WIDTH` | 0.085 | base body width; per-cell `d.width = WIDTH · RED_SIZE` for reds, so reds scale in both length and thickness |
-| `TAIL_SEGMENTS` / `TAIL_LINK` / `TAIL_MOTOR_AMP` / `TAIL_DYN_SUB` | 9 / 0.05 / 0.349 / 4 | plain constants: segments (=round(1.5·MAX_RADIUS/TAIL_LINK)) / link pitch / wave amplitude (40°) / chain substeps |
-| `TAIL_BODY` / `TAIL_LINK_FILL` / `TAIL_HINGE` | 2 / 0.95 / 0.5 | tail length (× body length) / drawn fraction of each pitch / hinge tuck into body |
-| `TAIL_OSC_FREQ` / `TAIL_WAVE` / `TAIL_CARRIER_RATE` | 4 / 0.35 / 2 | wave freq (rad/s) / phase shift per joint (rad) / carrier re-aim rate |
-| `TAIL_DRAG_K` / `TAIL_MOTOR_K` / `TAIL_MOTOR_JOINTS` / `TAIL_BEND_K` | 25 / 2200 / 3 / 900 | guide stiffness along the tail / root motor stiffness / motor joints / beam stiffness |
-| `TAIL_LEN_K` / `TAIL_LEN_DAMP` / `TAIL_DAMP` / `TAIL_CONTACT_D` / `TAIL_CONTACT_K` | 4000 / 90 / 1.2 / 0.04 / 400 | link length spring / length damping / joint damping / self-avoidance distance / push |
-| `TAIL_TRAIL_RATE` / `TAIL_ARC` / `TAIL_ARC_MAX` / `TAIL_RUDDER_GAIN` / `TAIL_TURN` | 1 / 1 / 2 / 1 / 2.5 | lag decay / arc toggle / arc cap (rad) / steer→arc gain / bend→heading-rate gain |
-| `THRUST` / `DRAG` | 12 / 22 | linear propulsion / damping |
-| `GRAZE_RATE` / `GRAZE_GAIN` | 0.01 / 6.0 | slowdown floor / gain |
-| `ANG_DRAG` / `MAX_SPIN` | 22 / 2.0 | angular damping (matches DRAG) / rate cap |
-| `STEER_GAIN` / `PEAK_MIN` | 0.5 / 0.18 | gradient→steer gain / min gradient sharpness to steer |
-| `COLLISION_KICK` | 0.5 | contact → angular kick |
-| `SENSE_BOOST` / `SENSE_PERIOD` | 0.25 / 0.05 | sensing radius / scan period |
-| `PRED_RANGE` / `PRED_SENSE` / `PRED_BITE` | 0.18 / 1.5 / 0.18 | latch distance / smell range / bite distance |
-| `PRED_DRAIN` / `PRED_EFF` / `PRED_METABOLISM` | 0.008 / 1 / 0.005 | prey energy/s drained / growth multiple / unfed burn |
-| `PRED_DRIVE` / `RED_SIZE` | 0.7 / 0.5 | predator speed multiplier / red body size fraction |
-| `CULL_COS` | 0 | cos(normal, cam) below which a tail is culled |
+<!-- BEGIN GENERATED: tuning constants -->
+_Fixed constants (not tunable at runtime)._
 
-All values above except the plain constants (`SPHERE_RADIUS`, `SURFACE`,
-`MAX_CELLS`, `GRID`, `CELL_GRID`, `FIXED_DT`, `MAX_STEPS`, `MIN/MAX/START_RADIUS`,
-`ENERGY_MAX`, `WIDTH`, `TAIL_SEGMENTS`, `TAIL_LINK`, `TAIL_MOTOR_AMP`) are
-runtime-tunable `PARAM_DEFS` (Tuner).
+| Parameter | Default | Role |
+|---|---|---|
+| `BODY_CHUNK_CELLS` | 64 | cells per body instance chunk |
+| `CELL_GRID` | 1 | cell spatial-hash cell size |
+| `CULL_COS` | 0 | cos(normal, cam) at or below which a tail is culled |
+| `ENERGY_MAX` | 1 | energy at which a cell divides; size is linear in energy |
+| `FIXED_DT` | 0.0166667 | physics substep, in seconds (1/60) |
+| `GRID` | 0.35 | food spatial-hash cell size |
+| `MAX_CELLS` | 500 | logical population ceiling; pools grow on demand rather than reserving it |
+| `MAX_RADIUS` | 0.3 | radius at full energy; chosen so a full cell exactly spans both daughters |
+| `MAX_STEPS` | 200 | per-frame substep ceiling |
+| `MIN_RADIUS` | 0.1 | radius at zero energy |
+| `SPHERE_RADIUS` | 5 | sphere radius |
+| `START_RADIUS` | 0.13 | spawn radius |
+| `SURFACE` | 5.06 | surface offset (`SPHERE_RADIUS + 0.06`); every entity is placed here |
+| `TAIL_CHUNK_CELLS` | 64 | cells per tail instance chunk |
+| `TAIL_DYN_SUB` | 4 | spring-chain substeps per step |
+| `TAIL_LINK` | 0.05 | tail link pitch; `TAIL_SEGMENTS = round(1.5 * MAX_RADIUS / TAIL_LINK)` |
+| `TAIL_MOTOR_AMP` | 0.349066 | tail wave amplitude (40 degrees, in radians) |
+| `TAIL_SEGMENTS` | 9 | tail segments per cell |
+| `WIDTH` | 0.085 | base body width; per-cell width is `WIDTH * RED_SIZE` for reds |
+
+_Editable at runtime in the Tuner (`PARAM_DEFS`)._
+
+**World**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `PREY_COUNT` | 50 | Number of prey (blue) cells spawned when the world is (re)built. |
+| `PRED_COUNT` | 15 | Number of predator (red) cells spawned when the world is (re)built. |
+| `SIM_SPEED` | 1 | Simulation speed applied on startup and when Default/Reset is pressed (1x = real time). |
+| `FOOD_COUNT` | 3000 | Total food particles spawned when the world is (re)built. |
+| `FOOD_CLUMPS` | 12 | Number of food clusters (0 = none; rebuilds). |
+| `FOOD_SCATTER` | 0.15 | Share of food placed uniformly instead of in clumps (rebuilds). |
+| `FOOD_CLUMP_WIDE` | 1 | Angular spread of each clump (rebuilds). |
+| `FOOD_RESPAWN` | 40 | Base seconds before an eaten food particle reappears. |
+
+**Movement**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `THRUST` | 12 | Forward acceleration along the heading, scaled by drive (0..1). |
+| `DRAG` | 22 | Velocity damping rate (1/s) resisting cell motion. |
+| `ANG_DRAG` | 22 | Heading-rate damping (1/s); matches linear DRAG so turns stop as fast as translation. |
+| `MAX_SPIN` | 2 | Hard cap on turning rate (rad/s). |
+| `STEER_GAIN` | 0.5 | Maps the food-gradient angle into a tail steering command (-1..1). |
+| `COLLISION_KICK` | 0.5 | Strength of the heading deflection when cells collide. |
+| `MITO_SLOW_FRAC` | 0.9 | Energy fraction above which a cell begins coasting toward mitosis (keeps seeking food until just before dividing). |
+| `PEAK_MIN` | 0.18 | Minimum gradient sharpness required before chemotaxis steers. |
+
+**Collision**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `SPRING` | 22 | Stiffness of the soft cell-cell collision response. |
+
+**Sensing & Feeding**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `SENSE_BOOST` | 0.25 | Extra sensing reach added to the body radius. |
+| `SENSE_PERIOD` | 0.05 | Seconds between chemotaxis sampling passes. |
+| `GRAZE_RATE` | 0.01 | Drive factor while well fed (lower = lazier drifting). |
+| `GRAZE_GAIN` | 6 | How quickly feeding drops drive toward the graze rate. |
+| `ENERGY_PER_FOOD` | 0.05 | Energy gained per food particle absorbed. |
+| `ABSORB_RATE` | 0.1 | Max energy a cell can absorb per second (absorption is always rate-limited). |
+
+**Mitosis**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `MITO_TIME` | 5 | Duration (sim seconds) of the full division sequence. |
+| `MITO_HOLD` | 0.2 | Fraction of mitosis before the parent starts fading. |
+| `MITO_FADE` | 0.4 | Fraction of mitosis over which the parent fades out. |
+| `MITO_NEAR` | 2.1 | Starting separation (x half child length) as daughters form. |
+| `MITO_SEP` | 2.8 | Final separation (x half child length) at division release. |
+| `MITO_DETACH` | 0.8 | Seconds a feeding predator spends separating from its prey before it can divide. |
+| `MITO_REST` | 4 | Coast (no-drive) seconds for daughters right after division. |
+
+**Survival**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `METABOLISM` | 0.0015 | Energy drained per second while alive (0 = no drain). |
+| `MOVE_COST` | 0.001 | Extra energy drained per second at full drive (scales with swimming effort). |
+| `TURN_COST` | 0.001 | Extra energy drained per second at full spin (scales with turning effort). |
+| `STARVE_SLOW` | 0.3 | Energy fraction below which a starving cell progressively slows (0 = no slowdown). |
+
+**Tail**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `TAIL_OSC_FREQ` | 4 | Tail wave frequency (Hz) while driving or turning. |
+| `TAIL_WAVE` | 0.35 | Phase shift per joint (rad). Positive travels base->tip, negative travels tip->base. |
+| `TAIL_CARRIER_RATE` | 2 | Rate the tail axis re-aims toward the body heading. |
+| `TAIL_DRAG_K` | 25 | Guide-spring stiffness along the tail (higher = the whole chain follows the wave, less drag lag). |
+| `TAIL_MOTOR_K` | 2200 | Guide stiffness at the root motor joints (whip). |
+| `TAIL_MOTOR_JOINTS` | 3 | Number of root joints driven by the head motor. |
+| `TAIL_BEND_K` | 900 | Local beam stiffness resisting tail curvature. |
+| `TAIL_LEN_K` | 4000 | Spring keeping adjacent joints at the link spacing. |
+| `TAIL_LEN_DAMP` | 90 | Damping of the tail length-spring oscillation. |
+| `TAIL_DAMP` | 1.2 | Velocity damping applied to tail joints per substep. |
+| `TAIL_CONTACT_D` | 0.04 | Contact distance for tail self-avoidance. |
+| `TAIL_CONTACT_K` | 400 | Self-avoidance push strength on contact. |
+| `TAIL_TRAIL_RATE` | 1 | How fast tail-lag memory decays after turns. |
+| `TAIL_ARC_MAX` | 2 | Hard cap (rad) on the trailing arc bend. |
+| `TAIL_RUDDER_GAIN` | 1 | Maps accumulated heading turn into the arc bend. |
+| `TAIL_ARC` | 1 | 0 = no trailing arc (pure travelling wave), 1 = arc on. |
+| `TAIL_HINGE` | 0.5 | How far the tail hinge tucks into the body (fraction of body width; 0 = rear tip, 1 = deepest). |
+| `TAIL_TURN` | 2.5 | Heading-rate gain from the tail steering bend (tail drives the turn). |
+| `TAIL_LINK_FILL` | 0.95 | Fraction of link spacing covered by each segment mesh. |
+| `TAIL_BODY` | 2 | Total tail length as a multiple of body length. |
+
+**Predator**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `PRED_RANGE` | 0.18 | Latch distance to a blue (capsule gap). |
+| `PRED_SENSE` | 1.5 | Distance over which a red smells prey; nearby blues are weighted into a gradient direction. |
+| `PRED_BITE` | 0.18 | Distance at which draining proceeds (>= range so a latched prey is bitten). |
+| `PRED_OVERLAP` | 0.03 | How far a feeding predator sinks into its latched prey (contact distance minus this). |
+| `PRED_DRAIN` | 0.012 | Blue energy drained per second. |
+| `PRED_EFF` | 1 | Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide. |
+| `PRED_METABOLISM` | 0.001 | Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly. |
+| `PRED_DRIVE` | 0.9 | Red speed multiplier (<1 = slower). |
+| `PRED_RATIO` | 1 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off. |
+| `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
+<!-- END GENERATED: tuning constants -->
 
 Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (blue/red) · Food
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`

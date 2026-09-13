@@ -11,13 +11,17 @@ historical design notes.
 ## Commands
 
 - `npm run dev` — Vite dev server at http://localhost:5173
-- `npm run build` — runs `scripts/clean-docs.mjs`, then `vite build` **into `docs/`**
-  (the committed GitHub Pages site, base `/cellsphere/`). This is the only quality
-  gate; there is no lint/typecheck. Do not confuse `docs/` with the ignored `dist/`.
+- `npm run build` — runs `scripts/gen-params-table.mjs --check`, then
+  `scripts/clean-docs.mjs`, then `vite build` **into `docs/`** (the committed
+  GitHub Pages site, base `/cellsphere/`). This is the only quality gate; there
+  is no lint/typecheck. Do not confuse `docs/` with the ignored `dist/`.
 - `npm run preview` — preview the built site
-- `npm run test:tail` — the only test. Headless Vite-SSR checks: tail visible/hidden
-  physics equivalence, `warmTail` decoupling, wave phase, and a pose smoke test.
-  Run it after changing `sim.js`, `cells.js`, tail code, or `constants.js`.
+- `npm run test:tail` — the only test. Headless Vite-SSR checks: constants
+  registry integrity, capsule-distance geometry, tail visible/hidden physics
+  equivalence, `warmTail` decoupling, wave phase, and a pose smoke test. Run it
+  after changing physics, tail code, or `constants.js`.
+- `node scripts/gen-params-table.mjs --write` — regenerate the tuning table in
+  `docs/DESIGN.md` from `PARAM_DEFS`. The build fails if it is stale.
 
 ## Architecture
 
