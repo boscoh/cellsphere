@@ -1,6 +1,6 @@
 <script setup>
 import { reactive, computed, ref } from 'vue'
-import { GROUPS, PARAMS, setParam } from './constants'
+import { GROUPS, P, PARAM_DEFS, setParam } from './constants'
 
 const emit = defineEmits(['rebuild', 'default', 'param'])
 
@@ -17,7 +17,7 @@ function collapse() {
 defineExpose({ syncValues, collapse })
 
 const rows = reactive(
-  PARAMS.map((p) => ({
+  PARAM_DEFS.map((p) => ({
     key: p.key,
     group: p.group,
     label: p.label,
@@ -26,7 +26,7 @@ const rows = reactive(
     max: p.max,
     step: p.step,
     def: p.def,
-    value: p.value,
+    value: P[p.key],
     rebuild: !!p.rebuild,
   })),
 )

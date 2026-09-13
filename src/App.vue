@@ -2,10 +2,10 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Simulation } from './sim'
 import {
+  P,
   FIXED_DT,
   MAX_SIM_RATE,
   POP_SAMPLES,
-  SIM_SPEED,
   resetParams,
   setParam,
 } from './constants'
@@ -17,7 +17,7 @@ import PopChart from './PopChart.vue'
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
 const tunerRef = ref(null)
-const simRate = ref(SIM_SPEED)
+const simRate = ref(P.SIM_SPEED)
 const frameMs = ref(0)
 const blueCount = ref(0)
 const redCount = ref(0)
@@ -40,7 +40,7 @@ const onKey = (e) => {
 function onReset() {
   resetParams()
   tunerRef.value?.syncValues()
-  simRate.value = SIM_SPEED
+  simRate.value = P.SIM_SPEED
   popHistory.value = []
   sim.reset()
 }
@@ -51,12 +51,12 @@ function onRestart() {
 }
 
 function onParamChange(key, value) {
-  if (key === 'SIM_SPEED') simRate.value = value
+  if (key === 'P.SIM_SPEED') simRate.value = value
 }
 
 function onSpeed(v) {
   simRate.value = v
-  setParam('SIM_SPEED', v)
+  setParam('P.SIM_SPEED', v)
 }
 
 function onTails(active) {

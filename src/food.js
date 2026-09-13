@@ -1,17 +1,9 @@
 import * as THREE from 'three'
 import {
+  P,
   SURFACE,
   GRID,
-  SENSE_BOOST,
   ENERGY_MAX,
-  ENERGY_PER_FOOD,
-  ABSORB_RATE,
-  GRAZE_RATE,
-  GRAZE_GAIN,
-  FOOD_RESPAWN,
-  FOOD_CLUMPS,
-  FOOD_SCATTER,
-  FOOD_CLUMP_WIDE,
 } from './constants'
 import { randomUnitVector, randomSurfacePoint, randomTangent } from './math'
 import { gridKey, forEachNearby } from './grid'
@@ -28,12 +20,12 @@ export function placeFood(sim, food) {
 
 export function generateClumps(sim) {
   const n =
-    FOOD_CLUMPS > 0 ? FOOD_CLUMPS + Math.floor(Math.random() * 8) : 0
+    P.FOOD_CLUMPS > 0 ? P.FOOD_CLUMPS + Math.floor(Math.random() * 8) : 0
   for (let i = 0; i < n; i++) {
     sim.clumps.push({
       center: randomUnitVector(),
       radius: 0.3 + Math.random() * 0.9,
-      theta: ((0.2 + Math.random() * 0.6) * FOOD_CLUMP_WIDE) / SURFACE,
+      theta: ((0.2 + Math.random() * 0.6) * P.FOOD_CLUMP_WIDE) / SURFACE,
     })
   }
 }
@@ -57,7 +49,7 @@ function pointForClump(sim, clumpIndex) {
 export function makeFood(sim) {
   const r = 0.016 + Math.random() * 0.024
   const clump =
-    sim.clumps.length > 0 && Math.random() >= FOOD_SCATTER
+    sim.clumps.length > 0 && Math.random() >= P.FOOD_SCATTER
       ? Math.floor(Math.random() * sim.clumps.length)
       : -1
   const food = {
@@ -170,11 +162,11 @@ export function eatAndRespawn(sim, simDt) {
     const d = cell
     if (d.mito || d.splitting || d.split) continue
     if (d.breed === 1) continue // predators don't graze food
-    // Food is consumed on contact, but only ENERGY_PER_FOOD banks get absorbed:
-    // a cell stores a budget at ABSORB_RATE/s and converts a particle only once
+    // Food is consumed on contact, but only P.ENERGY_PER_FOOD banks get absorbed:
+    // a cell stores a budget at P.ABSORB_RATE/s and converts a particle only once
     // a full particle's worth is banked. Food it touches beyond that is eaten
     // but not converted — effectively wasted.
-    d.absorbAcc = Math.min(d.absorbAcc + ABSORB_RATE * simDt, ENERGY_PER_FOOD)
+    d.absorbAcc = Math.min(d.absorbAcc + P.ABSORB_RATE * simDt, P.ENERGY_PER_FOOD)
     const halfLen = Math.max(d.radius - d.width, 0)
     const cx = Math.floor(d.pos.x / GRID)
     const cy = Math.floor(d.pos.y / GRID)
@@ -192,17 +184,17 @@ export function eatAndRespawn(sim, simDt) {
       const foodIndex = contact[c]
       const food = sim.foods[foodIndex]
       if (!food.visible) continue
-      food.respawn = FOOD_RESPAWN + Math.random() * 8
+      food.respawn = P.FOOD_RESPAWN + Math.random() * 8
       food.visible = false
       removeFoodFromGrid(sim, foodIndex)
       sim.respawning.push(foodIndex)
       placeFood(sim, food)
       dirty = true
-      if (d.absorbAcc >= ENERGY_PER_FOOD) {
-        d.absorbAcc -= ENERGY_PER_FOOD
+      if (d.absorbAcc >= P.ENERGY_PER_FOOD) {
+        d.absorbAcc -= P.ENERGY_PER_FOOD
         // gainEnergy clamps to ENERGY_MAX and flips split, so a full cell can
         // reach the mitosis threshold immediately instead of idling under max.
-        gainEnergy(sim, d, ENERGY_PER_FOOD)
+        gainEnergy(sim, d, P.ENERGY_PER_FOOD)
       }
     }
   }
@@ -220,7 +212,7 @@ export function concentration(sim) {
     let fy = 0
     let fz = 0
     const halfLen = Math.max(d.radius - d.width, 0)
-    const sense = d.width + SENSE_BOOST
+    const sense = d.width + P.SENSE_BOOST
     const cx = Math.floor(d.pos.x / GRID)
     const cy = Math.floor(d.pos.y / GRID)
     const cz = Math.floor(d.pos.z / GRID)
@@ -236,7 +228,7 @@ export function concentration(sim) {
         fz += sim._fd.rz * w
       }
     })
-    d.slow = 1 + (GRAZE_RATE - 1) * (1 - Math.exp(-sum * GRAZE_GAIN))
+    d.slow = 1 + (P.GRAZE_RATE - 1) * (1 - Math.exp(-sum * P.GRAZE_GAIN))
     d.foodAmt = Math.min(sum, 1)
     const fb = Math.sqrt(fx * fx + fy * fy + fz * fz)
     d.foodPeak = sum > 0 ? fb / sum / sense : 0

@@ -83,8 +83,8 @@ try {
   for (const def of constants.PARAM_DEFS) {
     if (defKeys.has(def.key)) paramProblems.push(`duplicate PARAM_DEFS key ${def.key}`)
     defKeys.add(def.key)
-    if (!(def.key in constants)) {
-      paramProblems.push(`${def.key} has no exported binding`)
+    if (!(def.key in constants.P)) {
+      paramProblems.push(` has no P entry`)
       continue
     }
     if (def.def < def.min || def.def > def.max) {
@@ -92,7 +92,7 @@ try {
     }
   }
   for (const def of constants.PARAM_DEFS) {
-    if (!defKeys.has(def.key) || !(def.key in constants)) continue
+    if (!defKeys.has(def.key) || !(def.key in constants.P)) continue
     for (const bound of [def.min, def.max]) {
       try {
         constants.setParam(def.key, bound)
@@ -100,9 +100,9 @@ try {
         paramProblems.push(`setParam(${def.key}) threw: ${err.message}`)
         continue
       }
-      if (constants[def.key] !== bound) {
+      if (constants.P[def.key] !== bound) {
         paramProblems.push(
-          `setParam(${def.key}, ${bound}) left ${def.key}=${constants[def.key]}`,
+          `setParam(${def.key}, ${bound}) left ${def.key}=${constants.P[def.key]}`,
         )
       }
     }
@@ -117,10 +117,10 @@ try {
     paramProblems.push(`resetParams threw: ${resetError.message}`)
   } else {
     for (const def of constants.PARAM_DEFS) {
-      if (!(def.key in constants)) continue
-      if (constants[def.key] !== def.def) {
+      if (!(def.key in constants.P)) continue
+      if (constants.P[def.key] !== def.def) {
         paramProblems.push(
-          `resetParams left ${def.key}=${constants[def.key]} (want ${def.def})`,
+          `resetParams left ${def.key}=${constants.P[def.key]} (want ${def.def})`,
         )
       }
     }
@@ -133,7 +133,7 @@ try {
     code = 1
   } else {
     console.log(
-      `PASS params registry: ${constants.PARAM_DEFS.length} keys have a binding and a working setter`,
+      `PASS params registry: ${constants.PARAM_DEFS.length} keys have a P entry and a working setter`,
     )
   }
 

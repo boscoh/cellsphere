@@ -112,156 +112,23 @@ export const PARAM_DEFS = [
   { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of blue (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.01 },
 ]
 
-export const PARAMS = PARAM_DEFS.map((p) => ({ ...p, value: p.def }))
-const byKey = new Map(PARAMS.map((p) => [p.key, p]))
+// Every parameter value lives in this one mutable record. There is deliberately
+// no parallel list of exported bindings and setters: consumers read `P.THRUST`
+// and the Tuner writes through `setParam`, so adding a parameter means editing
+// PARAM_DEFS alone.
+export const P = {}
+for (const p of PARAM_DEFS) P[p.key] = p.def
 
-export let SPRING
-export let PREY_COUNT
-export let PRED_COUNT
-export let SIM_SPEED
-export let FOOD_COUNT
-export let FOOD_CLUMPS
-export let FOOD_SCATTER
-export let FOOD_CLUMP_WIDE
-export let ENERGY_PER_FOOD
-export let ABSORB_RATE
-export let FOOD_RESPAWN
-export let MITO_TIME
-export let MITO_HOLD
-export let MITO_FADE
-export let MITO_NEAR
-export let MITO_SEP
-export let MITO_DETACH
-export let MITO_SLOW_FRAC
-export let MITO_REST
-export let METABOLISM
-export let MOVE_COST
-export let TURN_COST
-export let STARVE_SLOW
-export let TAIL_LINK_FILL
-export let TAIL_BODY
-export let TAIL_OSC_FREQ
-export let TAIL_WAVE
-export let TAIL_CARRIER_RATE
-export let TAIL_DRAG_K
-export let TAIL_MOTOR_K
-export let TAIL_MOTOR_JOINTS
-export let TAIL_BEND_K
-export let TAIL_LEN_K
-export let TAIL_LEN_DAMP
-export let TAIL_DAMP
-export let TAIL_CONTACT_D
-export let TAIL_CONTACT_K
-export let TAIL_TRAIL_RATE
-export let TAIL_ARC_MAX
-export let TAIL_RUDDER_GAIN
-export let TAIL_ARC
-export let TAIL_HINGE
-export let TAIL_TURN
-export let THRUST
-export let DRAG
-export let GRAZE_RATE
-export let GRAZE_GAIN
-export let ANG_DRAG
-export let STEER_GAIN
-export let COLLISION_KICK
-export let MAX_SPIN
-export let PEAK_MIN
-export let SENSE_BOOST
-export let SENSE_PERIOD
-export let PRED_RANGE
-export let PRED_SENSE
-export let PRED_BITE
-export let PRED_OVERLAP
-export let PRED_DRAIN
-export let PRED_EFF
-export let PRED_METABOLISM
-export let PRED_DRIVE
-export let PRED_RATIO
-export let RED_SIZE
-
-const setters = {
-  SPRING: (v) => { SPRING = v },
-  PREY_COUNT: (v) => { PREY_COUNT = v },
-  PRED_COUNT: (v) => { PRED_COUNT = v },
-  SIM_SPEED: (v) => { SIM_SPEED = v },
-  FOOD_COUNT: (v) => { FOOD_COUNT = v },
-  FOOD_CLUMPS: (v) => { FOOD_CLUMPS = v },
-  FOOD_SCATTER: (v) => { FOOD_SCATTER = v },
-  FOOD_CLUMP_WIDE: (v) => { FOOD_CLUMP_WIDE = v },
-  ENERGY_PER_FOOD: (v) => { ENERGY_PER_FOOD = v },
-  ABSORB_RATE: (v) => { ABSORB_RATE = v },
-  FOOD_RESPAWN: (v) => { FOOD_RESPAWN = v },
-  MITO_TIME: (v) => { MITO_TIME = v },
-  MITO_HOLD: (v) => { MITO_HOLD = v },
-  MITO_FADE: (v) => { MITO_FADE = v },
-  MITO_NEAR: (v) => { MITO_NEAR = v },
-  MITO_SEP: (v) => { MITO_SEP = v },
-  MITO_DETACH: (v) => { MITO_DETACH = v },
-  MITO_SLOW_FRAC: (v) => { MITO_SLOW_FRAC = v },
-  MITO_REST: (v) => { MITO_REST = v },
-  METABOLISM: (v) => { METABOLISM = v },
-  MOVE_COST: (v) => { MOVE_COST = v },
-  TURN_COST: (v) => { TURN_COST = v },
-  STARVE_SLOW: (v) => { STARVE_SLOW = v },
-  TAIL_LINK_FILL: (v) => { TAIL_LINK_FILL = v },
-  TAIL_BODY: (v) => { TAIL_BODY = v },
-  TAIL_OSC_FREQ: (v) => { TAIL_OSC_FREQ = v },
-  TAIL_WAVE: (v) => { TAIL_WAVE = v },
-  TAIL_CARRIER_RATE: (v) => { TAIL_CARRIER_RATE = v },
-  TAIL_DRAG_K: (v) => { TAIL_DRAG_K = v },
-  TAIL_MOTOR_K: (v) => { TAIL_MOTOR_K = v },
-  TAIL_MOTOR_JOINTS: (v) => { TAIL_MOTOR_JOINTS = v },
-  TAIL_BEND_K: (v) => { TAIL_BEND_K = v },
-  TAIL_LEN_K: (v) => { TAIL_LEN_K = v },
-  TAIL_LEN_DAMP: (v) => { TAIL_LEN_DAMP = v },
-  TAIL_DAMP: (v) => { TAIL_DAMP = v },
-  TAIL_CONTACT_D: (v) => { TAIL_CONTACT_D = v },
-  TAIL_CONTACT_K: (v) => { TAIL_CONTACT_K = v },
-  TAIL_TRAIL_RATE: (v) => { TAIL_TRAIL_RATE = v },
-  TAIL_ARC_MAX: (v) => { TAIL_ARC_MAX = v },
-  TAIL_RUDDER_GAIN: (v) => { TAIL_RUDDER_GAIN = v },
-  TAIL_ARC: (v) => { TAIL_ARC = v },
-  TAIL_HINGE: (v) => { TAIL_HINGE = v },
-  TAIL_TURN: (v) => { TAIL_TURN = v },
-  THRUST: (v) => { THRUST = v },
-  DRAG: (v) => { DRAG = v },
-  GRAZE_RATE: (v) => { GRAZE_RATE = v },
-  GRAZE_GAIN: (v) => { GRAZE_GAIN = v },
-  ANG_DRAG: (v) => { ANG_DRAG = v },
-  STEER_GAIN: (v) => { STEER_GAIN = v },
-  COLLISION_KICK: (v) => { COLLISION_KICK = v },
-  MAX_SPIN: (v) => { MAX_SPIN = v },
-  PEAK_MIN: (v) => { PEAK_MIN = v },
-  SENSE_BOOST: (v) => { SENSE_BOOST = v },
-  SENSE_PERIOD: (v) => { SENSE_PERIOD = v },
-  PRED_RANGE: (v) => { PRED_RANGE = v },
-  PRED_SENSE: (v) => { PRED_SENSE = v },
-  PRED_BITE: (v) => { PRED_BITE = v },
-  PRED_OVERLAP: (v) => { PRED_OVERLAP = v },
-  PRED_DRAIN: (v) => { PRED_DRAIN = v },
-  PRED_EFF: (v) => { PRED_EFF = v },
-  PRED_METABOLISM: (v) => { PRED_METABOLISM = v },
-  PRED_DRIVE: (v) => { PRED_DRIVE = v },
-  PRED_RATIO: (v) => { PRED_RATIO = v },
-  RED_SIZE: (v) => { RED_SIZE = v },
-}
-
-for (const [key, set] of Object.entries(setters)) set(byKey.get(key).def)
+const byKey = new Map(PARAM_DEFS.map((p) => [p.key, p]))
 
 export function setParam(key, value) {
   const p = byKey.get(key)
   if (!p) return
-  const v = clamp(value, p.min, p.max)
-  p.value = v
-  setters[key](v)
+  P[key] = clamp(value, p.min, p.max)
 }
 
 export function resetParams() {
-  for (const p of PARAMS) {
-    p.value = p.def
-    setters[p.key](p.def)
-  }
+  for (const p of PARAM_DEFS) P[p.key] = p.def
 }
 
 function clamp(x, lo, hi) {

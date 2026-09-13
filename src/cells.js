@@ -1,30 +1,15 @@
 import * as THREE from 'three'
 import {
+  P,
   SURFACE,
   MAX_CELLS,
   MIN_RADIUS,
   MAX_RADIUS,
   START_RADIUS,
   ENERGY_MAX,
-  METABOLISM,
-  MOVE_COST,
-  TURN_COST,
-  PRED_METABOLISM,
-  MAX_SPIN,
-  RED_SIZE,
-  MITO_TIME,
-  MITO_HOLD,
-  MITO_FADE,
-  MITO_NEAR,
-  MITO_SEP,
-  MITO_DETACH,
-  MITO_REST,
   WIDTH,
   TAIL_SEGMENTS,
   TAIL_LINK,
-  TAIL_LINK_FILL,
-  TAIL_BODY,
-  TAIL_HINGE,
   TAIL_CHUNK_CELLS,
   BODY_CHUNK_CELLS,
 } from './constants'
@@ -385,7 +370,7 @@ function makeTailChain(pos, heading, radius) {
   return { pts, vel, vt, q }
 }
 
-const sizeF = (breed) => (breed === BREED_RED ? RED_SIZE : 1)
+const sizeF = (breed) => (breed === BREED_RED ? P.RED_SIZE : 1)
 
 export function radiusFromEnergy(energy, breed = BREED_BLUE) {
   const f = THREE.MathUtils.clamp(energy, 0, ENERGY_MAX) / ENERGY_MAX
@@ -497,25 +482,25 @@ export function drainEnergy(sim, d, amount) {
 }
 
 export function updateEnergy(sim, d, dt) {
-  if (METABOLISM <= 0 && MOVE_COST <= 0 && TURN_COST <= 0 && PRED_METABOLISM <= 0) return
+  if (P.METABOLISM <= 0 && P.MOVE_COST <= 0 && P.TURN_COST <= 0 && P.PRED_METABOLISM <= 0) return
   if (d.mito || d.splitting || d.split) return
   if (d.energy > 0) {
     // Locomotion costs: swimming scales with drive (thrust), turning with the
-    // heading rate normalised by MAX_SPIN, so effort drains energy on top of
+    // heading rate normalised by P.MAX_SPIN, so effort drains energy on top of
     // the passive metabolism.
-    const spin = MAX_SPIN > 0 ? Math.min(Math.abs(d.headingRate) / MAX_SPIN, 1) : 0
-    // A predator with no prey latched burns PRED_METABOLISM on top, so reds
+    const spin = P.MAX_SPIN > 0 ? Math.min(Math.abs(d.headingRate) / P.MAX_SPIN, 1) : 0
+    // A predator with no prey latched burns P.PRED_METABOLISM on top, so reds
     // starve quickly when there is nothing to hunt.
-    const pred = d.breed === BREED_RED && !d.target ? PRED_METABOLISM : 0
+    const pred = d.breed === BREED_RED && !d.target ? P.PRED_METABOLISM : 0
     const cost =
-      METABOLISM + pred + MOVE_COST * Math.max(d.drive || 0, 0) + TURN_COST * spin
+      P.METABOLISM + pred + P.MOVE_COST * Math.max(d.drive || 0, 0) + P.TURN_COST * spin
     drainEnergy(sim, d, cost * dt)
   }
   if (d.energy <= 0) d.dead = true
 }
 
 // A predator that is about to divide while still feeding first lets go of its
-// prey and swims clear for MITO_DETACH seconds, so the daughters don't split
+// prey and swims clear for P.MITO_DETACH seconds, so the daughters don't split
 // out on top of the prey it was draining.
 export function beginDetach(sim, d) {
   d.detach = true
@@ -528,7 +513,7 @@ export function beginDetach(sim, d) {
 export function updateDetach(sim, d, dt) {
   if (!d.detach) return
   d.detachT += dt
-  if (d.detachT >= MITO_DETACH) {
+  if (d.detachT >= P.MITO_DETACH) {
     d.detach = false
     d.detachFrom = null
   }
@@ -557,8 +542,8 @@ export function mitose(sim, parent) {
   const headFront = headBack.clone().negate()
   const half = childLen * 0.5
   const snap = (v) => v.multiplyScalar(SURFACE / (v.length() || 1))
-  const backPos = snap(startPos.clone().addScaledVector(headBack, -half * MITO_NEAR))
-  const frontPos = snap(startPos.clone().addScaledVector(headBack, half * MITO_NEAR))
+  const backPos = snap(startPos.clone().addScaledVector(headBack, -half * P.MITO_NEAR))
+  const frontPos = snap(startPos.clone().addScaledVector(headBack, half * P.MITO_NEAR))
 
   const back = createCell(sim, allocTailSlot(sim), backPos, headBack, childLen, d.breed)
   const front = createCell(
@@ -579,7 +564,7 @@ export function mitose(sim, parent) {
   d.tailSlot = -1
   front.mito = {
     t: 0,
-    dur: MITO_TIME,
+    dur: P.MITO_TIME,
     parent,
     back,
     front,
@@ -641,10 +626,10 @@ export function placeTail(sim, d) {
     return chunk
   }
   const dirs = d.tailDirs
-  // Tail length is TAIL_BODY × body length (body ≈ 2·radius), so the tail
+  // Tail length is P.TAIL_BODY × body length (body ≈ 2·radius), so the tail
   // scales proportionally with the cell.
-  const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
-  const draw = pitch * TAIL_LINK_FILL
+  const pitch = ((P.TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
+  const draw = pitch * P.TAIL_LINK_FILL
   const ts = sim.tailScale
   const { pos, x: ax, y: ay, scale } = chunk.attrs
   const posArr = pos.array
@@ -653,7 +638,7 @@ export function placeTail(sim, d) {
   const sArr = scale.array
   const a = sim._v1
     .copy(d.pos)
-    .addScaledVector(d.heading, -(d.radius - d.width * TAIL_HINGE))
+    .addScaledVector(d.heading, -(d.radius - d.width * P.TAIL_HINGE))
   a.setLength(SURFACE)
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
     const b = sim._v2.copy(a).addScaledVector(dirs[i], pitch)
@@ -689,14 +674,14 @@ export function updateMito(sim, d, simDt) {
   if (!m) return
   m.t += simDt
   const frac = THREE.MathUtils.clamp(m.t / m.dur, 0, 1)
-  const fadeEnd = MITO_HOLD + MITO_FADE
+  const fadeEnd = P.MITO_HOLD + P.MITO_FADE
   const fadeK = smoothstep(
-    THREE.MathUtils.clamp((frac - MITO_HOLD) / MITO_FADE, 0, 1),
+    THREE.MathUtils.clamp((frac - P.MITO_HOLD) / P.MITO_FADE, 0, 1),
   )
   const sep = smoothstep(
     THREE.MathUtils.clamp((frac - fadeEnd) / (1 - fadeEnd), 0, 1),
   )
-  const spread = MITO_NEAR + (MITO_SEP - MITO_NEAR) * sep
+  const spread = P.MITO_NEAR + (P.MITO_SEP - P.MITO_NEAR) * sep
   const dist = m.half * spread
 
   const pd = m.parent
@@ -726,8 +711,8 @@ function finalizeMito(d, m) {
   d.mito = null
   m.back.splitting = false
   m.front.splitting = false
-  m.back.rest = MITO_REST
-  m.front.rest = MITO_REST
+  m.back.rest = P.MITO_REST
+  m.front.rest = P.MITO_REST
   m.parent.dead = true
 }
 

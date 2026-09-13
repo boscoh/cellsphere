@@ -1,11 +1,5 @@
 import {
-  PRED_RANGE,
-  PRED_SENSE,
-  PRED_BITE,
-  PRED_OVERLAP,
-  PRED_DRAIN,
-  PRED_EFF,
-  PRED_RATIO,
+  P,
   SURFACE,
   CELL_GRID,
 } from './constants'
@@ -25,13 +19,13 @@ function validPredator(d) {
 }
 
 // Smell the shoal: sum proximity-weighted unit vectors to every valid prey
-// within PRED_SENSE into a gradient direction (d.preyDir), mirroring how
+// within P.PRED_SENSE into a gradient direction (d.preyDir), mirroring how
 // food.concentration() gives blue a food gradient. A red then steers up this
 // gradient instead of chasing only the single nearest blue inside a hard cutoff.
 export function predatorSense(sim) {
   for (const cell of sim.cells) cell.preyAmt = 0
 
-  const sense = PRED_SENSE
+  const sense = P.PRED_SENSE
   if (sense <= 0) return
   const r = Math.ceil(sense / CELL_GRID)
 
@@ -76,7 +70,7 @@ export function predation(sim, simDt) {
   // refuge and the two populations can cycle instead of collapsing. Counts are
   // computed once per frame.
   let ratioAttack = 1
-  if (PRED_RATIO > 0) {
+  if (P.PRED_RATIO > 0) {
     let preyCount = 0
     let predCount = 0
     for (const cell of sim.cells) {
@@ -85,7 +79,7 @@ export function predation(sim, simDt) {
     }
     if (predCount > 0) {
       const ratio = preyCount / predCount
-      ratioAttack = ratio / (ratio + PRED_RATIO)
+      ratioAttack = ratio / (ratio + P.PRED_RATIO)
     }
   }
 
@@ -97,7 +91,7 @@ export function predation(sim, simDt) {
     }
 
     // Ratio-dependent refuge: too few prey per predator -> do not hunt.
-    if (PRED_RATIO > 0 && ratioAttack < 0.5) {
+    if (P.PRED_RATIO > 0 && ratioAttack < 0.5) {
       red.target = null
       continue
     }
@@ -107,7 +101,7 @@ export function predation(sim, simDt) {
     const cz = Math.floor(red.pos.z / CELL_GRID)
 
     let prey = null
-    let best = PRED_RANGE
+    let best = P.PRED_RANGE
     forEachNearby(sim.cellGrid, cx, cy, cz, 1, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
@@ -125,18 +119,18 @@ export function predation(sim, simDt) {
       red.target = null
     } else {
       capsuleDist(sim, red, t)
-      if (sim._col.dist > PRED_RANGE * 1.6) red.target = null
+      if (sim._col.dist > P.PRED_RANGE * 1.6) red.target = null
     }
 
     const latch = red.target
     if (!latch) continue
     capsuleDist(sim, red, latch)
     const dist = sim._col.dist
-    if (dist <= PRED_RANGE) {
+    if (dist <= P.PRED_RANGE) {
       latch.paralysed = true
       // Sink the predator slightly into the prey so feeding reads as contact,
       // not a gap. Collisions skip this pair while latched (see solveCollisions).
-      const desired = red.width + latch.width - PRED_OVERLAP
+      const desired = red.width + latch.width - P.PRED_OVERLAP
       if (dist > desired) {
         const step = Math.min(dist - desired, LATCH_CLOSE_RATE * simDt)
         red.pos.x += sim._col.x * step
@@ -144,11 +138,11 @@ export function predation(sim, simDt) {
         red.pos.z += sim._col.z * step
         red.pos.setLength(SURFACE)
       }
-      if (dist <= PRED_BITE) {
-        const rate = PRED_DRAIN * simDt * ratioAttack
+      if (dist <= P.PRED_BITE) {
+        const rate = P.PRED_DRAIN * simDt * ratioAttack
         drainEnergy(sim, latch, rate)
         if (latch.energy <= 0) latch.dead = true
-        gainEnergy(sim, red, rate * PRED_EFF)
+        gainEnergy(sim, red, rate * P.PRED_EFF)
       }
     }
   }

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { SURFACE, CELL_GRID, SPRING, COLLISION_KICK } from './constants'
+import { P, SURFACE, CELL_GRID } from './constants'
 import { gridKey } from './grid'
 
 // Cell-cell collision and surface geometry. Pure helpers over the cell data
@@ -23,7 +23,7 @@ export function deflectHeading(sim, d, awayWorld, intensity) {
   if (d.paralysed) return
   const ang = signedAngleTo(sim, d, awayWorld)
   if (ang == null) return
-  d.headingRate += THREE.MathUtils.clamp(ang * COLLISION_KICK, -0.4, 0.4) * intensity
+  d.headingRate += THREE.MathUtils.clamp(ang * P.COLLISION_KICK, -0.4, 0.4) * intensity
 }
 
 export function capsuleDist(sim, a, b) {
@@ -169,7 +169,7 @@ export function solveCollisions(sim, simDt) {
             const invSum = invA + invB
             if (invSum <= 0) continue
 
-            const impulse = (overlap * SPRING) / invSum
+            const impulse = (overlap * P.SPRING) / invSum
             a.vel.x -= nx * impulse * invA * simDt
             a.vel.y -= ny * impulse * invA * simDt
             a.vel.z -= nz * impulse * invA * simDt

@@ -100,7 +100,7 @@ The simulation is split into focused modules rather than living all in `App.vue`
 - `src/cells.js` — cell domain: create/grow/mitose, body pools, tail control + pose
 - `src/food.js` — food domain: spatial grid, eating + sensing, clumps
 - `src/predator.js` — predation: latch + drain
-- `src/constants.js` — tuning registry (`PARAM_DEFS` / `PARAMS` / `GROUPS`) + plain consts
+- `src/constants.js` — tuning registry (`PARAM_DEFS` / `P` / `GROUPS`) + plain consts
 - `src/sceneSetup.js` — Three.js scene / renderer / camera / controls / sphere shell
 - `src/materials.js` — shared geometries & materials (incl. the body shader hooks)
 - `src/render.js` — visibility culling + render pass
@@ -147,8 +147,9 @@ hidden, so toggling Tails never changes motion.
 
 All tunables — grouped (World, Movement, Collision, Sensing & Feeding, Mitosis,
 Survival, Tail, Predator) with defaults, ranges, and descriptions — live in
-`src/constants.js` (`PARAM_DEFS` / `PARAMS` / `GROUPS`) and are adjustable live
-via the Tuner panel. Structural/allocation constants (surface radius, cell/food
+`src/constants.js` (`PARAM_DEFS` / `P` / `GROUPS`) and are adjustable live
+via the Tuner panel: each parameter is declared once in `PARAM_DEFS` and its
+value is read from the `P` record (`P.THRUST`). Structural/allocation constants (surface radius, cell/food
 counts, grid sizes, chunk sizes) are plain `const`s excluded from the registry.
 See `docs/DESIGN.md` for the full constant table and semantics.
 

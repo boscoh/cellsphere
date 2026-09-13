@@ -1,27 +1,10 @@
 import * as THREE from 'three'
 import {
+  P,
   SURFACE,
   TAIL_SEGMENTS,
-  TAIL_BODY,
-  TAIL_HINGE,
-  TAIL_TRAIL_RATE,
-  TAIL_ARC_MAX,
-  TAIL_CARRIER_RATE,
   TAIL_MOTOR_AMP,
   TAIL_DYN_SUB,
-  TAIL_OSC_FREQ,
-  TAIL_WAVE,
-  TAIL_RUDDER_GAIN,
-  TAIL_ARC,
-  TAIL_DRAG_K,
-  TAIL_MOTOR_K,
-  TAIL_MOTOR_JOINTS,
-  TAIL_BEND_K,
-  TAIL_LEN_K,
-  TAIL_LEN_DAMP,
-  TAIL_DAMP,
-  TAIL_CONTACT_D,
-  TAIL_CONTACT_K,
 } from './constants'
 
 // Tail physics: the O(1) steering control plus the spring-chain pose. Purely
@@ -47,8 +30,8 @@ export function updateTailControl(sim, d, dt) {
   if (behind.lengthSq() < 1e-8) return
   behind.normalize()
 
-  // Tail length is TAIL_BODY × body length (pitch scales with radius).
-  const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
+  // Tail length is P.TAIL_BODY × body length (pitch scales with radius).
+  const pitch = ((P.TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   if (pitch < 1e-6 || dt <= 0) return
 
   // --- (B) drag axis with orientation memory -------------------------------
@@ -56,29 +39,29 @@ export function updateTailControl(sim, d, dt) {
   // An abrupt rotation (e.g. collision) therefore leaves the tail pointing
   // where it was and lets it whip back instead of pivoting like a rigid rod.
   const carrier = d.tailCarrier
-  const kCar = 1 - Math.exp(-TAIL_CARRIER_RATE * dt)
+  const kCar = 1 - Math.exp(-P.TAIL_CARRIER_RATE * dt)
   carrier.multiplyScalar(1 - kCar).addScaledVector(behind, kCar)
   carrier.addScaledVector(n0, -carrier.dot(n0))
   if (carrier.lengthSq() < 1e-8) carrier.copy(behind)
   else carrier.normalize()
 
   const turning = Math.abs(d.headingRate) > 0.05
-  if (d.drive > 0.02 || turning) d.tailPhase += dt * TAIL_OSC_FREQ
+  if (d.drive > 0.02 || turning) d.tailPhase += dt * P.TAIL_OSC_FREQ
 
-  const kTrail = 1 - Math.exp(-TAIL_TRAIL_RATE * dt)
+  const kTrail = 1 - Math.exp(-P.TAIL_TRAIL_RATE * dt)
   // tail lag: the tail arcs toward the steering command (chemotaxis) and any
   // body rotation (collisions), relaxing slowly. This trailing arc drives the
   // body's heading rate, so rotation is visibly produced by the tail.
-  const lagMax = TAIL_ARC_MAX / TAIL_RUDDER_GAIN
+  const lagMax = P.TAIL_ARC_MAX / P.TAIL_RUDDER_GAIN
   d.tailLag = THREE.MathUtils.clamp(
     d.tailLag + ((d.steer || 0) + d.headingRate) * dt - kTrail * d.tailLag,
     -lagMax,
     lagMax,
   )
   d.tailBend = THREE.MathUtils.clamp(
-    TAIL_RUDDER_GAIN * d.tailLag,
-    -TAIL_ARC_MAX,
-    TAIL_ARC_MAX,
+    P.TAIL_RUDDER_GAIN * d.tailLag,
+    -P.TAIL_ARC_MAX,
+    P.TAIL_ARC_MAX,
   )
 }
 
@@ -86,6 +69,23 @@ export function updateTailControl(sim, d, dt) {
 // and integrates the spring chain that `placeTail` renders. Skipped while tails
 // are hidden; call `warmTail` on the hidden→visible edge to avoid a snap.
 export function updateTailPose(sim, d, dt) {
+  // Local aliases for the params read inside the O(S²·TAIL_DYN_SUB) loops below,
+  // where a property load per iteration is measurable (cell-cv6.2).
+  const {
+    TAIL_BODY,
+    TAIL_HINGE,
+    TAIL_WAVE,
+    TAIL_ARC,
+    TAIL_DAMP,
+    TAIL_MOTOR_JOINTS,
+    TAIL_MOTOR_K,
+    TAIL_DRAG_K,
+    TAIL_LEN_K,
+    TAIL_LEN_DAMP,
+    TAIL_BEND_K,
+    TAIL_CONTACT_D,
+    TAIL_CONTACT_K,
+  } = P
   const S = TAIL_SEGMENTS
   const dirs = d.tailDirs
   const pts = d.tailPts
@@ -295,9 +295,9 @@ export function warmTail(sim, d) {
   behind.addScaledVector(n0, -behind.dot(n0))
   if (behind.lengthSq() < 1e-8) behind.copy(d.tailCarrier)
   else behind.normalize()
-  const pitch = ((TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
+  const pitch = ((P.TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   d.tailCarrier.copy(behind)
-  const root = sim._v2.copy(d.pos).addScaledVector(d.heading, -(d.radius - d.width * TAIL_HINGE))
+  const root = sim._v2.copy(d.pos).addScaledVector(d.heading, -(d.radius - d.width * P.TAIL_HINGE))
   root.setLength(SURFACE)
   d.tailPts[0].copy(root)
   for (let i = 1; i <= S; i++) {
