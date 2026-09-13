@@ -1,5 +1,8 @@
 # CellSphere
 
+**[Live demo](https://boscoh.github.io/cellsphere/)** ·
+**[Source](https://github.com/boscoh/cellsphere)**
+
 A real-time predator–prey simulation on the surface of a sphere. Blue bacteria
 graze on scattered food and grow fat enough to divide; red predators hunt them
 down and drain their energy. Every cell is an autonomous agent — it senses its
@@ -56,6 +59,9 @@ meant to reinforce each other rather than compete.
 
 The authoritative architecture, tuning values, and gotchas live in
 [`docs/DESIGN.md`](docs/DESIGN.md); this README is the quick overview.
+
+The built site is published to GitHub Pages at
+<https://boscoh.github.io/cellsphere/>.
 
 ## Getting started
 
