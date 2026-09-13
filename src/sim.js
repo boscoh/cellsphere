@@ -57,7 +57,8 @@ import {
   eatAndRespawn,
   concentration,
 } from './food'
-import { predation, predatorSense, forEachNearbyCell } from './predator'
+import { predation, predatorSense } from './predator'
+import { forEachNearby } from './grid'
 import { initPops, spawnPop, disposePops } from './pops'
 import { disposeGlowMaterial } from './glow'
 import { createScene } from './sceneSetup'
@@ -260,7 +261,7 @@ export class Simulation {
           const cz = Math.floor(d.pos.z / CELL_GRID)
           let red = null
           let best = PRED_RANGE
-          forEachNearbyCell(this, cx, cy, cz, 1, (index) => {
+          forEachNearby(this.cellGrid, cx, cy, cz, 1, (index) => {
             const other = this.cells[index]
             if (other.breed !== 1) return
             capsuleDist(this, d, other)

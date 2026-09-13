@@ -32,7 +32,3 @@ export function smoothstep(x) {
 export function cosFace(pos, camDir) {
   return (pos.x * camDir.x + pos.y * camDir.y + pos.z * camDir.z) / SURFACE
 }
-
-export function cellIndex(cx, cy, cz) {
-  return ((cx + 2048) * 4096 + (cy + 2048)) * 4096 + (cz + 2048)
-}

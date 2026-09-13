@@ -24,6 +24,7 @@ historical design notes.
 - `src/App.vue` — thin shell: lifecycle, HUD, frame timing, overlay
 - `src/sim.js` — `Simulation` orchestrator: physics loop, render lifecycle
 - `src/collision.js` — capsule distance, cell hash, collision solve
+- `src/grid.js` — spatial hash: key packing + neighbourhood scan
 - `src/cells.js` — cell domain: create/grow/mitose, body + tail pools, tail placement
 - `src/tail.js` — tail physics: steering control, spring-chain pose, re-aim
 - `src/food.js` — food grid, eating + sensing, clumps

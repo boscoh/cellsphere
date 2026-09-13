@@ -9,26 +9,12 @@ import {
   SURFACE,
   CELL_GRID,
 } from './constants'
-import { cellIndex } from './math'
+import { forEachNearby } from './grid'
 import { drainEnergy, gainEnergy } from './cells'
 import { capsuleDist } from './collision'
 
 // How fast a feeding predator closes the last gap to sink into its prey.
 const LATCH_CLOSE_RATE = 0.5
-
-export function forEachNearbyCell(sim, cx, cy, cz, r, cb) {
-  for (let ox = -r; ox <= r; ox++) {
-    for (let oy = -r; oy <= r; oy++) {
-      for (let oz = -r; oz <= r; oz++) {
-        const bucket = sim.cellGrid.get(cellIndex(cx + ox, cy + oy, cz + oz))
-        if (!bucket) continue
-        for (let k = 0; k < bucket.length; k++) {
-          if (cb(bucket[k]) === false) return
-        }
-      }
-    }
-  }
-}
 
 function validPrey(d) {
   return d.breed === 0 && !d.mito && !d.splitting && !d.dead
@@ -61,7 +47,7 @@ export function predatorSense(sim) {
     let fx = 0
     let fy = 0
     let fz = 0
-    forEachNearbyCell(sim, cx, cy, cz, r, (index) => {
+    forEachNearby(sim.cellGrid, cx, cy, cz, r, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
       capsuleDist(sim, red, d)
@@ -122,7 +108,7 @@ export function predation(sim, simDt) {
 
     let prey = null
     let best = PRED_RANGE
-    forEachNearbyCell(sim, cx, cy, cz, 1, (index) => {
+    forEachNearby(sim.cellGrid, cx, cy, cz, 1, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
       capsuleDist(sim, red, d)

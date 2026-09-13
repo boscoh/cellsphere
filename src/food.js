@@ -13,7 +13,8 @@ import {
   FOOD_SCATTER,
   FOOD_CLUMP_WIDE,
 } from './constants'
-import { randomUnitVector, randomSurfacePoint, randomTangent, cellIndex } from './math'
+import { randomUnitVector, randomSurfacePoint, randomTangent } from './math'
+import { gridKey, forEachNearby } from './grid'
 import { gainEnergy } from './cells'
 
 export function placeFood(sim, food) {
@@ -76,7 +77,7 @@ export function makeFood(sim) {
 
 export function addFoodToGrid(sim, i) {
   const food = sim.foods[i]
-  const key = cellIndex(
+  const key = gridKey(
     Math.floor(food.pos.x / GRID),
     Math.floor(food.pos.y / GRID),
     Math.floor(food.pos.z / GRID),
@@ -120,23 +121,6 @@ export function foodDist(sim, d, food, halfLen) {
   sim._fd.ry = ry
   sim._fd.rz = rz
   return Math.sqrt(ex * ex + ey * ey + ez * ez)
-}
-
-export function forEachNearbyFood(sim, cx, cy, cz, r, cb) {
-  for (let ox = -r; ox <= r; ox++) {
-    for (let oy = -r; oy <= r; oy++) {
-      for (let oz = -r; oz <= r; oz++) {
-        const bucket = sim.foodGrid.get(cellIndex(cx + ox, cy + oy, cz + oz))
-        if (!bucket) continue
-        for (let k = 0; k < bucket.length; k++) {
-          const foodIndex = bucket[k]
-          const food = sim.foods[foodIndex]
-          if (!food.visible) continue
-          if (cb(foodIndex, food) === false) return
-        }
-      }
-    }
-  }
 }
 
 function overlapsAnyCell(sim, pos, r) {
@@ -199,7 +183,9 @@ export function eatAndRespawn(sim, simDt) {
     // the shared scanner's feet (it splices as it goes).
     sim._eatContact.length = 0
     const contact = sim._eatContact
-    forEachNearbyFood(sim, cx, cy, cz, 1, (foodIndex, food) => {
+    forEachNearby(sim.foodGrid, cx, cy, cz, 1, (foodIndex) => {
+      const food = sim.foods[foodIndex]
+      if (!food.visible) return
       if (foodDist(sim, d, food, halfLen) < d.width + food.r) contact.push(foodIndex)
     })
     for (let c = 0; c < contact.length; c++) {
@@ -238,7 +224,9 @@ export function concentration(sim) {
     const cx = Math.floor(d.pos.x / GRID)
     const cy = Math.floor(d.pos.y / GRID)
     const cz = Math.floor(d.pos.z / GRID)
-    forEachNearbyFood(sim, cx, cy, cz, 2, (foodIndex, food) => {
+    forEachNearby(sim.foodGrid, cx, cy, cz, 2, (foodIndex) => {
+      const food = sim.foods[foodIndex]
+      if (!food.visible) return
       const dd = foodDist(sim, d, food, halfLen)
       if (dd < sense) {
         const w = 1 - dd / sense

@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { SURFACE, CELL_GRID, SPRING, COLLISION_KICK } from './constants'
-import { cellIndex } from './math'
+import { gridKey } from './grid'
 
 // Cell-cell collision and surface geometry. Pure helpers over the cell data
 // objects plus the sim scratch vectors (_v3.._v6, _col) and the cell hash
@@ -112,7 +112,7 @@ export function buildCellGrid(sim) {
   for (let i = 0; i < n; i++) {
     const d = sim.cells[i]
     if ((d.mito || d.splitting) && !d.mitoParent) continue
-    const key = cellIndex(
+    const key = gridKey(
       Math.floor(d.pos.x / CELL_GRID),
       Math.floor(d.pos.y / CELL_GRID),
       Math.floor(d.pos.z / CELL_GRID),
@@ -135,7 +135,7 @@ export function solveCollisions(sim, simDt) {
       for (let oy = -1; oy <= 1; oy++) {
         for (let oz = -1; oz <= 1; oz++) {
           const bucket = sim.cellGrid.get(
-            cellIndex(cx + ox, cy + oy, cz + oz),
+            gridKey(cx + ox, cy + oy, cz + oz),
           )
           if (!bucket) continue
           for (let k = 0; k < bucket.length; k++) {
