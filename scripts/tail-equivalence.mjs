@@ -70,8 +70,72 @@ let code = 0
 try {
   const { Simulation } = await server.ssrLoadModule('/src/sim.js')
   const cells = await server.ssrLoadModule('/src/cells.js')
-  const { SURFACE, TAIL_OSC_FREQ } =
-    await server.ssrLoadModule('/src/constants.js')
+  const constants = await server.ssrLoadModule('/src/constants.js')
+  const { SURFACE, TAIL_OSC_FREQ } = constants
+
+  // PARAM_DEFS, the exported bindings and the setters map are three parallel
+  // lists kept in sync by hand. Check them first: a missing setter leaves the
+  // binding undefined and turns the physics into NaN, which would otherwise
+  // surface as a confusing failure further down.
+  const paramProblems = []
+  const defKeys = new Set()
+  for (const def of constants.PARAM_DEFS) {
+    if (defKeys.has(def.key)) paramProblems.push(`duplicate PARAM_DEFS key ${def.key}`)
+    defKeys.add(def.key)
+    if (!(def.key in constants)) {
+      paramProblems.push(`${def.key} has no exported binding`)
+      continue
+    }
+    if (def.def < def.min || def.def > def.max) {
+      paramProblems.push(`${def.key} default ${def.def} outside [${def.min}, ${def.max}]`)
+    }
+  }
+  for (const def of constants.PARAM_DEFS) {
+    if (!defKeys.has(def.key) || !(def.key in constants)) continue
+    for (const bound of [def.min, def.max]) {
+      try {
+        constants.setParam(def.key, bound)
+      } catch (err) {
+        paramProblems.push(`setParam(${def.key}) threw: ${err.message}`)
+        continue
+      }
+      if (constants[def.key] !== bound) {
+        paramProblems.push(
+          `setParam(${def.key}, ${bound}) left ${def.key}=${constants[def.key]}`,
+        )
+      }
+    }
+  }
+  let resetError = null
+  try {
+    constants.resetParams()
+  } catch (err) {
+    resetError = err
+  }
+  if (resetError) {
+    paramProblems.push(`resetParams threw: ${resetError.message}`)
+  } else {
+    for (const def of constants.PARAM_DEFS) {
+      if (!(def.key in constants)) continue
+      if (constants[def.key] !== def.def) {
+        paramProblems.push(
+          `resetParams left ${def.key}=${constants[def.key]} (want ${def.def})`,
+        )
+      }
+    }
+  }
+  if (paramProblems.length) {
+    console.log(`FAIL params registry: ${paramProblems.slice(0, 5).join('; ')}`)
+    if (paramProblems.length > 5) {
+      console.log(`  ...and ${paramProblems.length - 5} more`)
+    }
+    code = 1
+  } else {
+    console.log(
+      `PASS params registry: ${constants.PARAM_DEFS.length} keys have a binding and a working setter`,
+    )
+  }
+
   // buildWorld and cell growth lazily create module-level geometry/tail pools,
   // each consuming PRNG draws. Run twice and discard so the cache has reached
   // its fixed point before the measured runs; otherwise run order alone can
@@ -253,6 +317,7 @@ try {
   } else {
     console.log('PASS headless tail-pose smoke: finite pose after 120s + renderTails')
   }
+
 } finally {
   await server.close()
 }
