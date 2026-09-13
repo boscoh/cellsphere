@@ -25,7 +25,9 @@ historical design notes.
 
 ## Architecture
 
-- `src/App.vue` — thin shell: lifecycle, HUD, frame timing, overlay
+- `src/App.vue` — thin shell: lifecycle, frame timing, overlay state
+- `src/Hud.vue` — top-left HUD (counts, speed slider, tails, restart)
+- `src/PerfPanel.vue` — perf breakdown panel; `src/PopChart.vue` — population chart
 - `src/sim.js` — `Simulation` orchestrator: physics loop, render lifecycle
 - `src/collision.js` — capsule distance, cell hash, collision solve
 - `src/grid.js` — spatial hash: key packing + neighbourhood scan
@@ -38,7 +40,7 @@ historical design notes.
 - `src/materials.js` — shared geometries & materials (body shader hooks)
 - `src/render.js` — visibility culling + render pass
 - `src/glow.js`, `src/pops.js` — death-burst billboards
-- `src/perf.js` — per-frame timing; `src/Tuner.vue`, `src/PopChart.vue` — UI
+- `src/perf.js` — per-frame timing; `src/Tuner.vue` — parameter UI
 - `src/math.js` — pure helpers
 
 Invariants an agent must not break:

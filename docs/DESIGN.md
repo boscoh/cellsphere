@@ -138,8 +138,10 @@ _Fixed constants (not tunable at runtime)._
 | `GRID` | 0.35 | food spatial-hash cell size |
 | `MAX_CELLS` | 500 | logical population ceiling; pools grow on demand rather than reserving it |
 | `MAX_RADIUS` | 0.3 | radius at full energy; chosen so a full cell exactly spans both daughters |
+| `MAX_SIM_RATE` | 50 | speed slider cap, and the `SIM_SPEED` parameter maximum |
 | `MAX_STEPS` | 200 | per-frame substep ceiling |
 | `MIN_RADIUS` | 0.1 | radius at zero energy |
+| `POP_SAMPLES` | 1200 | population-chart history length (one sample per 0.5s) |
 | `SPHERE_RADIUS` | 5 | sphere radius |
 | `START_RADIUS` | 0.13 | spawn radius |
 | `SURFACE` | 5.06 | surface offset (`SPHERE_RADIUS + 0.06`); every entity is placed here |

@@ -20,3 +20,12 @@ body {
   font-family: system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Shared panel label, used by the HUD and the perf panel. */
+.ctl {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+  color: #6b7484;
+  line-height: 1.2;
+}

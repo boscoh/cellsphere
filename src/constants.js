@@ -6,6 +6,10 @@ export const CELL_GRID = 1.0
 export const FIXED_DT = 1 / 60
 export const MAX_STEPS = 200
 
+// Host/UI limits: the HUD speed slider cap and the population chart history.
+export const MAX_SIM_RATE = 50
+export const POP_SAMPLES = 1200
+
 // Pools grow on demand in fixed-size chunks rather than sizing every buffer to
 // MAX_CELLS up-front, so memory/upload scale with the high-water mark of
 // concurrent cells, not the ceiling (cell-8jl).
@@ -38,7 +42,7 @@ export const GROUPS = [
 export const PARAM_DEFS = [
   { key: 'PREY_COUNT', group: 'world', label: 'Prey (start)', desc: 'Number of prey (blue) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
   { key: 'PRED_COUNT', group: 'world', label: 'Predators (start)', desc: 'Number of predator (red) cells spawned when the world is (re)built.', def: 15, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
-  { key: 'SIM_SPEED', group: 'world', label: 'Default speed', desc: 'Simulation speed applied on startup and when Default/Reset is pressed (1x = real time).', def: 1, min: 1, max: 50, step: 1 },
+  { key: 'SIM_SPEED', group: 'world', label: 'Default speed', desc: 'Simulation speed applied on startup and when Default/Reset is pressed (1x = real time).', def: 1, min: 1, max: MAX_SIM_RATE, step: 1 },
   { key: 'FOOD_COUNT', group: 'world', label: 'Initial food', desc: 'Total food particles spawned when the world is (re)built.', def: 3000, min: 500, max: 40000, step: 500, rebuild: true },
   { key: 'FOOD_CLUMPS', group: 'world', label: 'Food clumps', desc: 'Number of food clusters (0 = none; rebuilds).', def: 12, min: 0, max: 80, step: 1, rebuild: true },
   { key: 'FOOD_SCATTER', group: 'world', label: 'Food scatter', desc: 'Share of food placed uniformly instead of in clumps (rebuilds).', def: 0.15, min: 0, max: 1, step: 0.05, rebuild: true },

@@ -19,6 +19,8 @@ const FIXED_ROLES = {
   CELL_GRID: 'cell spatial-hash cell size',
   FIXED_DT: 'physics substep, in seconds (1/60)',
   MAX_STEPS: 'per-frame substep ceiling',
+  MAX_SIM_RATE: 'speed slider cap, and the `SIM_SPEED` parameter maximum',
+  POP_SAMPLES: 'population-chart history length (one sample per 0.5s)',
   MIN_RADIUS: 'radius at zero energy',
   MAX_RADIUS: 'radius at full energy; chosen so a full cell exactly spans both daughters',
   START_RADIUS: 'spawn radius',
