@@ -22,8 +22,10 @@ historical design notes.
 ## Architecture
 
 - `src/App.vue` — thin shell: lifecycle, HUD, frame timing, overlay
-- `src/sim.js` — `Simulation` orchestrator: collision, physics loop, render lifecycle
-- `src/cells.js` — cell domain: create/grow/mitose, body pools, tail control + pose
+- `src/sim.js` — `Simulation` orchestrator: physics loop, render lifecycle
+- `src/collision.js` — capsule distance, cell hash, collision solve
+- `src/cells.js` — cell domain: create/grow/mitose, body + tail pools, tail placement
+- `src/tail.js` — tail physics: steering control, spring-chain pose, re-aim
 - `src/food.js` — food grid, eating + sensing, clumps
 - `src/predator.js` — predation: latch + drain
 - `src/constants.js` — tuning registry (`PARAM_DEFS`/`PARAMS`/`GROUPS`) + plain consts

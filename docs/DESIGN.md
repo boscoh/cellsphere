@@ -14,8 +14,10 @@ sense food, slow down, turn toward concentration, eat to grow, and eventually
 
 `src/App.vue` is a thin Vue shell (lifecycle, single-line top-left HUD, frame
 timing). The simulation is split into modules: `src/sim.js` (`Simulation`
-orchestrator: collision, physics loop, render lifecycle), `src/cells.js`
-(cell domain — create/grow/mitose/tails, body pools), `src/food.js` (food
+orchestrator: physics loop, render lifecycle), `src/collision.js` (capsule
+distance, cell hash, collision solve), `src/cells.js` (cell domain —
+create/grow/mitose, body and tail pools, tail placement), `src/tail.js` (tail
+physics — steering control and spring-chain pose), `src/food.js` (food
 grid, eating + sensing, clumps); tuning constants in `src/constants.js`;
 scene/lights in `src/sceneSetup.js`; shared geos/materials in
 `src/materials.js`; pure helpers in `src/math.js`.

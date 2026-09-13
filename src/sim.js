@@ -41,8 +41,6 @@ import {
   updateDetach,
   releaseTail,
   placeTail,
-  updateTailControl,
-  updateTailPose,
   updateMito,
   updateEnergy,
   initBodyPools,
@@ -51,6 +49,7 @@ import {
   disposeBodyGeos,
   disposeTailPool,
 } from './cells'
+import { updateTailControl, updateTailPose } from './tail'
 import {
   generateClumps,
   makeFood,

@@ -69,10 +69,10 @@ const server = await createServer({
 let code = 0
 try {
   const { Simulation } = await server.ssrLoadModule('/src/sim.js')
-  const cells = await server.ssrLoadModule('/src/cells.js')
   const constants = await server.ssrLoadModule('/src/constants.js')
   const { SURFACE, TAIL_OSC_FREQ } = constants
   const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
+  const tail = await server.ssrLoadModule('/src/tail.js')
 
   // PARAM_DEFS, the exported bindings and the setters map are three parallel
   // lists kept in sync by hand. Check them first: a missing setter leaves the
@@ -246,7 +246,7 @@ try {
       cell.tailPts[0].set(99, 99, 99)
       for (let i = 1; i < cell.tailPts.length; i++) cell.tailPts[i].set(50, 50, 50)
       for (let i = 0; i < cell.tailDirs.length; i++) cell.tailDirs[i].set(0, 0, 1)
-      cells.warmTail(sim, cell)
+      tail.warmTail(sim, cell)
       return {
         lag: cell.tailLag,
         bend: cell.tailBend,
@@ -296,12 +296,12 @@ try {
       cell.drive = 1
       cell.headingRate = 0
       cell.tailPhase = 0
-      cells.updateTailState(sim, cell, DT)
+      tail.updateTailState(sim, cell, DT)
       const afterStep = cell.tailPhase
       cell.drive = 0
       cell.headingRate = 0
       const idlePhase = cell.tailPhase
-      cells.updateTailState(sim, cell, DT)
+      tail.updateTailState(sim, cell, DT)
       const afterIdle = cell.tailPhase
       const offSurface = cell.tailPts.some(
         (p) => Math.abs(p.length() - SURFACE) > 1e-3,
