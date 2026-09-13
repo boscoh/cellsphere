@@ -36,6 +36,7 @@ const PERF_LABELS = {
   bodies: 'bodies (render)',
   tails: 'tails (render)',
   draw: 'draw',
+  pops: 'pops (bursts)',
 }
 
 let sim
@@ -125,7 +126,11 @@ onMounted(() => {
     fpsCount++
     fpsTime += rawDt
     if (fpsTime >= 0.5) {
-      frameMs.value = (fpsTime / fpsCount) * 1000
+      // perf.totals sums every phase over the whole window (and every substep),
+      // so divide by the window's frame count to report per-frame ms on the same
+      // basis as frameMs.
+      const frames = Math.max(fpsCount, 1)
+      frameMs.value = (fpsTime / frames) * 1000
       fpsCount = 0
       fpsTime = 0
       bacteriaCount.value = sim.cells.length
@@ -144,7 +149,7 @@ onMounted(() => {
       for (const f of sim.foods) if (f.visible) foodCount.value++
       perf.value = {}
       for (const name in sim.perf.totals) {
-        perf.value[name] = sim.perf.totals[name]
+        perf.value[name] = sim.perf.totals[name] / frames
       }
       sim.perf.clear()
     }
