@@ -438,7 +438,6 @@ export function createCell(sim, tail, pos, heading, length, breed = Math.random(
     mito: null,
     splitting: false,
     dead: false,
-    killedByPred: false,
     sideHidden: false,
     tailGrow: 1,
     fade: 1,
@@ -720,12 +719,7 @@ export function updateMito(sim, d, simDt) {
     }
   }
 
-  if (m.t >= m.dur) {
-    finalizeMito(d, m)
-    // One parent becomes two daughters = one net birth for the rate estimate.
-    if (d.breed === BREED_BLUE) sim.events.preyBirths++
-    else sim.events.predBirths++
-  }
+  if (m.t >= m.dur) finalizeMito(d, m)
 }
 
 function finalizeMito(d, m) {

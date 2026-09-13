@@ -147,10 +147,7 @@ export function predation(sim, simDt) {
       if (dist <= PRED_BITE) {
         const rate = PRED_DRAIN * simDt * ratioAttack
         drainEnergy(sim, latch, rate)
-        if (latch.energy <= 0) {
-          latch.killedByPred = true
-          latch.dead = true
-        }
+        if (latch.energy <= 0) latch.dead = true
         gainEnergy(sim, red, rate * PRED_EFF)
       }
     }

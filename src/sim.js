@@ -81,13 +81,6 @@ export class Simulation {
     this._tailDirty = new Set()
     this.respawning = []
     this.senseAccum = 0
-    this.events = {
-      preyBirths: 0,
-      predBirths: 0,
-      preyStarved: 0,
-      predStarved: 0,
-      predKills: 0,
-    }
 
     this._v1 = new THREE.Vector3()
     this._v2 = new THREE.Vector3()
@@ -156,13 +149,6 @@ export class Simulation {
     this.tailScale = 1
     this.tailsHidden = false
     this.senseAccum = 0
-    this.events = {
-      preyBirths: 0,
-      predBirths: 0,
-      preyStarved: 0,
-      predStarved: 0,
-      predKills: 0,
-    }
     this.foodMesh = null
     this.pops = []
     initBodyPools(this)
@@ -369,12 +355,7 @@ export class Simulation {
       const d = this.cells[i]
       if (d.dead) {
         // Mito parents are replaced by their daughters, not a real death.
-        if (!d.mitoParent) {
-          if (d.killedByPred) this.events.predKills++
-          else if (d.breed === 0) this.events.preyStarved++
-          else this.events.predStarved++
-          spawnPop(this, d)
-        }
+        if (!d.mitoParent) spawnPop(this, d)
         this.removeCell(d)
         this.cells.splice(i, 1)
       }

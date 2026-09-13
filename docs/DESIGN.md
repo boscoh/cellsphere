@@ -260,7 +260,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (blue/red) · Food
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`
 default **1×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
-top-right, the population/rates chart bottom-left, drag hint bottom-center.
+top-right, the population chart bottom-left, drag hint bottom-center.
 
 ## Scene look
 

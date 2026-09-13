@@ -45,7 +45,6 @@ let lastTime = performance.now()
 let accumulator = 0
 let fpsCount = 0
 let fpsTime = 0
-let prevSample = null
 const handleResize = () => sim.onResize()
 const onKey = (e) => {
   if (e.key === 'Escape') tunerRef.value?.collapse()
@@ -56,40 +55,12 @@ function onReset() {
   tunerRef.value?.syncValues()
   simRate.value = SIM_SPEED
   popHistory.value = []
-  prevSample = null
   sim.reset()
 }
 
 function onRestart() {
   popHistory.value = []
-  prevSample = null
   sim.reset()
-}
-
-// Effective Lotka-Volterra coefficients over the last sampling window, from
-// cumulative sim event counters and mean populations:
-//   dN/dt = alpha*N - beta*N*P,  dP/dt = delta*N*P - gamma*P
-function estimateRates(sim, blue, red) {
-  const ev = sim.events
-  const out = { alpha: 0, beta: 0, gamma: 0, delta: 0 }
-  if (prevSample) {
-    const dt = sim.simTime - prevSample.t
-    const nBar = (blue + prevSample.blue) / 2
-    const pBar = (red + prevSample.red) / 2
-    const preyBirths = ev.preyBirths - prevSample.events.preyBirths
-    const predBirths = ev.predBirths - prevSample.events.predBirths
-    const preyStarved = ev.preyStarved - prevSample.events.preyStarved
-    const predStarved = ev.predStarved - prevSample.events.predStarved
-    const predKills = ev.predKills - prevSample.events.predKills
-    if (dt > 0 && nBar > 0) out.alpha = (preyBirths - preyStarved) / (nBar * dt)
-    if (dt > 0 && pBar > 0) out.gamma = predStarved / (pBar * dt)
-    if (dt > 0 && nBar > 0 && pBar > 0) {
-      out.beta = predKills / (nBar * pBar * dt)
-      out.delta = predBirths / (nBar * pBar * dt)
-    }
-  }
-  prevSample = { t: sim.simTime, blue, red, events: { ...ev } }
-  return out
 }
 
 function onParamChange(key, value) {
@@ -142,8 +113,7 @@ onMounted(() => {
       }
       blueCount.value = blue
       redCount.value = red
-      const rates = estimateRates(sim, blue, red)
-      popHistory.value.push({ t: sim.simTime, blue, red, ...rates })
+      popHistory.value.push({ t: sim.simTime, blue, red })
       if (popHistory.value.length > POP_SAMPLES) popHistory.value.shift()
       foodCount.value = 0
       for (const f of sim.foods) if (f.visible) foodCount.value++
