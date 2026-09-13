@@ -1,81 +1,47 @@
-# Beads - AI-Native Issue Tracking
+# Beads — local issue tracking
 
-Welcome to Beads! This repository uses **Beads** for issue tracking - a modern, AI-native tool designed to live directly in your codebase alongside your code.
+Issues are stored in a **local embedded Dolt database** at
+`.beads/embeddeddolt/`. That directory is gitignored: the database is not
+committed to git. `bd dolt status` reports the current mode.
 
-## What is Beads?
+## Where the data lives
 
-Beads is issue tracking that lives in your repo, making it perfect for AI coding agents and developers who want their issues close to their code. No web UI required - everything works through the CLI and integrates seamlessly with git.
+| Channel | Path / ref | Purpose |
+|---|---|---|
+| Database | `.beads/embeddeddolt/` (gitignored) | source of truth |
+| Dolt remote | `refs/dolt/data` on `origin` (GitHub) | cross-machine sync, off-machine |
+| Dolt backup | `~/Dropbox/beads-backups/cellsphere` (gitignored) | recovery, auto every 15m |
+| Export | `.beads/issues.jsonl` (tracked) | git review, portability, clone seed |
 
-**Learn more:** [github.com/steveyegge/beads](https://github.com/steveyegge/beads)
+`bd dolt push` / `bd dolt pull` move the database to and from the Dolt remote.
+`bd backup sync` updates the recovery copy. Neither is a git commit.
 
-## Quick Start
+## Files here
 
-### Essential Commands
+- `.beads/issues.jsonl` — the tracked text export of issues. Rewritten
+  automatically after writes (`export.auto: true`), throttled to 60s. It is an
+  **export, not the source of truth** — do not hand-merge it.
+- `.beads/interactions.jsonl` — append-only audit log written by `bd audit`.
+- `.beads/config.yaml` — tracked project settings. Set with `bd config set`.
+- `.beads/.gitignore` — canonical ignore rules. Do not duplicate them in the
+  repository-level `.gitignore`.
+- `.beads/metadata.json` — storage mode, database name, project id.
 
-```bash
-# Create new issues
-bd create "Add user authentication"
-
-# View all issues
-bd list
-
-# View issue details
-bd show <issue-id>
-
-# Update issue status
-bd update <issue-id> --status in_progress
-bd update <issue-id> --status done
-
-# Sync with git remote
-bd sync
-```
-
-### Working with Issues
-
-Issues in Beads are:
-- **Git-native**: Stored in `.beads/issues.jsonl` and synced like code
-- **AI-friendly**: CLI-first design works perfectly with AI coding agents
-- **Branch-aware**: Issues can follow your branch workflow
-- **Always in sync**: Auto-syncs with your commits
-
-## Why Beads?
-
-✨ **AI-Native Design**
-- Built specifically for AI-assisted development workflows
-- CLI-first interface works seamlessly with AI coding agents
-- No context switching to web UIs
-
-🚀 **Developer Focused**
-- Issues live in your repo, right next to your code
-- Works offline, syncs when you push
-- Fast, lightweight, and stays out of your way
-
-🔧 **Git Integration**
-- Automatic sync with git commits
-- Branch-aware issue tracking
-- Intelligent JSONL merge resolution
-
-## Get Started with Beads
-
-Try Beads in your own projects:
+## Commands
 
 ```bash
-# Install Beads
-curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
-
-# Initialize in your repo
-bd init
-
-# Create your first issue
-bd create "Try out Beads"
+bd ready                                # unblocked work
+bd show <id>                            # issue + dependencies
+bd create "title" -t task -p 2 -d "why"
+bd update <id> --claim
+bd close <id> --reason "done"
+bd dolt push                            # sync the database to the Dolt remote
+bd backup sync                          # refresh the recovery copy
+bd export -o .beads/issues.jsonl        # force a fresh export
 ```
 
-## Learn More
+There is no `bd sync` in bd 1.2.2. Cross-machine transfer is
+`bd dolt push` / `bd dolt pull` against the configured Dolt remote;
+`bd export` is for viewers and interchange only.
 
-- **Documentation**: [github.com/steveyegge/beads/docs](https://github.com/steveyegge/beads/tree/main/docs)
-- **Quick Start Guide**: Run `bd quickstart`
-- **Examples**: [github.com/steveyegge/beads/examples](https://github.com/steveyegge/beads/tree/main/examples)
-
----
-
-*Beads: Issue tracking that moves at the speed of thought* ⚡
+See `AGENTS.md` for the agent workflow and `docs/DESIGN.md` for the project.

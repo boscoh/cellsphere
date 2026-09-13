@@ -3,6 +3,17 @@ dolt/
 embeddeddolt/
 proxieddb/
 
+# Dolt backup destination + sync state (machine-specific absolute paths)
+dolt-backup.json
+dolt-backup-state.json
+
+# Import watermark for .beads/issues.jsonl (per-machine size + mtime)
+.auto-import-issues.jsonl
+
+# Git hooks written by `bd hooks install --beads`. This repo uses the shared,
+# committable location .beads-hooks/ (bd hooks install --shared) instead.
+hooks/
+
 # Runtime files
 bd.sock
 bd.sock.startlock
