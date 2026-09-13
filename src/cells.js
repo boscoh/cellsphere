@@ -55,14 +55,14 @@ const BREED_BLUE = 0
 const BREED_RED = 1
 const bodyGeoCache = new Map()
 
-export function makeBodyGeo(length, width) {
+function makeBodyGeo(length, width) {
   const cylLen = Math.max(2 * (length - width), 0.001)
   const geo = new THREE.CapsuleGeometry(width, cylLen, 6, 12)
   geo.rotateZ(Math.PI / 2)
   return geo
 }
 
-export function bodyGeoFor(length, width) {
+function bodyGeoFor(length, width) {
   const key = bodyBucket(length, width)
   let geo = bodyGeoCache.get(key)
   if (!geo) {
@@ -72,7 +72,7 @@ export function bodyGeoFor(length, width) {
   return geo
 }
 
-export function bodyBucket(length, width) {
+function bodyBucket(length, width) {
   return Math.round(length / GEO_STEP) * 1000 + Math.round(width / 0.001)
 }
 
@@ -100,7 +100,7 @@ function getPool(sim, length, width) {
   const bucket = bodyBucket(length, width)
   let entry = sim.bodyPools.get(bucket)
   if (!entry) {
-    entry = { bucket, geo: bodyGeoFor(length, width), chunks: [] }
+    entry = { bucket, template: bodyGeoFor(length, width), chunks: [] }
     sim.bodyPools.set(bucket, entry)
   }
   return entry
@@ -121,7 +121,10 @@ function detachChunk(sim, chunk) {
 }
 
 function createBodyChunk(sim, entry) {
-  const geo = entry.geo
+  // Each chunk owns a geometry clone. instanceParalysed is a per-instance
+  // attribute, so a shared geometry would let the last-created chunk's
+  // attributes win for every chunk in the bucket (cell-dj4).
+  const geo = entry.template.clone()
   const mesh = new THREE.InstancedMesh(geo, bodyMat, BODY_CHUNK_CELLS)
   // Instances span the whole shell and change size every frame, so the cached
   // bounding sphere is never accurate; culling would drop visible bodies on
@@ -129,12 +132,6 @@ function createBodyChunk(sim, entry) {
   mesh.frustumCulled = false
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   mesh.instanceMatrix.needsUpdate = true
-  const opacity = new THREE.InstancedBufferAttribute(
-    new Float32Array(BODY_CHUNK_CELLS).fill(1),
-    1,
-  )
-  opacity.setUsage(THREE.DynamicDrawUsage)
-  mesh.geometry.setAttribute('instanceOpacity', opacity)
   const paralysed = new THREE.InstancedBufferAttribute(
     new Float32Array(BODY_CHUNK_CELLS).fill(0),
     1,
@@ -146,7 +143,6 @@ function createBodyChunk(sim, entry) {
     free: [],
     live: 0,
     count: 0,
-    opacity,
     paralysed,
     attached: false,
   }
@@ -175,7 +171,7 @@ function allocChunkSlot(sim, entry) {
   return { chunk, slot: chunk.count++ }
 }
 
-export function zeroMatrix(sim, mesh, slot) {
+function zeroMatrix(sim, mesh, slot) {
   const o = sim._dummy
   o.position.set(0, 0, 0)
   o.rotation.set(0, 0, 0)
@@ -192,7 +188,6 @@ export function addBody(sim, d, length) {
   d.bodyBucket = entry.bucket
   d.bodyChunk = chunk
   d.bodySlot = slot
-  if (chunk.opacity) chunk.opacity.setX(slot, 1)
   if (chunk.paralysed) chunk.paralysed.setX(slot, 0)
   setBodyColor(sim, d, d.color)
   chunk.mesh.instanceMatrix.needsUpdate = true
@@ -207,7 +202,7 @@ export function setBodyColor(sim, d, color) {
   if (chunk.mesh.instanceColor) chunk.mesh.instanceColor.needsUpdate = true
 }
 
-export function setInstanceColor(sim, d) {
+function setInstanceColor(sim, d) {
   setBodyColor(sim, d, d.color)
 }
 
@@ -264,6 +259,7 @@ export function disposeBodyPools(sim) {
     for (const chunk of entry.chunks) {
       if (chunk.mesh) {
         sim.scene.remove(chunk.mesh)
+        chunk.mesh.geometry.dispose()
         chunk.mesh.dispose()
         chunk.mesh = null
       }
@@ -414,7 +410,7 @@ export function radiusFromEnergy(energy, breed = BREED_BLUE) {
   return (MIN_RADIUS + f * (MAX_RADIUS - MIN_RADIUS)) * sizeF(breed)
 }
 
-export function energyFromRadius(radius, breed = BREED_BLUE) {
+function energyFromRadius(radius, breed = BREED_BLUE) {
   const base = radius / sizeF(breed)
   const f = (base - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS)
   return THREE.MathUtils.clamp(f, 0, 1) * ENERGY_MAX
@@ -441,7 +437,7 @@ export function createCell(sim, tail, pos, heading, length, breed = Math.random(
     tailLag: 0,
     tailBend: 0,
     steer: 0,
-    tailPhase: 0,
+    tailPhase: Math.random() * Math.PI * 2,
     slow: 1,
     foodDir: new THREE.Vector3(),
     foodAmt: 0,
@@ -609,8 +605,6 @@ export function mitose(sim, parent) {
     startPos,
     headBack,
     half,
-    childLen,
-    parentR: d.radius,
   }
   d.splitting = true
   d.mitoParent = true

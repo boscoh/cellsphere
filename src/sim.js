@@ -620,11 +620,6 @@ export class Simulation {
     renderView(this, tailScale, dt)
   }
 
-  frame(simDt, tailScale) {
-    this.step(simDt)
-    this.render(tailScale)
-  }
-
   onResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight
     this.camera.updateProjectionMatrix()
@@ -634,17 +629,19 @@ export class Simulation {
   dispose() {
     if (this.controls) this.controls.dispose()
     if (this.renderer) this.renderer.dispose()
-    disposeSharedMaterials()
+    // Meshes and pooled geometry first, then the shared templates/materials they
+    // reference, so nothing is disposed out from under a live draw call.
     disposeBodyPools(this)
-    disposeBodyGeos()
+    disposeTailPool(this)
     disposePops(this)
-    disposeGlowMaterial()
+    if (this.foodMesh) this.foodMesh.dispose()
     if (this.sphereShell) {
       this.sphereShell.geometry.dispose()
       this.sphereShell.material.dispose()
     }
-    if (this.foodMesh) this.foodMesh.dispose()
-    disposeTailPool(this)
+    disposeBodyGeos()
+    disposeSharedMaterials()
+    disposeGlowMaterial()
     if (this.renderer) this.renderer.domElement.remove()
   }
 }

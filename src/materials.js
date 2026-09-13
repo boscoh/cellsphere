@@ -19,19 +19,15 @@ export const bodyMat = new THREE.MeshStandardMaterial({
 
 bodyMat.onBeforeCompile = (shader) => {
   shader.vertexShader =
-    'attribute highp float instanceOpacity;\nattribute highp float instanceParalysed;\nvarying highp float vInstanceOpacity;\nvarying highp float vInstanceParalysed;\n' +
+    'attribute highp float instanceParalysed;\nvarying highp float vInstanceParalysed;\n' +
     shader.vertexShader
   shader.vertexShader = shader.vertexShader.replace(
     '#include <project_vertex>',
-    '#include <project_vertex>\n\tvInstanceOpacity = instanceOpacity;\n\tvInstanceParalysed = instanceParalysed;'
+    '#include <project_vertex>\n\tvInstanceParalysed = instanceParalysed;'
   )
   shader.fragmentShader =
-    'varying highp float vInstanceOpacity;\nvarying highp float vInstanceParalysed;\n' +
+    'varying highp float vInstanceParalysed;\n' +
     shader.fragmentShader
-  shader.fragmentShader = shader.fragmentShader.replace(
-    '#include <color_fragment>',
-    '#include <color_fragment>\n\tdiffuseColor.a *= vInstanceOpacity;\n\tif (diffuseColor.a < 0.1) discard;'
-  )
   // Predator-latched ("immobile") prey tints dark red at the rim. Mixing the
   // surface colour (rather than adding emissive) keeps the edge dark instead of
   // washing the green body out toward white.
@@ -112,4 +108,5 @@ export function disposeSharedMaterials() {
   tailGeo.dispose()
   foodMat.dispose()
   tailMat.dispose()
+  bodyMat.dispose()
 }

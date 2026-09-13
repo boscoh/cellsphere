@@ -33,11 +33,13 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   reads/writes these directly.
 - **Bodies** render via **pooled `InstancedMesh`es** keyed by length bucket
   (`bodyGeoCache` + `bodyPools`): `addBody/removeBody/rehomeBody` manage a free
-  list per bucket chunk; per-instance color + a custom `instanceOpacity`
-  attribute (`setBodyColor/setBodyOpacity`) drive color and the mitosis fade.
-  `renderBodies` composes each cell's matrix from `pos/quat`. Each bucket grows
-  on demand in `BODY_CHUNK_CELLS` chunks rather than reserving `MAX_CELLS`
-  up-front; a chunk is detached from the scene when it empties.
+  list per bucket chunk; per-instance color (`setBodyColor`) plus a custom
+  `instanceParalysed` attribute drive color and the latched-prey rim.
+  `renderBodies` composes each cell's matrix from `pos/quat`, scaling it by
+  `fade` for the mitosis shrink. Each bucket grows on demand in
+  `BODY_CHUNK_CELLS` chunks rather than reserving `MAX_CELLS` up-front; each
+  chunk clones its geometry template (its per-instance attributes must be
+  independent) and is detached from the scene when it empties.
 - **Tails** render as **chunked `InstancedMesh`es** of capless-cylinder segments
   (`TAIL_CHUNK_CELLS*TAIL_SEGMENTS` each, `MeshLambertMaterial`); per-cell color
   set from `createCell`/`setSize` (`setTailColor`). Cell slots are packed
@@ -93,10 +95,9 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 - **Energy → mitosis**: at full energy, `mitose()` spawns two daughters, each
   at **half the parent's length** so both fit exactly inside the parent's
   outline, facing away. The parent **shrinks to nothing** (its `fade` scales the
-  body down) while the body material discards fully-collapsed instances
-  (`instanceOpacity`), then its mesh is dropped but it **keeps colliding**
-  until the daughters finish separating; `finalizeMito` marks it dead and
-  releases the daughters (with a `MITO_REST` coast). Because metabolism keeps
+  body down via the instance matrix), then its mesh is dropped but it **keeps
+  colliding** until the daughters finish separating; `finalizeMito` marks it dead
+  and releases the daughters (with a `MITO_REST` coast). Because metabolism keeps
   draining, a full cell that can't split (cap pressure) shrinks and resumes
   moving instead of parking at max and starving.
 - **Tail model (spring chain)**: `sim.advance` splits the tail into an O(1)
@@ -192,11 +193,9 @@ top-right, the population/rates chart bottom-left, drag hint bottom-center.
 - Entities sit at `SURFACE` to avoid z-fighting.
 - **Cell–cell collision** must use capsule–capsule distance (a spherical radius
   caused phantom contacts → spurious rotation).
-- **Mitosis fade** uses a per-instance opacity attribute + `onBeforeCompile`
-  on the shared body material (three can't set per-instance opacity otherwise).
-  `depthWrite` stays true always; the shader discards fragments when
-  `diffuseColor.a < 0.01`, so fully-faded parents never occlude. The faded
-  parent's mesh/tail are dropped at fade end but the cell object stays as an
+- **Mitosis fade** scales the parent's instance matrix down to zero (`fade` in
+  `renderBodies`); no per-instance opacity is involved. The faded parent's
+  mesh/tail are dropped at fade end but the cell object stays as an
   **immovable collision proxy** (`mitoParent`, recentered on `m.startPos`) until
   the daughters separate — otherwise neighbours sail through the division.
 - **Tail slots** are chunk-local and packed (`allocTailSlot`); a freed slot is
