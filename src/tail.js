@@ -150,6 +150,28 @@ export function updateTailPose(sim, d, dt) {
     }
   }
 
+  if (P.TAIL_MODE) {
+    // Kinematic mode: the root paddle joints are force-rotated straight onto
+    // the analytic guide; each remaining joint then follows the segment ahead
+    // with a first-order direction lag. Purely positional — no masses, springs
+    // or self-avoidance — so curvature at the root propagates tip-ward as the
+    // free tail responds.
+    const rigid = Math.max(1, Math.min(TAIL_MOTOR_JOINTS, S - 1))
+    for (let j = 1; j <= rigid; j++) {
+      pts[j].copy(q[j])
+      vels[j].set(0, 0, 0)
+    }
+    const k = 1 - Math.exp(-P.TAIL_FOLLOW_RATE * dt)
+    for (let j = rigid + 1; j <= S; j++) {
+      const ahead = sim._v1.copy(pts[j - 1]).sub(pts[j - 2]).normalize()
+      const dir = sim._v2.copy(dirs[j - 1]).lerp(ahead, k).normalize()
+      pts[j].copy(pts[j - 1]).addScaledVector(dir, pitch).setLength(SURFACE)
+      vels[j].set(0, 0, 0)
+    }
+    storeTailDirs(dirs, pts, behind)
+    return
+  }
+
   // --- damped spring-chain integration on the sphere -----------------------
   // Forces are gathered into per-joint accelerations first, then integrated, so
   // pair forces (beam, contact) act symmetrically:
@@ -296,7 +318,12 @@ export function updateTailPose(sim, d, dt) {
     }
   }
 
-  // store segment tangents for the instanced rendering
+  storeTailDirs(dirs, pts, behind)
+}
+
+// Store the segment tangents read by the render path.
+function storeTailDirs(dirs, pts, behind) {
+  const S = TAIL_SEGMENTS
   for (let i = 0; i < S; i++) {
     dirs[i].copy(pts[i + 1]).sub(pts[i])
     if (dirs[i].lengthSq() < 1e-12) dirs[i].copy(behind)

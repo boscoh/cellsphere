@@ -5,6 +5,8 @@
 > while tails are drawn. It replaced an earlier analytic control/pose split and
 > was restored because the chain looks better. Rendering-efficiency epic
 > `cell-5tt`: **`.1`–`.5` shipped** (a full GPU chain remains future work).
+> An experimental **kinematic mode** (`TAIL_MODE`, `cell-h2o`) swaps the chain
+> for a force-rotated rigid root plus a positional follow — see §1.5.
 
 The tail is a chain of joints on the sphere surface, driven toward an analytic
 guide spine `q[j]` and integrated with springs. It shapes the rendered flagellum
@@ -18,7 +20,8 @@ and provides the physical steering scalar `tailBend` that turns the body.
   (`cells.js`).
 - **Only `tailBend` feeds motion.** `headingRate += TAIL_TURN·tailBend·dt`
   (`sim.js`); everything else (`tailPts`, `tailDirs`, `tailPhase`, the wave) is
-  cosmetic.
+  cosmetic. This holds in kinematic mode too, so switching modes never changes
+  the simulation (`npm run test:tail` checks both).
 - **Toggling tails cannot change the simulation.** `advance` always runs the
   control; only the pose and `renderTails` are gated. Guarded by
   `npm run test:tail`.
@@ -206,6 +209,32 @@ scales with `simRate` automatically. An earlier render-time advance needed a
 `TAIL_WAVE_MAX_HZ` Nyquist cap; the chain integrates at the fixed sim substep, so
 that cap is not needed.
 
+### 1.5 Kinematic mode (experiment, `cell-h2o`)
+
+`P.TAIL_MODE = 1` replaces the O(S²) spring chain in `updateTailPose` (`tail.js`)
+with a purely positional model that answers the question *"what if we
+force-rotate the rigid root and let the rest of the tail respond
+kinematically?"*:
+
+- The analytic guide spine `q[j]` is still built exactly as in §1.1.
+- The root paddle joints `j = 1..TAIL_MOTOR_JOINTS` are **force-rotated straight
+  onto** `q[j]` (no guide spring, no lag) and their velocities are zeroed.
+- Each remaining joint `j` then **follows the segment ahead** with a first-order
+  direction lag: `dir_j ← normalize(lerp(dir_j, dir_{j-1}, 1−e^{−TAIL_FOLLOW_RATE·dt}))`,
+  and is placed at `pts[j-1] + dir_j·pitch`, projected back to `SURFACE`.
+
+`P.TAIL_FOLLOW_RATE` sets the response: high = the free tail snaps into a rigid
+rod extending the last root segment; low = a floppy, laggy follow. Because the
+cascade is spatial *and* temporal, the root's traveling wave propagates tip-ward
+with an amplitude ratio `Π 1/√(1+(ω/TAIL_FOLLOW_RATE)²)` and a growing phase
+lag — a kinematic undulation rather than an integrated one. There is no
+self-avoidance, so a very low rate can fold the tail onto itself; raise the rate
+if that appears.
+
+The mode is **pose-only**: `updateTailControl` and the `tailBend` actuator are
+untouched, so `npm run test:tail` verifies spring and kinematic worlds produce
+identical motion checksums.
+
 ## 2. Decoupling invariant
 
 Only `tailBend` feeds motion, and `tailPts`/`tailDirs`/`tailPhase` are cosmetic,
@@ -278,6 +307,8 @@ Everything below is a runtime `PARAM_DEFS` entry (Tuner, group `tail`).
 | `TAIL_HINGE` | 0.5 | how far the hinge tucks into the body |
 | `TAIL_LINK_FILL` | 0.95 | drawn fraction of each pitch |
 | `TAIL_BODY` | 2 | tail length × body length |
+| `TAIL_MODE` | 0 | 0 = spring chain, 1 = kinematic (rigid root + follow) |
+| `TAIL_FOLLOW_RATE` | 15 | kinematic mode: free-joint alignment rate (higher = rod-like) |
 
 ## 5. Cost
 
@@ -383,6 +414,10 @@ only a fully empty chunk drops to `count = 0`.
 - "Stage B" (compute the turn driver before the tail animation, removing the
   one-substep lag) was **dropped**: the lag is harmless and removing it changes
   loop gain.
+- Kinematic mode (`P.TAIL_MODE`) added as a `cell-h2o` experiment: the rigid root
+  is force-rotated onto the analytic guide and the free tail follows with a
+  first-order direction lag. Kept behind a toggle (default 0) so it can be
+  compared in the Tuner; both modes are pose-only and motion-equivalent.
 - Control/pose split: `updateTailState` was split into `updateTailControl`
   (O(1), always runs) and `updateTailPose` (O(S²·substeps), only while tails are
   visible). The chain reads control scalars but never writes them, so the pose
@@ -404,6 +439,10 @@ only a fully empty chunk drops to `count = 0`.
 
 ## 8. Open follow-ups
 
+- Kinematic mode (`TAIL_MODE`, `cell-h2o`) is an experiment: compare it
+  side-by-side in the Tuner against the spring chain and decide whether to keep,
+  retune (`TAIL_FOLLOW_RATE`) or drop it. It is cheaper (`O(S)` vs
+  `O(S²·TAIL_DYN_SUB)`) but loses emergent self-avoidance/whip detail.
 - Fix the `_v1` aliasing in the self-avoidance loop (use a second scratch
   vector); check it doesn't change the look.
 - GPU spring chain (compute/transform-feedback) for `O(cells)` CPU render —

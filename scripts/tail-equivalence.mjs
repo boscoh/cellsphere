@@ -255,6 +255,33 @@ try {
     `  ${population}; mitosis=${mitosis ? 'yes' : 'no'}; samples=${visible.samples.length}`,
   )
 
+  // Kinematic mode is pose-only as well: force-rotating the rigid root and
+  // following the rest kinematically must not change motion.
+  constants.setParam('TAIL_MODE', 1)
+  const kinematic = run(Simulation, false)
+  constants.setParam('TAIL_MODE', 0)
+  let kinematicMismatch = null
+  for (let i = 0; i < visible.samples.length; i++) {
+    const a = visible.samples[i]
+    const b = kinematic.samples[i]
+    if (a.n !== b.n || a.sum !== b.sum) {
+      kinematicMismatch = { index: i, a, b }
+      break
+    }
+  }
+  if (kinematicMismatch) {
+    const { index, a, b } = kinematicMismatch
+    console.log(
+      `FAIL kinematic-equivalence: first mismatch at sample ${index} (t=${a.t.toFixed(3)}s)`,
+    )
+    console.log(`  spring: n=${a.n} sum=${a.sum}  kinematic: n=${b.n} sum=${b.sum}`)
+    code = 1
+  } else {
+    console.log(
+      `PASS kinematic-equivalence: ${visible.samples.length} samples identical to spring chain`,
+    )
+  }
+
   // warmTail must reset only the derived pose, never the physical controls that
   // drive body motion (tailLag/tailBend) or the oscillation phase.
   const warm = (() => {
@@ -486,17 +513,22 @@ try {
       sim.buildWorld()
       sim.tailsHidden = false
       const totalSteps = Math.round(SIM_SECONDS / DT)
-      for (let i = 0; i < totalSteps; i++) sim.step(DT)
-      for (let i = 0; i < 5; i++) sim.renderTails()
-      for (const cell of sim.cells) {
-        const fields = [cell.pos.x, cell.pos.y, cell.pos.z]
-        for (const p of cell.tailPts) fields.push(p.x, p.y, p.z)
-        if (fields.some((v) => !Number.isFinite(v))) {
-          return `non-finite value in cell ${cell.index}`
+      for (const mode of [0, 1]) {
+        constants.setParam('TAIL_MODE', mode)
+        for (let i = 0; i < totalSteps; i++) sim.step(DT)
+        for (let i = 0; i < 5; i++) sim.renderTails()
+        for (const cell of sim.cells) {
+          const fields = [cell.pos.x, cell.pos.y, cell.pos.z]
+          for (const p of cell.tailPts) fields.push(p.x, p.y, p.z)
+          if (fields.some((v) => !Number.isFinite(v))) {
+            return `non-finite value in ${mode ? 'kinematic' : 'spring'} cell ${cell.index}`
+          }
         }
       }
+      constants.setParam('TAIL_MODE', 0)
       return null
     } catch (err) {
+      constants.setParam('TAIL_MODE', 0)
       return err && err.stack ? err.stack : String(err)
     } finally {
       Math.random = originalRandom
@@ -507,7 +539,9 @@ try {
     console.log(`FAIL headless tail-pose smoke: ${smoke}`)
     code = 1
   } else {
-    console.log('PASS headless tail-pose smoke: finite pose after 120s + renderTails')
+    console.log(
+      'PASS headless tail-pose smoke: finite pose after 120s + renderTails (spring + kinematic)',
+    )
   }
 
   const budget = checkNormalizeBudget(

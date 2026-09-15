@@ -243,6 +243,8 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `TAIL_TURN` | 2.5 | Heading-rate gain from the tail steering bend (tail drives the turn). |
 | `TAIL_LINK_FILL` | 0.95 | Fraction of link spacing covered by each segment mesh. |
 | `TAIL_BODY` | 2 | Total tail length as a multiple of body length. |
+| `TAIL_MODE` | 0 | 0 = spring-chain tail, 1 = force-rotated rigid root + kinematic follow. |
+| `TAIL_FOLLOW_RATE` | 15 | Kinematic mode: rate each free joint aligns to the segment ahead (higher = stiffer/rod-like). |
 
 **Predator**
 

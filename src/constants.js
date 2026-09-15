@@ -99,6 +99,8 @@ export const PARAM_DEFS = [
   { key: 'TAIL_TURN', group: 'tail', label: 'Tail turn', desc: 'Heading-rate gain from the tail steering bend (tail drives the turn).', def: 2.5, min: 0, max: 10, step: 0.25 },
   { key: 'TAIL_LINK_FILL', group: 'tail', label: 'Link fill', desc: 'Fraction of link spacing covered by each segment mesh.', def: 0.95, min: 0.1, max: 1.5, step: 0.05 },
   { key: 'TAIL_BODY', group: 'tail', label: 'Tail length', desc: 'Total tail length as a multiple of body length.', def: 2, min: 1, max: 6, step: 0.25 },
+  { key: 'TAIL_MODE', group: 'tail', label: 'Kinematic mode', desc: '0 = spring-chain tail, 1 = force-rotated rigid root + kinematic follow.', def: 0, min: 0, max: 1, step: 1 },
+  { key: 'TAIL_FOLLOW_RATE', group: 'tail', label: 'Kinematic follow', desc: 'Kinematic mode: rate each free joint aligns to the segment ahead (higher = stiffer/rod-like).', def: 15, min: 2, max: 80, step: 1 },
 
   { key: 'PRED_RANGE', group: 'predator', label: 'Predator range', desc: 'Latch distance to a blue (capsule gap).', def: 0.18, min: 0, max: 1, step: 0.01 },
   { key: 'PRED_SENSE', group: 'predator', label: 'Predator sense', desc: 'Distance over which a red smells prey; nearby blues are weighted into a gradient direction.', def: 1.5, min: 0, max: 5, step: 0.1 },
