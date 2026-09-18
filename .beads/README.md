@@ -11,7 +11,7 @@ committed to git. `bd dolt status` reports the current mode.
 | Database | `.beads/embeddeddolt/` (gitignored) | source of truth |
 | Dolt remote | `refs/dolt/data` on `origin` (GitHub) | cross-machine sync, off-machine |
 | Dolt backup | `~/Dropbox/beads-backups/cellsphere` (gitignored) | recovery, auto every 15m |
-| Export | `.beads/issues.jsonl` (tracked) | git review, portability, clone seed |
+| Export | `.beads/issues.jsonl` (tracked) | optional export for viewers/review; not the database or a clone seed |
 
 `bd dolt push` / `bd dolt pull` move the database to and from the Dolt remote.
 `bd backup sync` updates the recovery copy. Neither is a git commit.
@@ -21,7 +21,8 @@ committed to git. `bd dolt status` reports the current mode.
 - `.beads/issues.jsonl` — the tracked text export of issues. Rewritten
   automatically after writes (`export.auto: true`), throttled to 60s. It is an
   **export, not the source of truth** — do not hand-merge it.
-- `.beads/interactions.jsonl` — append-only audit log written by `bd audit`.
+- `.beads/interactions.jsonl` — append-only audit log written by `bd audit`;
+  intentionally versioned in git.
 - `.beads/config.yaml` — tracked project settings. Set with `bd config set`.
 - `.beads/.gitignore` — canonical ignore rules. Do not duplicate them in the
   repository-level `.gitignore`.

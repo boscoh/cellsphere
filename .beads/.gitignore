@@ -74,6 +74,10 @@ backup/
 # Per-project environment file (Dolt connection config, GH#2520)
 .env
 
+# Local JSONL export. Dolt is the source of truth and export.auto is off, so
+# this export is not committed in this repo (refresh on demand with `bd export`).
+issues.jsonl
+
 # Legacy files (from pre-Dolt versions)
 *.db
 *.db?*

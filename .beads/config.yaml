@@ -1,14 +1,14 @@
 # Beads project configuration.
 #
 # Dolt is the only storage backend as of bd 1.2.x; the legacy SQLite and
-# JSONL-as-source-of-truth modes are gone. Per-machine state lives in
-# metadata.json (gitignored), not here.
+# JSONL-as-source-of-truth modes are gone. This file and metadata.json are
+# tracked by git; per-machine runtime state is gitignored via .beads/.gitignore.
 #
 # Inspect effective values and their provenance with:  bd config show
 # Set a value with:                                    bd config set <key> <value>
 #
 # Settings worth knowing (uncomment to apply project-wide):
-export.auto: true
+#   export.auto: true      # opt in to JSONL auto-export for viewers (bv)
 #   dolt.debug: false      # run the managed Dolt server with debug logging
 #   metrics.disabled: true # opt out of anonymous usage metrics
 
