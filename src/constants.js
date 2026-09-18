@@ -115,6 +115,8 @@ export const PARAM_DEFS = [
   { key: 'PRED_EFF', group: 'predator', label: 'Predator growth', desc: 'Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide.', def: 1, min: 0, max: 4, step: 0.1 },
   { key: 'PRED_METABOLISM', group: 'predator', label: 'Predator metabolism', desc: 'Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly.', def: 0.001, min: 0, max: 0.3, step: 0.001 },
   { key: 'PRED_DRIVE', group: 'predator', label: 'Predator drive', desc: 'Red speed multiplier (<1 = slower).', def: 0.9, min: 0, max: 1, step: 0.05 },
+  { key: 'PRED_LUNGE', group: 'predator', label: 'Predator lunge', desc: 'Distance (capsule gap) within which a red bursts forward; farther out it coasts (ambush).', def: 0.6, min: 0, max: 3, step: 0.05 },
+  { key: 'PRED_COAST', group: 'predator', label: 'Predator coast', desc: 'Drive multiplier while no prey is within PRED_LUNGE (1 = no ambush, 0 = full stop).', def: 0.35, min: 0, max: 1, step: 0.05 },
   { key: 'PRED_RATIO', group: 'predator', label: 'Ratio half-saturation', desc: 'Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off.', def: 1, min: 0, max: 20, step: 0.5 },
   { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of blue (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.01 },
 ]

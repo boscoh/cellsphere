@@ -101,6 +101,7 @@ export function createCell(sim, pos, heading, length, breed = Math.random() < 0.
     foodPeak: 0,
     preyDir: new THREE.Vector3(),
     preyAmt: 0,
+    preyNear: Infinity,
     headingRate: 0,
     drive: 0,
     paralysed: false,

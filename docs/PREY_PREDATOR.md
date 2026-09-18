@@ -111,7 +111,13 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
   `concentration()`) sums proximity-weighted directions to every valid blue
   within `PRED_SENSE` (weight `1 - dist/sense`) into `d.preyDir`/`d.preyAmt`, and
   red steers up that gradient — so it tracks the shoal instead of a single
-  nearest target behind a hard cutoff.
+  nearest target behind a hard cutoff. It also records `d.preyNear` (nearest
+  capsule gap) to drive the ambush.
+- Ambush thrust: while a red has no prey within `PRED_LUNGE`, its `drive` is
+  scaled by `PRED_COAST` (<1); inside the lunge it bursts at full drive. Steering
+  is unaffected, so a coasting red still turns onto prey. `PRED_COAST = 1`
+  disables the ambush (former behaviour); a seeded 120s run shows reds still
+  intercept prey and sustain the population across `PRED_COAST` 0–1.
 - `PRED_BITE`/`PRED_DRAIN` → a single unlatchable blue takes a few seconds to
   fully consume, giving an observed shrinking.
 
@@ -126,6 +132,8 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
 | `PRED_EFF` | Predator growth | 1 | energy red gains per second as a multiple of the drain (also division rate) |
 | `PRED_METABOLISM` | Predator metabolism | 0.001 | extra energy/s a red burns with no prey latched (starves quickly) |
 | `PRED_DRIVE` | Predator drive | 0.9 | red speed multiplier |
+| `PRED_LUNGE` | Predator lunge | 0.6 | distance within which a red bursts forward; farther out it coasts |
+| `PRED_COAST` | Predator coast | 0.35 | drive multiplier while no prey is within `PRED_LUNGE` (1 = off) |
 | `PRED_RATIO` | Ratio half-saturation | 1 | prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off |
 
 `d.paralysed`/`d.target` have no param. Add `predator` to `GROUPS`; wire live

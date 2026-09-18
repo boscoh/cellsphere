@@ -23,7 +23,10 @@ function validPredator(d) {
 // food.concentration() gives blue a food gradient. A red then steers up this
 // gradient instead of chasing only the single nearest blue inside a hard cutoff.
 export function predatorSense(sim) {
-  for (const cell of sim.cells) cell.preyAmt = 0
+  for (const cell of sim.cells) {
+    cell.preyAmt = 0
+    cell.preyNear = Infinity
+  }
 
   const sense = P.PRED_SENSE
   if (sense <= 0) return
@@ -41,12 +44,14 @@ export function predatorSense(sim) {
     let fx = 0
     let fy = 0
     let fz = 0
+    let near = Infinity
     forEachNearby(sim.cellGrid, cx, cy, cz, r, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
       capsuleDist(sim, red, d)
       const dist = sim._col.dist
       if (dist < sense) {
+        if (dist < near) near = dist
         const w = 1 - dist / sense
         sum += w
         fx += sim._col.x * w
@@ -55,6 +60,7 @@ export function predatorSense(sim) {
       }
     })
 
+    red.preyNear = near
     if (sum > 0) {
       red.preyDir.set(fx, fy, fz)
       red.preyAmt = Math.min(sum, 1)

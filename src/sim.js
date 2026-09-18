@@ -226,6 +226,8 @@ export class Simulation {
           d.drive = d.slow * (1 - coastFrac) * fatigue
           if (d.breed === 1) {
             d.drive *= P.PRED_DRIVE
+            // Ambush: burst when prey is within PRED_LUNGE, coast outside it.
+            if (d.preyNear > P.PRED_LUNGE) d.drive *= P.PRED_COAST
             // While feeding on a latched prey, stop entirely so it holds the
             // latch and drains the blue instead of swimming past/through.
             if (d.target && d.target.paralysed) d.drive = 0
