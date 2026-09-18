@@ -1,9 +1,12 @@
+import * as THREE from 'three'
 import { createServer } from 'vite'
 
 const SEED = 1
 const DT = 1 / 60
-const SIM_SECONDS = 120
-const SAMPLE_INTERVAL = 0.5
+// The hidden/visible equivalence is structural, so a handful of substeps is
+// enough: a pose write-back would surface on the next `advance`. Everything
+// else exercises the tail pathway directly, without stepping the simulation.
+const EQUIV_STEPS = 8
 
 function mulberry32(a) {
   return function () {
@@ -34,58 +37,6 @@ function checksum(sim) {
   return h >>> 0
 }
 
-function run(Simulation, tailsHidden) {
-  const originalRandom = Math.random
-  Math.random = mulberry32(SEED)
-  try {
-    const sim = new Simulation()
-    sim.buildWorld()
-    sim.tailsHidden = tailsHidden
-    const samples = []
-    const totalSteps = Math.round(SIM_SECONDS / DT)
-    const sampleEvery = Math.round(SAMPLE_INTERVAL / DT)
-    let minCells = sim.cells.length
-    let maxCells = sim.cells.length
-    for (let i = 0; i <= totalSteps; i++) {
-      if (i % sampleEvery === 0) {
-        samples.push({ t: sim.simTime, n: sim.cells.length, sum: checksum(sim) })
-      }
-      if (i < totalSteps) sim.step(DT)
-      if (sim.cells.length < minCells) minCells = sim.cells.length
-      if (sim.cells.length > maxCells) maxCells = sim.cells.length
-    }
-    return { samples, minCells, maxCells }
-  } finally {
-    Math.random = originalRandom
-  }
-}
-
-// Per-joint surface normals are computed once per substep and shared by the
-// accumulate, self-avoid and integrate loops (cell-bjm). The budget below is
-// the exact shared-normal design, with a little headroom:
-//   (S+1)*SUB shared normals + S+1 tangents + ~4 for n0/behind/root
-// Reintroducing a per-loop normalize() (the old design did ~165) trips it.
-function checkNormalizeBudget(sim, updateTailPose, segments, substeps) {
-  const perCellLimit = (segments + 1) * substeps + segments + 14
-  let n = 0
-  const proto = Object.getPrototypeOf(sim._v1)
-  const orig = proto.normalize
-  proto.normalize = function () {
-    n++
-    return orig.call(this)
-  }
-  try {
-    for (const d of sim.cells) updateTailPose(sim, d, DT)
-  } finally {
-    proto.normalize = orig
-  }
-  const perCell = n / Math.max(1, sim.cells.length)
-  if (perCell > perCellLimit) {
-    return `tail pose does ${perCell.toFixed(1)} normalize() per cell, budget ${perCellLimit}`
-  }
-  return null
-}
-
 const server = await createServer({
   server: { middlewareMode: true },
   appType: 'custom',
@@ -96,10 +47,59 @@ let code = 0
 try {
   const { Simulation } = await server.ssrLoadModule('/src/sim.js')
   const constants = await server.ssrLoadModule('/src/constants.js')
-  const { SURFACE, TAIL_OSC_FREQ, TAIL_SEGMENTS, TAIL_DYN_SUB } = constants
+  const { P, SURFACE, TAIL_OSC_FREQ, TAIL_SEGMENTS, TAIL_DYN_SUB } = constants
   const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
-  const cells = await server.ssrLoadModule('/src/cells.js')
   const tail = await server.ssrLoadModule('/src/tail.js')
+  const tailPool = await server.ssrLoadModule('/src/tailPool.js')
+
+  const report = (label, problems, ok) => {
+    if (problems.length) {
+      console.log(`FAIL ${label}: ${problems.slice(0, 5).join('; ')}`)
+      if (problems.length > 5) console.log(`  ...and ${problems.length - 5} more`)
+      code = 1
+    } else {
+      console.log(`PASS ${label}: ${ok}`)
+    }
+  }
+
+  // Build a world (cell data + pools + tail chains) but never step it. The
+  // direct tail tests drive control/pose/pool functions on these cells.
+  const buildWorld = () => {
+    const originalRandom = Math.random
+    Math.random = mulberry32(SEED)
+    try {
+      const sim = new Simulation()
+      sim.buildWorld()
+      return sim
+    } finally {
+      Math.random = originalRandom
+    }
+  }
+
+  // Body state the tail must never touch, and control state the pose must never
+  // touch.
+  const FIELD = (d) => [
+    d.pos.x,
+    d.pos.y,
+    d.pos.z,
+    d.vel.x,
+    d.vel.y,
+    d.vel.z,
+    d.heading.x,
+    d.heading.y,
+    d.heading.z,
+    d.headingRate,
+    d.energy,
+  ]
+  const CONTROL = (d) => [
+    d.tailPhase,
+    d.tailLag,
+    d.tailBend,
+    d.tailCarrier.x,
+    d.tailCarrier.y,
+    d.tailCarrier.z,
+  ]
+  const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i])
 
   // PARAM_DEFS, the exported bindings and the setters map are three parallel
   // lists kept in sync by hand. Check them first: a missing setter leaves the
@@ -152,17 +152,11 @@ try {
       }
     }
   }
-  if (paramProblems.length) {
-    console.log(`FAIL params registry: ${paramProblems.slice(0, 5).join('; ')}`)
-    if (paramProblems.length > 5) {
-      console.log(`  ...and ${paramProblems.length - 5} more`)
-    }
-    code = 1
-  } else {
-    console.log(
-      `PASS params registry: ${constants.PARAM_DEFS.length} keys have a P entry and a working setter`,
-    )
-  }
+  report(
+    'params registry',
+    paramProblems,
+    `${constants.PARAM_DEFS.length} keys have a P entry and a working setter`,
+  )
 
   // capsuleDist is the invariant AGENTS.md calls out: using a spherical radius
   // caused phantom contacts and spurious rotation. Check parallel, collinear,
@@ -205,262 +199,193 @@ try {
   if (Math.abs(probe._col.x - 1) > 1e-6) {
     capsuleProblems.push(`overlap direction not +x (${probe._col.x})`)
   }
-  if (capsuleProblems.length) {
-    console.log(`FAIL capsule distance: ${capsuleProblems.join('; ')}`)
-    code = 1
-  } else {
-    console.log(
-      `PASS capsule distance: ${capsuleCases.length} gaps + overlap direction match`,
-    )
-  }
+  report('capsule distance', capsuleProblems, `${capsuleCases.length} gaps + overlap direction match`)
 
-  // buildWorld and cell growth lazily create module-level geometry/tail pools,
-  // each consuming PRNG draws. Run twice and discard so the cache has reached
-  // its fixed point before the measured runs; otherwise run order alone can
-  // shift the seeded stream and produce a false mismatch.
-  run(Simulation, false)
-  run(Simulation, false)
-  const visible = run(Simulation, false)
-  const hidden = run(Simulation, true)
-
-  let mismatch = null
-  for (let i = 0; i < visible.samples.length; i++) {
-    const a = visible.samples[i]
-    const b = hidden.samples[i]
-    if (a.n !== b.n || a.sum !== b.sum) {
-      mismatch = { index: i, a, b }
-      break
+  // The only sim-level check: with tails visible vs hidden, `advance` must
+  // produce byte-identical body state. A cosmetic pose that wrote back would
+  // diverge here. Warm the lazy geometry/pool caches first so both runs draw
+  // the same seeded stream (see the tail test notes in docs/NOTES.md).
+  const run = (tailsHidden) => {
+    const originalRandom = Math.random
+    Math.random = mulberry32(SEED)
+    try {
+      const sim = new Simulation()
+      sim.buildWorld()
+      sim.tailsHidden = tailsHidden
+      for (let i = 0; i < EQUIV_STEPS; i++) sim.advance(DT)
+      return { sum: checksum(sim), n: sim.cells.length }
+    } finally {
+      Math.random = originalRandom
     }
   }
-
-  const initial = visible.samples[0].n
-  const mitosis = visible.maxCells > initial
-  const population = `pop ${initial} -> ${visible.minCells}..${visible.maxCells}`
-
-  if (mismatch) {
-    const { index, a, b } = mismatch
+  run(false)
+  run(false)
+  const visible = run(false)
+  const hidden = run(true)
+  if (visible.n !== hidden.n || visible.sum !== hidden.sum) {
     console.log(
-      `FAIL tail-equivalence: first mismatch at sample ${index} (t=${a.t.toFixed(3)}s)`,
-    )
-    console.log(
-      `  visible: n=${a.n} sum=${a.sum}  hidden: n=${b.n} sum=${b.sum}`,
+      `FAIL tail-equivalence: hidden ${hidden.n}/${hidden.sum} != visible ${visible.n}/${visible.sum}`,
     )
     code = 1
   } else {
     console.log(
-      `PASS tail-equivalence: ${visible.samples.length} samples over ${SIM_SECONDS}s identical`,
+      `PASS tail-equivalence: hidden/visible identical after ${EQUIV_STEPS} substeps (${visible.n} cells)`,
     )
   }
-  console.log(
-    `  ${population}; mitosis=${mitosis ? 'yes' : 'no'}; samples=${visible.samples.length}`,
-  )
 
-  // Kinematic mode is pose-only as well: force-rotating the rigid root and
-  // following the rest kinematically must not change motion.
-  constants.setParam('TAIL_MODE', 1)
-  const kinematic = run(Simulation, false)
+  // updateTailControl is the actuator side: it advances the wave and sets
+  // tailBend, but must not write any body state.
+  const controlProblems = []
+  {
+    const sim = buildWorld()
+    for (let ci = 0; ci < sim.cells.length; ci++) {
+      const d = sim.cells[ci]
+      d.drive = 1
+      d.headingRate = 0.3
+      d.steer = 0.5
+      const phys = FIELD(d)
+      const before = CONTROL(d)
+      tail.updateTailControl(sim, d, DT)
+      if (!same(phys, FIELD(d))) controlProblems.push(`cell ${ci} physics changed`)
+      const after = CONTROL(d)
+      if (!(after[0] > before[0])) controlProblems.push(`cell ${ci} tailPhase did not advance`)
+      if (!Number.isFinite(after[2]) || Math.abs(after[2]) > P.TAIL_ARC_MAX + 1e-9) {
+        controlProblems.push(`cell ${ci} tailBend out of range`)
+      }
+    }
+  }
+  report('control decoupling', controlProblems, 'tailPhase/tailLag/tailBend only; no body state')
+
+  // updateTailPose (both modes) is the cosmetic side: it may only write the
+  // chain, never body or control state.
+  const poseProblems = []
+  for (const mode of [0, 1]) {
+    constants.setParam('TAIL_MODE', mode)
+    const sim = buildWorld()
+    for (let ci = 0; ci < sim.cells.length; ci++) {
+      const d = sim.cells[ci]
+      d.tailGrow = 1
+      const phys = FIELD(d)
+      const ctrl = CONTROL(d)
+      for (let i = 0; i < 4; i++) tail.updateTailPose(sim, d, DT)
+      if (!same(phys, FIELD(d))) poseProblems.push(`mode ${mode} cell ${ci} physics changed`)
+      if (!same(ctrl, CONTROL(d))) poseProblems.push(`mode ${mode} cell ${ci} control changed`)
+      if (d.tailPts.some((p) => !Number.isFinite(p.x + p.y + p.z))) {
+        poseProblems.push(`mode ${mode} cell ${ci} non-finite pose`)
+      }
+      if (d.tailPts.some((p) => Math.abs(p.length() - SURFACE) > 1e-3)) {
+        poseProblems.push(`mode ${mode} cell ${ci} left the surface`)
+      }
+      if (d.tailDirs.some((v) => Math.abs(v.length() - 1) > 1e-3)) {
+        poseProblems.push(`mode ${mode} cell ${ci} dir not unit`)
+      }
+    }
+  }
   constants.setParam('TAIL_MODE', 0)
-  let kinematicMismatch = null
-  for (let i = 0; i < visible.samples.length; i++) {
-    const a = visible.samples[i]
-    const b = kinematic.samples[i]
-    if (a.n !== b.n || a.sum !== b.sum) {
-      kinematicMismatch = { index: i, a, b }
-      break
-    }
-  }
-  if (kinematicMismatch) {
-    const { index, a, b } = kinematicMismatch
-    console.log(
-      `FAIL kinematic-equivalence: first mismatch at sample ${index} (t=${a.t.toFixed(3)}s)`,
-    )
-    console.log(`  spring: n=${a.n} sum=${a.sum}  kinematic: n=${b.n} sum=${b.sum}`)
-    code = 1
-  } else {
-    console.log(
-      `PASS kinematic-equivalence: ${visible.samples.length} samples identical to spring chain`,
-    )
-  }
+  report('pose decoupling', poseProblems, 'spring + kinematic pose write no body or control state')
 
   // warmTail must reset only the derived pose, never the physical controls that
   // drive body motion (tailLag/tailBend) or the oscillation phase.
-  const warm = (() => {
-    const originalRandom = Math.random
-    Math.random = mulberry32(SEED)
-    try {
-      const sim = new Simulation()
-      sim.buildWorld()
-      const cell = sim.cells[0]
-      cell.pos.set(1, 0, 0)
-      cell.heading.set(0, 1, 0)
-      cell.tailLag = 0.5
-      cell.tailBend = 0.3
-      cell.tailPhase = 1.2
-      cell.tailCarrier.set(1, 0, 0)
-      cell.tailPts[0].set(99, 99, 99)
-      for (let i = 1; i < cell.tailPts.length; i++) cell.tailPts[i].set(50, 50, 50)
-      for (let i = 0; i < cell.tailDirs.length; i++) cell.tailDirs[i].set(0, 0, 1)
-      tail.warmTail(sim, cell)
-      return {
-        lag: cell.tailLag,
-        bend: cell.tailBend,
-        phase: cell.tailPhase,
-        carrier: cell.tailCarrier.clone(),
-        pts: cell.tailPts.map((p) => p.length()),
-        dirs: cell.tailDirs.map((v) => v.length()),
-      }
-    } finally {
-      Math.random = originalRandom
-    }
-  })()
-
   const warmProblems = []
-  if (warm.lag !== 0.5) warmProblems.push(`tailLag changed to ${warm.lag}`)
-  if (warm.bend !== 0.3) warmProblems.push(`tailBend changed to ${warm.bend}`)
-  if (warm.phase !== 1.2) warmProblems.push(`tailPhase changed to ${warm.phase}`)
-  if (Math.abs(warm.carrier.x) > 1e-3 || Math.abs(warm.carrier.y + 1) > 1e-3) {
-    warmProblems.push(`tailCarrier not re-aimed (${warm.carrier.toArray().join(',')})`)
+  {
+    const sim = buildWorld()
+    const cell = sim.cells[0]
+    cell.pos.set(1, 0, 0)
+    cell.heading.set(0, 1, 0)
+    cell.tailLag = 0.5
+    cell.tailBend = 0.3
+    cell.tailPhase = 1.2
+    cell.tailCarrier.set(1, 0, 0)
+    cell.tailPts[0].set(99, 99, 99)
+    for (let i = 1; i < cell.tailPts.length; i++) cell.tailPts[i].set(50, 50, 50)
+    for (let i = 0; i < cell.tailDirs.length; i++) cell.tailDirs[i].set(0, 0, 1)
+    tail.warmTail(sim, cell)
+    if (cell.tailLag !== 0.5) warmProblems.push(`tailLag changed to ${cell.tailLag}`)
+    if (cell.tailBend !== 0.3) warmProblems.push(`tailBend changed to ${cell.tailBend}`)
+    if (cell.tailPhase !== 1.2) warmProblems.push(`tailPhase changed to ${cell.tailPhase}`)
+    if (Math.abs(cell.tailCarrier.x) > 1e-3 || Math.abs(cell.tailCarrier.y + 1) > 1e-3) {
+      warmProblems.push(`tailCarrier not re-aimed (${cell.tailCarrier.toArray().join(',')})`)
+    }
+    if (cell.tailPts.some((p) => Math.abs(p.length() - SURFACE) > 1e-3)) {
+      warmProblems.push('tailPts not re-aimed to the surface')
+    }
+    if (cell.tailDirs.some((v) => Math.abs(v.length() - 1) > 1e-3)) {
+      warmProblems.push('tailDirs not re-aimed to unit length')
+    }
   }
-  if (!warm.pts.every((len) => Math.abs(len - SURFACE) < 1e-3)) {
-    warmProblems.push('tailPts not re-aimed to the surface')
-  }
-  if (!warm.dirs.every((len) => Math.abs(len - 1) < 1e-3)) {
-    warmProblems.push('tailDirs not re-aimed to unit length')
-  }
-  if (warmProblems.length) {
-    console.log(`FAIL warmTail decoupling: ${warmProblems.join('; ')}`)
-    code = 1
-  } else {
-    console.log(
-      'PASS warmTail decoupling: tailLag/tailBend/tailPhase preserved, pose re-aimed',
-    )
-  }
+  report('warmTail decoupling', warmProblems, 'tailLag/tailBend/tailPhase preserved, pose re-aimed')
 
   // The chain advances its wave phase by dt * TAIL_OSC_FREQ per sim step while
   // driving or turning, never when idle, and keeps every joint on the surface.
-  const wave = (() => {
-    const originalRandom = Math.random
-    Math.random = mulberry32(SEED)
-    try {
-      const sim = new Simulation()
-      sim.buildWorld()
-      const cell = sim.cells[0]
-      cell.pos.set(1, 0, 0)
-      cell.heading.set(0, 1, 0)
-      cell.drive = 1
-      cell.headingRate = 0
-      cell.tailPhase = 0
-      tail.updateTailState(sim, cell, DT)
-      const afterStep = cell.tailPhase
-      cell.drive = 0
-      cell.headingRate = 0
-      const idlePhase = cell.tailPhase
-      tail.updateTailState(sim, cell, DT)
-      const afterIdle = cell.tailPhase
-      const offSurface = cell.tailPts.some(
-        (p) => Math.abs(p.length() - SURFACE) > 1e-3,
-      )
-      return {
-        afterStep,
-        idlePhase,
-        afterIdle,
-        expected: DT * TAIL_OSC_FREQ,
-        offSurface,
-      }
-    } finally {
-      Math.random = originalRandom
-    }
-  })()
-
   const waveProblems = []
-  if (Math.abs(wave.afterStep - wave.expected) > 1e-9) {
-    waveProblems.push(`drive advance ${wave.afterStep} != ${wave.expected}`)
+  {
+    const sim = buildWorld()
+    const cell = sim.cells[0]
+    cell.pos.set(1, 0, 0)
+    cell.heading.set(0, 1, 0)
+    cell.drive = 1
+    cell.headingRate = 0
+    cell.tailPhase = 0
+    tail.updateTailState(sim, cell, DT)
+    const afterStep = cell.tailPhase
+    cell.drive = 0
+    cell.headingRate = 0
+    const idlePhase = cell.tailPhase
+    tail.updateTailState(sim, cell, DT)
+    const afterIdle = cell.tailPhase
+    if (Math.abs(afterStep - DT * TAIL_OSC_FREQ) > 1e-9) {
+      waveProblems.push(`drive advance ${afterStep} != ${DT * TAIL_OSC_FREQ}`)
+    }
+    if (afterIdle !== idlePhase) waveProblems.push(`tailPhase advanced while idle (${afterIdle})`)
+    if (cell.tailPts.some((p) => Math.abs(p.length() - SURFACE) > 1e-3)) {
+      waveProblems.push('tail joints left the surface')
+    }
   }
-  if (wave.afterIdle !== wave.idlePhase) {
-    waveProblems.push(`tailPhase advanced while idle (${wave.afterIdle})`)
-  }
-  if (wave.offSurface) {
-    waveProblems.push('tail joints left the surface')
-  }
-  if (waveProblems.length) {
-    console.log(`FAIL wave phase/chain: ${waveProblems.join('; ')}`)
-    code = 1
-  } else {
-    console.log('PASS wave phase/chain: advances with sim dt, stays on the surface')
-  }
+  report('wave phase/chain', waveProblems, 'advances with sim dt, stays on the surface')
 
   // The tail pool's mitosis handover is the one path that could leak or
   // double-book a slot: the front daughter inherits the parent's slot while the
   // parent must end up slotless, so its releaseTail/clearTail become no-ops.
-  // Drive one cell to full energy so the division is deterministic, because the
-  // long runs above do not reliably mitose (cell-cv6.5).
-  const handover = (() => {
-    const originalRandom = Math.random
-    Math.random = mulberry32(SEED)
-    try {
-      const sim = new Simulation()
-      sim.buildWorld()
-      const parent = sim.cells[0]
-      const chunk = parent.tailChunk
-      const slot = parent.tailSlot
-      const before = sim.cells.length
-      // Any amount above the remaining energy clamps to ENERGY_MAX and flags split.
-      cells.gainEnergy(sim, parent, 100)
-      if (!parent.split) return { skipped: 'parent did not reach the split threshold' }
-      sim.step(DT)
-      const front = sim.cells.find((c) => c.mito && c.mito.parent === parent)
-      return {
-        chunk,
-        slot,
-        front,
-        parent,
-        divided: sim.cells.length === before + 2,
-      }
-    } finally {
-      Math.random = originalRandom
-    }
-  })()
   const handoverProblems = []
-  if (handover.skipped) {
-    handoverProblems.push(handover.skipped)
-  } else {
-    const { front, parent, chunk, slot, divided } = handover
-    if (!divided) handoverProblems.push('parent did not divide')
-    if (!front) {
-      handoverProblems.push('no front daughter found')
-    } else {
-      if (front.tailChunk !== chunk || front.tailSlot !== slot) {
-        handoverProblems.push('front daughter did not inherit the parent slot')
-      }
-      if (chunk.owners[slot] !== front) {
-        handoverProblems.push('front daughter is not the recorded slot owner')
-      }
-    }
+  {
+    const sim = buildWorld()
+    const parent = sim.cells[0]
+    const chunk = parent.tailChunk
+    const slot = parent.tailSlot
+    const daughter = { color: parent.color }
+    tailPool.inheritTailSlot(sim, parent, daughter)
     if (parent.tailChunk !== null || parent.tailSlot !== -1) {
       handoverProblems.push('parent kept its tail slot after handing it over')
     }
+    if (daughter.tailChunk !== chunk || daughter.tailSlot !== slot) {
+      handoverProblems.push('front daughter did not inherit the parent slot')
+    }
+    if (chunk.owners[slot] !== daughter) {
+      handoverProblems.push('front daughter is not the recorded slot owner')
+    }
+    const live = chunk.live
+    tailPool.releaseTail(sim, parent)
+    if (chunk.live !== live) handoverProblems.push('releasing the slotless parent changed the pool')
   }
-  if (handoverProblems.length) {
-    console.log(`FAIL tail slot handover: ${handoverProblems.join('; ')}`)
-    code = 1
-  } else {
-    console.log('PASS tail slot handover: front daughter inherits, parent goes slotless')
-  }
+  report('tail slot handover', handoverProblems, 'front daughter inherits, parent goes slotless')
 
-  // Pool invariants after a long run: every live cell owns exactly one packed
-  // slot, chunk.live matches the number of cells pointing at the chunk, and
-  // mesh.count stays exact.
+  // Pool invariants under churn: every live cell owns exactly one packed slot,
+  // chunk.live matches the number of cells pointing at the chunk, and
+  // mesh.count stays exact. Force deaths (release + drop) and births (claim) so
+  // the free/claim and swap-remove paths run without stepping the sim.
   const poolProblems = []
   {
-    const originalRandom = Math.random
-    Math.random = mulberry32(SEED)
-    let sim
-    try {
-      sim = new Simulation()
-      sim.buildWorld()
-      for (let i = 0; i < Math.round(SIM_SECONDS / DT); i++) sim.step(DT)
-    } finally {
-      Math.random = originalRandom
+    const sim = buildWorld()
+    const kept = []
+    for (let i = 0; i < sim.cells.length; i++) {
+      if (i % 3 === 0) tailPool.releaseTail(sim, sim.cells[i])
+      else kept.push(sim.cells[i])
+    }
+    sim.cells = kept
+    for (let i = 0; i < 5; i++) {
+      const born = { color: new THREE.Color(1, 1, 1) }
+      tailPool.claimTailSlot(sim, born)
+      sim.cells.push(born)
     }
     const claimed = new Map()
     const perChunk = new Map()
@@ -498,77 +423,65 @@ try {
       }
     }
   }
-  if (poolProblems.length) {
-    console.log(`FAIL tail pool invariants: ${poolProblems.slice(0, 5).join('; ')}`)
-    code = 1
-  } else {
-    console.log('PASS tail pool invariants: slots unique, packed, owners and counts consistent')
-  }
-
-  // Headless pose smoke: drive the render path directly (no WebGL), stepping a
-  // long sim first, then asserting the derived tail stays finite.
-  const smoke = (() => {
-    const originalRandom = Math.random
-    Math.random = mulberry32(SEED)
-    try {
-      const sim = new Simulation()
-      sim.buildWorld()
-      sim.tailsHidden = false
-      const totalSteps = Math.round(SIM_SECONDS / DT)
-      for (const mode of [0, 1]) {
-        constants.setParam('TAIL_MODE', mode)
-        for (let i = 0; i < totalSteps; i++) sim.step(DT)
-        for (let i = 0; i < 5; i++) sim.renderTails()
-        for (const cell of sim.cells) {
-          const fields = [cell.pos.x, cell.pos.y, cell.pos.z]
-          for (const p of cell.tailPts) fields.push(p.x, p.y, p.z)
-          if (fields.some((v) => !Number.isFinite(v))) {
-            return `non-finite value in ${mode ? 'kinematic' : 'spring'} cell ${cell.index}`
-          }
-        }
-      }
-      constants.setParam('TAIL_MODE', 0)
-      return null
-    } catch (err) {
-      constants.setParam('TAIL_MODE', 0)
-      return err && err.stack ? err.stack : String(err)
-    } finally {
-      Math.random = originalRandom
-    }
-  })()
-
-  if (smoke) {
-    console.log(`FAIL headless tail-pose smoke: ${smoke}`)
-    code = 1
-  } else {
-    console.log(
-      'PASS headless tail-pose smoke: finite pose after 120s + renderTails (spring + kinematic)',
-    )
-  }
-
-  const budget = checkNormalizeBudget(
-    (() => {
-      const originalRandom = Math.random
-      Math.random = mulberry32(SEED)
-      try {
-        const sim = new Simulation()
-        sim.buildWorld()
-        return sim
-      } finally {
-        Math.random = originalRandom
-      }
-    })(),
-    tail.updateTailPose,
-    TAIL_SEGMENTS,
-    TAIL_DYN_SUB,
+  report(
+    'tail pool invariants',
+    poolProblems,
+    'slots unique, packed, owners and counts consistent',
   )
-  if (budget) {
-    console.log(`FAIL tail pose normalize budget: ${budget}`)
-    code = 1
-  } else {
-    console.log('PASS tail pose normalize budget: per-joint normals shared across loops')
-  }
 
+  // Headless render smoke: drive the per-segment placement path (no WebGL) and
+  // assert the derived tail stays finite.
+  const renderProblems = []
+  {
+    const sim = buildWorld()
+    sim.tailsHidden = false
+    try {
+      for (let i = 0; i < 3; i++) sim.renderTails()
+    } catch (err) {
+      renderProblems.push(err && err.stack ? err.stack : String(err))
+    }
+    for (let ci = 0; ci < sim.cells.length; ci++) {
+      const d = sim.cells[ci]
+      if (d.tailPts.some((p) => !Number.isFinite(p.x + p.y + p.z))) {
+        renderProblems.push(`cell ${ci} non-finite after renderTails`)
+      }
+    }
+  }
+  report('headless render smoke', renderProblems, 'renderTails/placeTail finite, pose untouched')
+
+  // Per-joint surface normals are computed once per substep and shared by the
+  // accumulate, self-avoid and integrate loops (cell-bjm). The budget below is
+  // the exact shared-normal design, with a little headroom:
+  //   (S+1)*SUB shared normals + S+1 tangents + ~4 for n0/behind/root
+  // Reintroducing a per-loop normalize() (the old design did ~165) trips it.
+  const budgetProblems = []
+  {
+    const sim = buildWorld()
+    const perCellLimit = (TAIL_SEGMENTS + 1) * TAIL_DYN_SUB + TAIL_SEGMENTS + 14
+    let n = 0
+    const proto = Object.getPrototypeOf(sim._v1)
+    const orig = proto.normalize
+    proto.normalize = function () {
+      n++
+      return orig.call(this)
+    }
+    try {
+      for (const d of sim.cells) tail.updateTailPose(sim, d, DT)
+    } finally {
+      proto.normalize = orig
+    }
+    const perCell = n / Math.max(1, sim.cells.length)
+    if (perCell > perCellLimit) {
+      budgetProblems.push(
+        `tail pose does ${perCell.toFixed(1)} normalize() per cell, budget ${perCellLimit}`,
+      )
+    }
+  }
+  report(
+    'tail pose normalize budget',
+    budgetProblems,
+    'per-joint normals shared across loops',
+  )
 } finally {
   await server.close()
 }

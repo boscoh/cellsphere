@@ -17,10 +17,13 @@ explorations, experiments, rejected options, and subsystem history.
   `.github/workflows/deploy-pages.yml` publishes `dist/` to GitHub Pages on
   push to `main`.
 - `npm run preview` — preview the built site
-- `npm run test:tail` — the only test. Headless Vite-SSR checks: constants
-  registry integrity, capsule-distance geometry, tail visible/hidden physics
-  equivalence, `warmTail` decoupling, wave phase, and a pose smoke test. Run it
-  after changing physics, tail code, or `constants.js`.
+- `npm run test:tail` — the only test, and fast (<1s). Headless Vite-SSR:
+  constants registry integrity, capsule-distance geometry, a minimal
+  hidden/visible physics equivalence (8 substeps), then direct tail-pathway
+  checks — control/pose write no body state, `warmTail` decoupling, wave phase,
+  slot handover, pool invariants, render smoke, normalize budget. It calls the
+  tail functions directly rather than stepping the simulation. Run it after
+  changing physics, tail code, or `constants.js`.
 - `node scripts/gen-params-table.mjs --write` — regenerate the tuning table in
   `docs/DESIGN.md` from `PARAM_DEFS`. The build fails if it is stale.
 
