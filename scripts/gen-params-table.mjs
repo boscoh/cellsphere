@@ -12,8 +12,8 @@ const END = '<!-- END GENERATED: tuning constants -->'
 const DOC = new URL('../docs/DESIGN.md', import.meta.url)
 
 const FIXED_ROLES = {
-  SPHERE_RADIUS: 'sphere radius',
-  SURFACE: 'surface offset (`SPHERE_RADIUS + 0.06`); every entity is placed here',
+  SHELL_GAP: 'gap between the collision surface and the sphere shell mesh',
+  SURFACE: 'surface offset (`SPHERE_RADIUS + SHELL_GAP`); every entity is placed here',
   MAX_CELLS: 'logical population ceiling; pools grow on demand rather than reserving it',
   GRID: 'food spatial-hash cell size',
   FOOD_RADIUS_MIN: 'minimum per-particle food radius',

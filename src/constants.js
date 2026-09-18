@@ -1,5 +1,5 @@
-export const SPHERE_RADIUS = 5
-export const SURFACE = SPHERE_RADIUS + 0.06
+// Gap between the collision surface (`SURFACE`) and the sphere shell mesh.
+export const SHELL_GAP = 0.06
 export const MAX_CELLS = 500
 export const GRID = 0.35
 // Per-particle food radius range; the max feeds the sense-scan radius so the
@@ -44,6 +44,7 @@ export const GROUPS = [
 ]
 
 export const PARAM_DEFS = [
+  { key: 'SPHERE_RADIUS', group: 'world', label: 'Sphere radius', desc: 'Radius of the sphere cells live on (rebuilds). Larger = more surface area, so a fixed-size cell looks smaller relative to the world.', def: 5, min: 3, max: 12, step: 0.5, rebuild: true },
   { key: 'PREY_COUNT', group: 'world', label: 'Prey (start)', desc: 'Number of prey (blue) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
   { key: 'PRED_COUNT', group: 'world', label: 'Predators (start)', desc: 'Number of predator (red) cells spawned when the world is (re)built.', def: 15, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
   { key: 'SIM_SPEED', group: 'world', label: 'Default speed', desc: 'Simulation speed applied on startup and when Default/Reset is pressed (1x = real time).', def: 1, min: 1, max: MAX_SIM_RATE, step: 1 },
@@ -130,16 +131,22 @@ export const PARAM_DEFS = [
 export const P = {}
 for (const p of PARAM_DEFS) P[p.key] = p.def
 
+// Derived from `P.SPHERE_RADIUS` and kept in sync by `setParam`/`resetParams`,
+// so the many physics modules can keep importing `SURFACE` as a live binding.
+export let SURFACE = P.SPHERE_RADIUS + SHELL_GAP
+
 const byKey = new Map(PARAM_DEFS.map((p) => [p.key, p]))
 
 export function setParam(key, value) {
   const p = byKey.get(key)
   if (!p) return
   P[key] = clamp(value, p.min, p.max)
+  if (key === 'SPHERE_RADIUS') SURFACE = P.SPHERE_RADIUS + SHELL_GAP
 }
 
 export function resetParams() {
   for (const p of PARAM_DEFS) P[p.key] = p.def
+  SURFACE = P.SPHERE_RADIUS + SHELL_GAP
 }
 
 function clamp(x, lo, hi) {

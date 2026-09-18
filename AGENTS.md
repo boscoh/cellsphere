@@ -67,8 +67,8 @@ Invariants an agent must not break:
 - All runtime-tunable values live in `src/constants.js` (`PARAM_DEFS`/`P`/
   `GROUPS`) and are editable live in the Tuner panel. A parameter is declared once,
   in `PARAM_DEFS`; its value lives in the single mutable `P` record, so read
-  `P.THRUST`, never a bare binding. Structural constants (sphere radius, counts,
-  grid/chunk sizes) are plain `const`s outside the registry. Full table in
+  `P.THRUST`, never a bare binding. Structural constants (counts, grid/chunk
+  sizes) are plain `const`s outside the registry. Full table in
   `docs/DESIGN.md`. The HUD speed slider is `simRate` (`SIM_SPEED`, 1–50×), not a
   "viscosity".
 - 2 spaces, no semicolons, single quotes

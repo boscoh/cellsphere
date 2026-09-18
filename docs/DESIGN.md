@@ -26,9 +26,11 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
 
 ## How it works (architecture)
 
-- **Sphere surface model**: bacteria/food rest at `SURFACE = SPHERE_RADIUS + 0.06`
-  (just above the opaque `FrontSide` shell). No boundary. Background/fog and
-  the shell are a dark greenish family.
+- **Sphere surface model**: bacteria/food rest at `SURFACE = SPHERE_RADIUS +
+  SHELL_GAP` (just above the opaque `FrontSide` shell). No boundary.
+  `SPHERE_RADIUS` is a tunable World parameter that rebuilds the world and
+  resizes the shell; `SURFACE` is a live binding kept in sync by `setParam`.
+  Background/fog and the shell are a dark greenish family.
 - **Data-object cells**: a bacterium is a plain data object (no `THREE.Group`):
   surface `pos`, tangent `vel`, tangent `heading`, `headingRate`, `quat`,
   `radius/mass/breed/color`, tail control (`tailPhase`, `tailLag`, `tailBend`,
@@ -152,9 +154,9 @@ _Fixed constants (not tunable at runtime)._
 | `MAX_STEPS` | 200 | per-frame substep ceiling |
 | `MIN_RADIUS` | 0.1 | radius at zero energy |
 | `POP_SAMPLES` | 1200 | population-chart history length (one sample per 0.5s) |
-| `SPHERE_RADIUS` | 5 | sphere radius |
+| `SHELL_GAP` | 0.06 | gap between the collision surface and the sphere shell mesh |
 | `START_RADIUS` | 0.13 | spawn radius |
-| `SURFACE` | 5.06 | surface offset (`SPHERE_RADIUS + 0.06`); every entity is placed here |
+| `SURFACE` | 5.06 | surface offset (`SPHERE_RADIUS + SHELL_GAP`); every entity is placed here |
 | `TAIL_CHUNK_CELLS` | 64 | cells per tail instance chunk |
 | `TAIL_DYN_SUB` | 4 | spring-chain substeps per step |
 | `TAIL_LINK` | 0.05 | tail link pitch; `TAIL_SEGMENTS = round(1.5 * MAX_RADIUS / TAIL_LINK)` |
@@ -168,6 +170,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 
 | Parameter | Default | Role |
 |---|---|---|
+| `SPHERE_RADIUS` | 5 | Radius of the sphere cells live on (rebuilds). Larger = more surface area, so a fixed-size cell looks smaller relative to the world. |
 | `PREY_COUNT` | 50 | Number of prey (blue) cells spawned when the world is (re)built. |
 | `PRED_COUNT` | 15 | Number of predator (red) cells spawned when the world is (re)built. |
 | `SIM_SPEED` | 1 | Simulation speed applied on startup and when Default/Reset is pressed (1x = real time). |

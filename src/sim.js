@@ -47,7 +47,7 @@ import { predation, predatorSense } from './predator'
 import { forEachNearby } from './grid'
 import { initPops, spawnPop, disposePops } from './pops'
 import { disposeGlowMaterial } from './glow'
-import { createScene } from './sceneSetup'
+import { createScene, resizeSphereShell, scaleSphereFraming } from './sceneSetup'
 import { renderView } from './render'
 import { createPerf } from './perf'
 
@@ -112,6 +112,7 @@ export class Simulation {
     this.renderer = renderer
     this.controls = controls
     this.sphereShell = sphereShell
+    this._shellRadius = P.SPHERE_RADIUS
   }
 
   buildWorld() {
@@ -152,8 +153,17 @@ export class Simulation {
     this.senseAccum = 0
     this.foodMesh = null
     this.pops = []
+    this.resizeShell()
     initBodyPools(this)
     this.buildWorld()
+  }
+
+  resizeShell() {
+    if (!this.sphereShell || P.SPHERE_RADIUS === this._shellRadius) return
+    const ratio = P.SPHERE_RADIUS / this._shellRadius
+    resizeSphereShell(this.sphereShell)
+    scaleSphereFraming(this.camera, this.controls, this.scene.fog, ratio)
+    this._shellRadius = P.SPHERE_RADIUS
   }
 
   processSplits() {

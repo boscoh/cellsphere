@@ -1,18 +1,20 @@
 import * as THREE from 'three'
 import { ArcballControls } from 'three/addons/controls/ArcballControls.js'
-import { SPHERE_RADIUS } from './constants'
+import { P } from './constants'
 
 export function createScene(container) {
+  const R = P.SPHERE_RADIUS
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x0e110b)
-  scene.fog = new THREE.Fog(0x0e110b, 18, 34)
+  scene.fog = new THREE.Fog(0x0e110b, R * 3.6, R * 6.8)
 
   // Frame the shell in the viewport area below the HUD bar: pull back far
   // enough that the whole sphere fits, and pivot slightly above its centre so
-  // the silhouette sits below the top strip instead of under the HUD.
-  const CAM_DIST = 14
+  // the silhouette sits below the top strip instead of under the HUD. All
+  // distances scale with the radius so the framing survives a rebuild.
+  const CAM_DIST = R * 2.8
   const CAM_ELEV = 0.55
-  const PIVOT_Y = 0.7
+  const PIVOT_Y = R * 0.14
 
   const camera = new THREE.PerspectiveCamera(
     55,
@@ -40,8 +42,8 @@ export function createScene(container) {
   controls.target.set(0, PIVOT_Y, 0)
   controls.setGizmosVisible(false)
   controls.enableFocus = false
-  controls.minDistance = 7
-  controls.maxDistance = 28
+  controls.minDistance = R * 1.4
+  controls.maxDistance = R * 5.6
   // Re-aim at the pivot now that the target is set (the constructor aims at the
   // origin), then seed the interaction state.
   controls.setCamera(camera)
@@ -63,7 +65,7 @@ export function createScene(container) {
   scene.add(new THREE.HemisphereLight(0xbfd0e2, 0x1a1e18, 0.45))
 
   const sphereShell = new THREE.Mesh(
-    new THREE.SphereGeometry(SPHERE_RADIUS, 32, 16),
+    new THREE.SphereGeometry(R, 32, 16),
     new THREE.MeshBasicMaterial({
       color: 0x1c2316,
       side: THREE.FrontSide,
@@ -72,4 +74,25 @@ export function createScene(container) {
   scene.add(sphereShell)
 
   return { scene, camera, renderer, controls, sphereShell }
+}
+
+// Resizes the shell mesh after `P.SPHERE_RADIUS` changes (rebuild).
+export function resizeSphereShell(shell) {
+  shell.geometry.dispose()
+  shell.geometry = new THREE.SphereGeometry(P.SPHERE_RADIUS, 32, 16)
+}
+
+// Scales the camera orbit and fog about the origin so the shell stays framed
+// after a radius change; `ratio` is newRadius / oldRadius.
+export function scaleSphereFraming(camera, controls, fog, ratio) {
+  if (ratio === 1) return
+  camera.position.multiplyScalar(ratio)
+  controls.target.multiplyScalar(ratio)
+  controls.minDistance *= ratio
+  controls.maxDistance *= ratio
+  if (fog) {
+    fog.near *= ratio
+    fog.far *= ratio
+  }
+  controls.update()
 }
