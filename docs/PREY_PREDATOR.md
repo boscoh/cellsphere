@@ -125,8 +125,12 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
   nearest prey and suppressing the ambush coast). Seed 5 / seed 7 A/B
   (relatch within 2 s): baseline 14/15%, `PRED_FOCUS=2` 24/19%,
   `PRED_REORIENT=0.3` 23/20%; nearest-blue distance at meal end also drops
-  (1.23→0.95 and 0.87). Disabling the ambush (`PRED_COAST=1`) crashes blue
-  (64→27), so the ambush is load-bearing and should be kept.
+  (1.23→0.95 and 0.87). A 4-seed aggregate is more modest but consistent in
+  direction: nearest-blue distance 1.52 → 1.36 with `PRED_REORIENT=0.3`
+  (1.41 for `PRED_FOCUS=2`), relatch 6% → 8%, no population harm.
+  **Adopted: `PRED_REORIENT = 0.3`** (targeted, best aggregate); `PRED_FOCUS`
+  stays at 1. Disabling the ambush (`PRED_COAST=1`) crashes blue (64→27), so the
+  ambush is load-bearing and is kept.
 - `PRED_BITE`/`PRED_DRAIN` → a single unlatchable blue takes a few seconds to
   fully consume, giving an observed shrinking.
 

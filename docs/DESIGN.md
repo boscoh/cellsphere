@@ -271,7 +271,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `PRED_LUNGE` | 0.6 | Distance (capsule gap) within which a red bursts forward; farther out it coasts (ambush). |
 | `PRED_COAST` | 0.35 | Drive multiplier while no prey is within PRED_LUNGE (1 = no ambush, 0 = full stop). |
 | `PRED_FOCUS` | 1 | Exponent on the prey-proximity weight (1 = linear; higher focuses the gradient on the nearest prey). |
-| `PRED_REORIENT` | 0 | Seconds after finishing a meal that a red steers at the nearest prey and ignores the ambush coast (0 = off). |
+| `PRED_REORIENT` | 0.3 | Seconds after finishing a meal that a red steers at the nearest prey and ignores the ambush coast (0 = off). |
 | `PRED_RATIO` | 1 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off. |
 | `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
 <!-- END GENERATED: tuning constants -->
