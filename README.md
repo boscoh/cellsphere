@@ -115,7 +115,7 @@ The simulation is split into focused modules rather than living all in `App.vue`
 - `src/render.js` — visibility culling + render pass
 - `src/glow.js`, `src/pops.js` — death-burst billboards
 - `src/perf.js` — per-frame timing
-- `src/Tuner.vue`, `src/PopChart.vue` — runtime UI panels
+- `src/components/Tuner.vue`, `src/components/PopChart.vue` — runtime UI panels
 - `src/math.js` — pure helpers
 
 ### Sphere surface model

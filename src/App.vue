@@ -9,10 +9,10 @@ import {
   resetParams,
   setParam,
 } from './constants'
-import Hud from './Hud.vue'
-import PerfPanel from './PerfPanel.vue'
-import Tuner from './Tuner.vue'
-import PopChart from './PopChart.vue'
+import Hud from './components/Hud.vue'
+import PerfPanel from './components/PerfPanel.vue'
+import Tuner from './components/Tuner.vue'
+import PopChart from './components/PopChart.vue'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)

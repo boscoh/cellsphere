@@ -1,5 +1,5 @@
 <script setup>
-import { computeCellColor } from './cells'
+import { computeCellColor } from '../cells'
 
 defineProps({
   blueCount: { type: Number, default: 0 },
