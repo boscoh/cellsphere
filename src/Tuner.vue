@@ -54,6 +54,10 @@ function onChange(row) {
 function fmt(v) {
   return String(parseFloat(v.toFixed(4)))
 }
+
+function fillPct(value, min, max) {
+  return max > min ? ((value - min) / (max - min)) * 100 : 0
+}
 </script>
 
 <template>
@@ -120,6 +124,7 @@ function fmt(v) {
             :step="p.step"
             :value="p.value"
             class="slider"
+            :style="{ '--fill': fillPct(p.value, p.min, p.max) + '%' }"
             :aria-label="p.label"
             @input="onInput(p, $event)"
             @change="onChange(p)"
@@ -278,8 +283,7 @@ function fmt(v) {
 
 .slider {
   width: 100%;
-  margin: 4px 0;
-  accent-color: var(--slider-accent);
+  margin: 4px 0 9px;
   cursor: pointer;
 }
 
@@ -287,6 +291,6 @@ function fmt(v) {
   margin: 0;
   font-size: 10px;
   line-height: 1.35;
-  color: #5f6876;
+  color: #c6cfdf;
 }
 </style>

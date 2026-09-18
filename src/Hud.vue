@@ -18,6 +18,10 @@ const dotRed = '#' + computeCellColor(1).getHexString()
 function onSpeed(event) {
   emit('update:simRate', Number(event.target.value))
 }
+
+function fillPct(value, min, max) {
+  return max > min ? ((value - min) / (max - min)) * 100 : 0
+}
 </script>
 
 <template>
@@ -47,6 +51,7 @@ function onSpeed(event) {
           :max="maxSimRate"
           step="1"
           :value="simRate"
+          :style="{ '--fill': fillPct(simRate, 1, maxSimRate) + '%' }"
           @input="onSpeed"
         />
         <span class="readout">{{ simRate }}×</span>
@@ -158,7 +163,6 @@ function onSpeed(event) {
 .slider {
   width: 80px;
   height: 20px;
-  accent-color: var(--slider-accent);
   cursor: pointer;
   pointer-events: auto;
 }

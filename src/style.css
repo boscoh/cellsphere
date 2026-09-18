@@ -21,9 +21,56 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Shared accent for the HUD speed slider and the Tuner sliders. */
+/* Shared accent and track for the HUD speed slider and the Tuner sliders. */
 :root {
   --slider-accent: #4b74ad;
+  --slider-track: rgba(255, 255, 255, 0.15);
+}
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--slider-accent) var(--fill, 0%),
+    var(--slider-track) var(--fill, 0%)
+  );
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--slider-accent);
+}
+
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--slider-track);
+}
+
+.slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--slider-accent);
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--slider-accent);
 }
 
 /* Shared panel label, used by the HUD and the perf panel. */
