@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local agent tooling / session state (not project artifacts)
+.pi/
