@@ -467,7 +467,9 @@ try {
     for (let i = 0; i < sim.cells.length; i++) {
       const d = sim.cells[i]
       if (!d.tailChunk || d.tailSlot < 0) {
-        poolProblems.push(`cell ${i} has no tail slot`)
+        // A dividing parent hands its slot to the front daughter and stays
+        // slotless until it finishes fading (mitoParent), so that is valid.
+        if (!d.mitoParent) poolProblems.push(`cell ${i} has no tail slot`)
         continue
       }
       const ci = sim.tailChunks.indexOf(d.tailChunk)
