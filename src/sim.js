@@ -197,6 +197,7 @@ export class Simulation {
         d.drive = 0
         continue
       }
+      if (d.reorientT > 0) d.reorientT = Math.max(0, d.reorientT - dt)
       const normal = this._v1.copy(d.pos).normalize()
 
       d.heading.addScaledVector(normal, -d.heading.dot(normal)).normalize()
@@ -227,7 +228,11 @@ export class Simulation {
           if (d.breed === 1) {
             d.drive *= P.PRED_DRIVE
             // Ambush: burst when prey is within PRED_LUNGE, coast outside it.
-            if (d.preyNear > P.PRED_LUNGE) d.drive *= P.PRED_COAST
+            // A post-meal reorient window suppresses the coast so the red can
+            // close on a nearby blue (cell-erd).
+            if (d.reorientT <= 0 && d.preyNear > P.PRED_LUNGE) {
+              d.drive *= P.PRED_COAST
+            }
             // While feeding on a latched prey, stop entirely so it holds the
             // latch and drains the blue instead of swimming past/through.
             if (d.target && d.target.paralysed) d.drive = 0
@@ -272,7 +277,14 @@ export class Simulation {
         // than only the single nearest blue inside a hard cutoff. Once it has a
         // latched prey it stops steering and holds the latch.
         if (d.breed === 1 && !d.detach && !(d.target && d.target.paralysed)) {
-          if (d.preyAmt > 0) {
+          if (d.reorientT > 0 && d.preyNear < Infinity) {
+            // Just finished a meal: steer straight at the nearest prey, not the
+            // shoal gradient (cell-erd).
+            const ang = signedAngleTo(this, d, d.preyNearestDir)
+            if (ang != null) {
+              d.steer = THREE.MathUtils.clamp(ang * P.STEER_GAIN * 2, -1, 1)
+            }
+          } else if (d.preyAmt > 0) {
             const ang = signedAngleTo(this, d, d.preyDir)
             if (ang != null) {
               d.steer = THREE.MathUtils.clamp(d.steer + ang * P.STEER_GAIN * 1.5, -1, 1)

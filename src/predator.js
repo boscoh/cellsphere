@@ -45,14 +45,24 @@ export function predatorSense(sim) {
     let fy = 0
     let fz = 0
     let near = Infinity
+    let nfx = 0
+    let nfy = 0
+    let nfz = 0
     forEachNearby(sim.cellGrid, cx, cy, cz, r, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
       capsuleDist(sim, red, d)
       const dist = sim._col.dist
       if (dist < sense) {
-        if (dist < near) near = dist
-        const w = 1 - dist / sense
+        const base = 1 - dist / sense
+        if (base <= 0) return
+        if (dist < near) {
+          near = dist
+          nfx = sim._col.x
+          nfy = sim._col.y
+          nfz = sim._col.z
+        }
+        const w = P.PRED_FOCUS === 1 ? base : Math.pow(base, P.PRED_FOCUS)
         sum += w
         fx += sim._col.x * w
         fy += sim._col.y * w
@@ -61,6 +71,7 @@ export function predatorSense(sim) {
     })
 
     red.preyNear = near
+    if (near < Infinity) red.preyNearestDir.set(nfx, nfy, nfz)
     if (sum > 0) {
       red.preyDir.set(fx, fy, fz)
       red.preyAmt = Math.min(sum, 1)
@@ -147,7 +158,12 @@ export function predation(sim, simDt) {
       if (dist <= P.PRED_BITE) {
         const rate = P.PRED_DRAIN * simDt * ratioAttack
         drainEnergy(sim, latch, rate)
-        if (latch.energy <= 0) latch.dead = true
+        if (latch.energy <= 0) {
+          latch.dead = true
+          // Meal over: a red may briefly reorient onto the nearest prey
+          // instead of following the shoal gradient (cell-erd).
+          red.reorientT = P.PRED_REORIENT
+        }
         gainEnergy(sim, red, rate * P.PRED_EFF)
       }
     }

@@ -118,6 +118,15 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
   is unaffected, so a coasting red still turns onto prey. `PRED_COAST = 1`
   disables the ambush (former behaviour); a seeded 120s run shows reds still
   intercept prey and sustain the population across `PRED_COAST` 0–1.
+- Re-acquisition (cell-erd): after a meal a red follows the shoal gradient,
+  which can point ~40° off the nearest blue, so it swims past close prey. Two
+  options are exposed to fix this, both default-off: `PRED_FOCUS` (steepen the
+  proximity weight) and `PRED_REORIENT` (a post-meal window steering at the
+  nearest prey and suppressing the ambush coast). Seed 5 / seed 7 A/B
+  (relatch within 2 s): baseline 14/15%, `PRED_FOCUS=2` 24/19%,
+  `PRED_REORIENT=0.3` 23/20%; nearest-blue distance at meal end also drops
+  (1.23→0.95 and 0.87). Disabling the ambush (`PRED_COAST=1`) crashes blue
+  (64→27), so the ambush is load-bearing and should be kept.
 - `PRED_BITE`/`PRED_DRAIN` → a single unlatchable blue takes a few seconds to
   fully consume, giving an observed shrinking.
 
@@ -134,6 +143,8 @@ bucket ±radius) that mirrors `forEachNearbyFood`'s shape.
 | `PRED_DRIVE` | Predator drive | 0.9 | red speed multiplier |
 | `PRED_LUNGE` | Predator lunge | 0.6 | distance within which a red bursts forward; farther out it coasts |
 | `PRED_COAST` | Predator coast | 0.35 | drive multiplier while no prey is within `PRED_LUNGE` (1 = off) |
+| `PRED_FOCUS` | Prey focus | 1 | exponent on the prey-proximity weight (1 = linear; higher focuses the gradient on the nearest prey) |
+| `PRED_REORIENT` | Reorient time | 0 | seconds after a meal that a red steers at the nearest prey and ignores the ambush coast (0 = off) |
 | `PRED_RATIO` | Ratio half-saturation | 1 | prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off |
 
 `d.paralysed`/`d.target` have no param. Add `predator` to `GROUPS`; wire live
