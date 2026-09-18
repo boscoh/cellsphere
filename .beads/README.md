@@ -10,17 +10,19 @@ committed to git. `bd dolt status` reports the current mode.
 |---|---|---|
 | Database | `.beads/embeddeddolt/` (gitignored) | source of truth |
 | Dolt remote | `refs/dolt/data` on `origin` (GitHub) | cross-machine sync, off-machine |
-| Dolt backup | `~/Dropbox/beads-backups/cellsphere` (gitignored) | recovery, auto every 15m |
-| Export | `.beads/issues.jsonl` (tracked) | optional export for viewers/review; not the database or a clone seed |
+| Local backup | `.beads/backup/` (gitignored) | same-machine Dolt snapshots |
+| Export | `.beads/issues.jsonl` (gitignored) | optional export for viewers/review; not the database |
 
-`bd dolt push` / `bd dolt pull` move the database to and from the Dolt remote.
-`bd backup sync` updates the recovery copy. Neither is a git commit.
+`bd dolt push` / `bd dolt pull` move the database to and from the Dolt remote;
+neither is a git commit. Off-machine recovery relies on the Dolt remote — no
+filesystem backup destination is configured.
 
 ## Files here
 
-- `.beads/issues.jsonl` — the tracked text export of issues. Rewritten
-  automatically after writes (`export.auto: true`), throttled to 60s. It is an
-  **export, not the source of truth** — do not hand-merge it.
+- `.beads/issues.jsonl` — optional JSONL export. Not committed; `export.auto`
+  is at its default (`false`), so refresh on demand with
+  `bd export -o .beads/issues.jsonl`. It is an **export, not the source of
+  truth** — do not hand-merge it.
 - `.beads/interactions.jsonl` — append-only audit log written by `bd audit`;
   intentionally versioned in git.
 - `.beads/config.yaml` — tracked project settings. Set with `bd config set`.
@@ -37,8 +39,7 @@ bd create "title" -t task -p 2 -d "why"
 bd update <id> --claim
 bd close <id> --reason "done"
 bd dolt push                            # sync the database to the Dolt remote
-bd backup sync                          # refresh the recovery copy
-bd export -o .beads/issues.jsonl        # force a fresh export
+bd export -o .beads/issues.jsonl        # refresh the optional JSONL export
 ```
 
 There is no `bd sync` in bd 1.2.2. Cross-machine transfer is
