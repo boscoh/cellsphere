@@ -1,8 +1,11 @@
 # Cell–Cell Body Collisions — Exploration & Simplifications
 
-> **Status:** exploration (2026-09). Beads `cell-dy6`. No code changed.
-> Scope: `src/sim.js`, `src/constants.js`, `src/cells.js`, `src/math.js`.
-> Line refs are to the working tree at time of writing.
+> **Status:** exploration (2026-09); refreshed 2026-09-18 against the
+> post-refactor tree (`cell-dy6` exploration, `cell-b0t` follow-up). No Tier-1
+> change was shipped: the bound tightening measured neutral and was reverted
+> (see §3).
+> Scope: `src/collision.js`, `src/constants.js`, `src/cells.js`.
+> References are by symbol; line numbers drift.
 
 The questions: are there clever simplifications for body collisions, and what
 are the options? All collision code is plain JS on the CPU; there is no physics
@@ -17,9 +20,12 @@ engine.
   allocation, amplified linearly by `simRate` (up to 50×); **(b)** `capsuleDist`
   on pairs that pass a **loose** center bound, plus per-contact allocations and
   redundant per-pair `setLength`.
-- Highest-value, lowest-risk wins are all trivial and behavior-preserving:
-  tighten the bound, hoist `setLength`, de-allocate `signedAngleTo`, incremental
-  grid keys, retune `CELL_GRID`. Plausibly **2–3×** with zero behavior change.
+- Highest-value, lowest-risk wins were expected to be trivial and
+  behavior-preserving: tighten the bound, hoist `setLength`, de-allocate
+  `signedAngleTo`, incremental grid keys, retune `CELL_GRID`. Measured
+  (`cell-b0t`), none of them paid off: the bound tightening was **within noise**
+  at n≈78 and was reverted. The earlier **2–3×** estimate does not hold for
+  Tier-1.
 - Biggest structural win: dense typed-array grid (2–5× broadphase) and/or
   persistent neighbor lists (5–10×), at complexity cost.
 
@@ -140,13 +146,13 @@ consistent normal sign; correct `contact = width sum`.
 
 - `capsuleDist` — none (uses `_col`).
 - `buildCellGrid` — **allocates bucket arrays every substep** (`clear()` drops
-  them; `push`/`[i]` recreates). Up to ~1.5M small arrays/s at n=500, 50
-  substeps, 60fps.
-- `deflectHeading → signedAngleTo` — **two `Vector3` per call**
-  (`target.clone()` `sim.js:187`, `d.heading.clone()` `sim.js:190`), up to 4
-  per colliding pair.
+  them; `push`/`[i]` recreates). Reusing arrays by zeroing bucket lengths
+  instead measured **slower** at n≈78, so `clear()` is kept (`cell-b0t`).
+- `deflectHeading → signedAngleTo` — **no allocation**: `signedAngleTo` uses
+  `sim._v11`/`sim._v12` scratch (`src/collision.js`). The earlier `clone()`s
+  are gone.
 - `signedAngleTo` is also called once per cell per substep for
-  chemotaxis/flee (`sim.js:435,457,469`).
+  chemotaxis/flee (`src/sim.js`).
 
 ## 3. Simplifications / options (ranked)
 
@@ -154,13 +160,20 @@ consistent normal sign; correct `contact = width sum`.
 
 | # | Change | Speedup | Quality | Effort |
 |---|---|---|---|---|
-| 1 | Hoist `setLength(SURFACE)` out of the pair loop (`sim.js:369-370`) → one pass per cell | ~5–20% collision | identical | trivial |
-| 2 | Tighten bound to `a.radius + b.radius` (`sim.js:324`) | 10–40% fewer narrowphase | unchanged | trivial |
-| 3 | De-allocate `signedAngleTo` (`sim.js:187,190`) using scratch vectors | removes up to 4 alloc/pair | unchanged | trivial |
-| 4 | Incremental grid key: `base + ox·4096² + oy·4096 + oz` (`sim.js:312-314`) | small, free | unchanged | trivial |
+| 1 | Hoist `setLength(SURFACE)` out of the pair loop → one pass per cell | ~5–20% collision | identical | trivial |
+| 2 | Tighten bound to `a.radius + b.radius` (`src/collision.js`) | 10–40% fewer narrowphase | unchanged | measured neutral |
+| 3 | De-allocate `signedAngleTo` using scratch vectors | removes up to 4 alloc/pair | unchanged | ✅ already fixed |
+| 4 | Incremental grid key: `base + ox·4096² + oy·4096 + oz` | small, free | unchanged | n/a (cells move) |
 | 5 | Skip `deflectHeading` for tiny overlaps (`overlap > ε`) | avoids `atan2`+alloc | negligible | trivial |
 
-Items 1–5 together are plausibly **2–3×** on collisions with no behavior change.
+> **Measured (`cell-b0t`, 2026-09-18):** item 2 was implemented with a
+> **bit-identical seeded fingerprint** and cut `capsuleDist` calls, but `collide`
+> stayed within noise at n≈78 (0.100 vs 0.100 ms/step), so it was **reverted** —
+> a neutral one-liner + comment is not worth the diff. Item 3 was already fixed.
+> Item 4 is not applicable: cells move every substep, so the whole grid is
+> rebuilt. The "2–3×" estimate does not hold for Tier-1; the real levers are the
+> Tier-2 dense typed-array grid / persistent neighbour lists, which need an
+> n=100/500 measurement to be worth pursuing.
 
 ### Tier 2 — moderate effort
 
@@ -225,8 +238,10 @@ Items 1–5 together are plausibly **2–3×** on collisions with no behavior ch
 
 ## 5. Recommended next steps
 
-1. Apply the five Tier-1 tweaks (all behavior-preserving).
-2. Re-measure with `sim.perf` (`solveCollisions` is already wrapped at
-   `sim.js:510-512`) at n=100/500 and `simRate=1/50`.
-3. If broadphase still dominates, prototype the dense typed-array grid.
+1. No Tier-1 tweak was worth shipping (`cell-b0t`) — the bound tightening
+   measured neutral and was reverted; the rest are neutral, not applicable, or
+   need sign-off.
+2. Re-measure with `sim.perf` (`collide` bucket) at n=100/500 and
+   `simRate=1/50` before pursuing more.
+3. If broadphase still dominates, prototype the dense typed-array grid (Tier 2).
 4. Consider `CELL_GRID ≈ 0.7` only after checking the predator scan tradeoff.

@@ -63,7 +63,9 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   exclusive energy bands: near max (`coast`, above `MITO_SLOW_FRAC`) the cell
   eases to a stop to split; mid band it drives full; toward zero (`fatigue`,
   below `STARVE_SLOW`) a starving cell slows. `slow` likewise ramps to ~0 near
-  food (graze).
+  food (graze). Reds additionally **ambush**: `drive` is scaled by `PRED_COAST`
+  while no prey is within `PRED_LUNGE`, so a red cruises slowly and bursts when
+  a blue comes close. Steering stays active regardless of `drive`.
 - **One consistent time loop**: `App.vue` banks real time in an accumulator
   and calls `sim.step(simDt×simRate)`; `step` subdivides into
   `clamp(ceil(simDt/FIXED_DT),1,MAX_STEPS)` substeps of `advance(dt)`. Render
@@ -123,6 +125,11 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   draws `TAIL_LINK_FILL` of each pitch; tail length is `TAIL_BODY·2·radius`
   (scales with body size). `warmTail` re-aims the chain and zeroes joint
   velocities, never `tailLag`/`tailBend`/`tailPhase`.
+  An alternative O(S) **kinematic mode** (`TAIL_MODE = 1`) skips the spring
+  integration: the rigid root is force-rotated onto the guide and each free
+  joint follows the segment ahead at `TAIL_FOLLOW_RATE`. It is ~3× cheaper and
+  cannot fold, but loses the chain's emergent drag/whip — see
+  `TAIL_EXPLORATION.md` §1.5. `TAIL_MODE` is switchable live in the Tuner.
 
 ## Current tuning constants (`src/constants.js`)
 
@@ -136,6 +143,8 @@ _Fixed constants (not tunable at runtime)._
 | `CULL_COS` | 0 | cos(normal, cam) at or below which a tail is culled |
 | `ENERGY_MAX` | 1 | energy at which a cell divides; size is linear in energy |
 | `FIXED_DT` | 0.0166667 | physics substep, in seconds (1/60) |
+| `FOOD_RADIUS_MAX` | 0.04 | maximum per-particle food radius; feeds the sense-scan radius |
+| `FOOD_RADIUS_MIN` | 0.016 | minimum per-particle food radius |
 | `GRID` | 0.35 | food spatial-hash cell size |
 | `MAX_CELLS` | 500 | logical population ceiling; pools grow on demand rather than reserving it |
 | `MAX_RADIUS` | 0.3 | radius at full energy; chosen so a full cell exactly spans both daughters |
@@ -193,6 +202,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 |---|---|---|
 | `SENSE_BOOST` | 0.25 | Extra sensing reach added to the body radius. |
 | `SENSE_PERIOD` | 0.05 | Seconds between chemotaxis sampling passes. |
+| `SENSE_MODE` | 0 | 0 = per-spec food scan, 1 = clump-attractor sensing (Tier-2 prototype, cell-qjo.5). |
 | `GRAZE_RATE` | 0.01 | Drive factor while well fed (lower = lazier drifting). |
 | `GRAZE_GAIN` | 6 | How quickly feeding drops drive toward the graze rate. |
 | `ENERGY_PER_FOOD` | 0.05 | Energy gained per food particle absorbed. |
@@ -258,6 +268,8 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `PRED_EFF` | 1 | Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide. |
 | `PRED_METABOLISM` | 0.001 | Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly. |
 | `PRED_DRIVE` | 0.9 | Red speed multiplier (<1 = slower). |
+| `PRED_LUNGE` | 0.6 | Distance (capsule gap) within which a red bursts forward; farther out it coasts (ambush). |
+| `PRED_COAST` | 0.35 | Drive multiplier while no prey is within PRED_LUNGE (1 = no ambush, 0 = full stop). |
 | `PRED_RATIO` | 1 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off. |
 | `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
 <!-- END GENERATED: tuning constants -->
@@ -344,10 +356,12 @@ top-right, the population chart bottom-left, drag hint bottom-center.
 
 - **Predator–prey** is implemented (red hunts/immobilises/eats blue; see
   `PREY_PREDATOR.md`).
-- **Tail** is a damped spring chain (restored) — visual-only apart from the
-  `tailBend` steering scalar (see `TAIL_EXPLORATION.md`).
-- Open follow-ups from the exploration docs: food-sensing scan-radius/efficiency
-  (`FOOD_SENSING_EXPLORATION.md`), collision Tier-1 simplifications
-  (`COLLISION_EXPLORATION.md`), a vertex-shader tail (`TAIL_EXPLORATION.md`
-  §5.4), and a possible momentum-driven "C-start" whip (`TAIL_EXPLORATION.md`
-  §3). Open beads issue: `cell-fgh` (predator ambush).
+- **Tail** is a damped spring chain (restored), with a switchable O(S)
+  **kinematic mode** (`TAIL_MODE`) — visual-only apart from the `tailBend`
+  steering scalar (see `TAIL_EXPLORATION.md`).
+- Open follow-ups from the exploration docs: Tier-2 food sensing
+  (`FOOD_SENSING_EXPLORATION.md`, `cell-qjo.5`), collision Tier-2 (dense grid /
+  persistent neighbours, `COLLISION_EXPLORATION.md`), a GPU spring-chain tail
+  (`TAIL_EXPLORATION.md` §5.4, `cell-igf`), and a possible momentum-driven
+  "C-start" whip (`TAIL_EXPLORATION.md` §3). Open beads: `cell-qjo.5`
+  (food-sensing evaluation) and `cell-igf` (GPU tail).

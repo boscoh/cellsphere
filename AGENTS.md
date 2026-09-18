@@ -34,7 +34,7 @@ historical design notes.
 - `src/cells.js` — cell domain: create/grow/mitose (bodies and tails are separate)
 - `src/bodyPool.js` — pooled body `InstancedMesh`es, one pool per length bucket
 - `src/tailPool.js` — tail instance pool, slot claims/transfers, segment placement
-- `src/tail.js` — tail physics: steering control, spring-chain pose, re-aim
+- `src/tail.js` — tail physics: steering control, spring-chain + kinematic pose, re-aim
 - `src/food.js` — food grid, eating + sensing, clumps
 - `src/predator.js` — predation: latch + drain
 - `src/constants.js` — tuning registry (`PARAM_DEFS`/`P`/`GROUPS`) + plain consts

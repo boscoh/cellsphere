@@ -174,8 +174,10 @@ mutated in place — `updateTailPose` allocates nothing per step.
 The chain math reuses scratch objects owned by the simulation (`sim.js`) instead
 of allocating: `sim._v1`–`sim._v9` (`Vector3`), `sim._m` (`Matrix4`), `sim._q`
 (`Quaternion`), `sim._dummy` (`Object3D`), and `sim._tailDirty` (`Set`).
-`updateTailControl`/`updateTailPose` write through these; the known `sim._v1`
-aliasing in the self-avoidance loop is noted in §7.
+`updateTailControl`/`updateTailPose` write through these. The self-avoidance
+loop no longer aliases `sim._v1` for its joint normals: `cell-bjm` extracts them
+once per substep into a module-level `_norm` array (`_norm[i]`/`_norm[k]`), so
+`ni` stays valid for every non-adjacent pair.
 
 #### GPU representation (instanced chunks)
 
@@ -408,9 +410,11 @@ only a fully empty chunk drops to `count = 0`.
   smoothed away. The physical coupling (`tailBend → headingRate`) is unchanged.
 - Restoring the chain also brought back the sim-step phase advance, so wave
   frequency again scales with sim speed without the `TAIL_WAVE_MAX_HZ` cap.
-- Known issue (restored): the self-avoidance loop aliases `sim._v1` for both
-  joint normals (`ni` then `nk`), so `ni` is stale for the third and later
-  non-adjacent pairs. This is faithful to the original — see §8.
+- Former issue (resolved): the self-avoidance loop used to alias `sim._v1` for
+  both joint normals (`ni` then `nk`), leaving `ni` stale for the third and
+  later non-adjacent pairs. `cell-bjm` (commit `0868790`) now shares a per-joint
+  `_norm` array across the accumulate/self-avoidance/integrate loops, so no
+  aliasing remains.
 - "Stage B" (compute the turn driver before the tail animation, removing the
   one-substep lag) was **dropped**: the lag is harmless and removing it changes
   loop gain.
@@ -443,8 +447,6 @@ only a fully empty chunk drops to `count = 0`.
   side-by-side in the Tuner against the spring chain and decide whether to keep,
   retune (`TAIL_FOLLOW_RATE`) or drop it. It is cheaper (`O(S)` vs
   `O(S²·TAIL_DYN_SUB)`) but loses emergent self-avoidance/whip detail.
-- Fix the `_v1` aliasing in the self-avoidance loop (use a second scratch
-  vector); check it doesn't change the look.
 - GPU spring chain (compute/transform-feedback) for `O(cells)` CPU render —
   `cell-5tt.5` shipped only the transform side (§5.4).
 - Optional: momentum-driven "C-start" whip (design note §3).
