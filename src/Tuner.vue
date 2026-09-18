@@ -279,7 +279,7 @@ function fmt(v) {
 .slider {
   width: 100%;
   margin: 4px 0;
-  accent-color: #6fa8ff;
+  accent-color: var(--slider-accent);
   cursor: pointer;
 }
 

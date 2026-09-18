@@ -21,6 +21,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Shared accent for the HUD speed slider and the Tuner sliders. */
+:root {
+  --slider-accent: #5b8fd6;
+}
+
 /* Shared panel label, used by the HUD and the perf panel. */
 .ctl {
   text-transform: uppercase;
