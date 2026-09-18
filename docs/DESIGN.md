@@ -130,8 +130,8 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   An alternative O(S) **kinematic mode** (`TAIL_MODE = 1`) skips the spring
   integration: the rigid root is force-rotated onto the guide and each free
   joint follows the segment ahead at `TAIL_FOLLOW_RATE`. It is ~3× cheaper and
-  cannot fold, but loses the chain's emergent drag/whip — see
-  `TAIL_EXPLORATION.md` §1.5. `TAIL_MODE` is switchable live in the Tuner.
+  cannot fold, but loses the chain's emergent drag/whip — see `NOTES.md`
+  (Tail → kinematic mode). `TAIL_MODE` is switchable live in the Tuner.
 
 ## Current tuning constants (`src/constants.js`)
 
@@ -345,12 +345,12 @@ top-right, the population chart bottom-left, drag hint bottom-center.
   --claim` / `bd close`. Use `bd remember` for persistent knowledge (no
   MEMORY.md). See `AGENTS.md`.
 
-> **Rendering debug trail**: see `RENDER_BUG_POSTMORTEM.md` for the long-running
-> "cells go black / body vanishes leaving only a tail" investigation — two
-> compounding defects (opaque-shell occlusion of near-limb bodies + a separate
-> emissive nucleus), fixed by culling on actual occlusion and removing the
-> nucleus. The render pipeline is now an explicit, toggleable `src/render.js`
-> with pure headless-testable helpers.
+> **Rendering debug trail**: see `NOTES.md` (Render bug post-mortem) for the
+> long-running "cells go black / body vanishes leaving only a tail"
+> investigation — two compounding defects (opaque-shell occlusion of near-limb
+> bodies + a separate emissive nucleus), fixed by culling on actual occlusion
+> and removing the nucleus. The render pipeline is now an explicit, toggleable
+> `src/render.js` with pure headless-testable helpers.
 
 - Git: commit semantically per subsystem. Origin is
   `https://github.com/boscoh/cellsphere.git`; `npm run build` publishes `docs/`
@@ -359,14 +359,15 @@ top-right, the population chart bottom-left, drag hint bottom-center.
 
 ## In progress / next steps
 
-- **Predator–prey** is implemented (red hunts/immobilises/eats blue; see
-  `PREY_PREDATOR.md`).
+- **Predator–prey** is implemented (red hunts/immobilises/eats blue), tuned to a
+  bounded cycle with `PRED_RATIO = 1` + `FOOD_COUNT 3000`.
 - **Tail** is a damped spring chain (restored), with a switchable O(S)
   **kinematic mode** (`TAIL_MODE`) — visual-only apart from the `tailBend`
-  steering scalar (see `TAIL_EXPLORATION.md`).
-- Open follow-ups from the exploration docs: Tier-2 food sensing
-  (`FOOD_SENSING_EXPLORATION.md`, `cell-qjo.5`), collision Tier-2 (dense grid /
-  persistent neighbours, `COLLISION_EXPLORATION.md`), a GPU spring-chain tail
-  (`TAIL_EXPLORATION.md` §5.4, `cell-igf`), and a possible momentum-driven
-  "C-start" whip (`TAIL_EXPLORATION.md` §3). Open beads: `cell-qjo.5`
-  (food-sensing evaluation) and `cell-igf` (GPU tail).
+  steering scalar.
+- **Closed explorations:** Tier-2 food sensing (`cell-qjo.5`, clump attractors
+  rejected; the density field is only worth it above the current `FOOD_COUNT`)
+  and the GPU spring-chain tail (`cell-igf`, not justified by measurement).
+- **Open follow-ups** (details in `NOTES.md`): settle kinematic vs spring-chain
+  (`cell-owg`); collision Tier-2 dense grid / persistent neighbours if profiling
+  shows broadphase dominating; a possible momentum-driven "C-start" whip.
+- No open beads.

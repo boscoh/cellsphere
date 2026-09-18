@@ -5,8 +5,8 @@ the surface of a solid sphere**. Blue prey graze food; red predators hunt them.
 There is no boundary — the surface is a closed periodic domain.
 
 `docs/DESIGN.md` is the authoritative architecture + tuning + gotchas reference;
-read it before touching physics. Other `docs/*_EXPLORATION.md` files are
-historical design notes.
+read it before touching physics. `docs/NOTES.md` is the consolidated record of
+explorations, experiments, rejected options, and subsystem history.
 
 ## Commands
 
