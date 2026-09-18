@@ -353,8 +353,8 @@ top-right, the population chart bottom-left, drag hint bottom-center.
 > `src/render.js` with pure headless-testable helpers.
 
 - Git: commit semantically per subsystem. Origin is
-  `https://github.com/boscoh/cellsphere.git`; `npm run build` publishes `docs/`
-  as the GitHub Pages site.
+  `https://github.com/boscoh/cellsphere.git`; `npm run build` writes the site to
+  gitignored `dist/`, and the Pages workflow deploys it.
 - Dev: `npm run dev` (Vite). Build: `npm run build` (final tree verified).
 
 ## In progress / next steps

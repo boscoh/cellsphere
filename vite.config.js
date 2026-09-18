@@ -5,8 +5,4 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/cellsphere/',
   plugins: [vue()],
-  build: {
-    outDir: 'docs',
-    emptyOutDir: false,
-  },
 })

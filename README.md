@@ -79,7 +79,7 @@ Open <http://localhost:5173>.
 | Command            | Description                                                        |
 | ------------------ | ----------------------------------------------------------------- |
 | `npm run dev`      | Start the Vite dev server                                          |
-| `npm run build`    | Build the site into `docs/` (the committed GitHub Pages site)      |
+| `npm run build`    | Build the app into `dist/` (deployed by GitHub Actions)            |
 | `npm run preview`  | Preview the built site                                             |
 | `npm run test:tail`| Headless tail/steering equivalence, wave-phase, and pose smoke test |
 
