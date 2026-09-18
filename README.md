@@ -58,7 +58,9 @@ meant to reinforce each other rather than compete.
   `InstancedMesh` for bodies, tails, and food)
 
 The authoritative architecture, tuning values, and gotchas live in
-[`docs/DESIGN.md`](docs/DESIGN.md); this README is the quick overview.
+[`docs/DESIGN.md`](docs/DESIGN.md); subsystem explorations, experiments, and
+history are consolidated in [`docs/NOTES.md`](docs/NOTES.md). This README is the
+quick overview.
 
 The built site is published to GitHub Pages at
 <https://boscoh.github.io/cellsphere/>.
