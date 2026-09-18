@@ -11,6 +11,14 @@ export function gridKey(cx, cy, cz) {
   return ((cx + OFFSET) * SPAN + (cy + OFFSET)) * SPAN + (cz + OFFSET)
 }
 
+// Radius (in buckets) that guarantees forEachNearby covers every entry within
+// `reach` of a point anywhere inside the centre bucket. A whole-bucket scan
+// reaches only r*bucketSize past the point, so the +1 pays for a point sitting
+// on the far edge of its own bucket.
+export function scanRadius(reach, bucketSize) {
+  return 1 + Math.floor(reach / bucketSize)
+}
+
 export function forEachNearby(grid, cx, cy, cz, r, cb) {
   for (let ox = -r; ox <= r; ox++) {
     for (let oy = -r; oy <= r; oy++) {

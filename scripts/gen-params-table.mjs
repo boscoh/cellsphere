@@ -2,7 +2,7 @@
 // source of truth, src/constants.js. Run with --write to update the doc, or
 // --check to fail when it has drifted (wired into `npm run build`).
 //
-// The 19 fixed constants have no description in the module, so they carry one
+// The fixed constants have no description in the module, so they carry one
 // here; adding a fixed constant without a role fails the run on purpose.
 
 import { readFile, writeFile } from 'node:fs/promises'
@@ -16,6 +16,8 @@ const FIXED_ROLES = {
   SURFACE: 'surface offset (`SPHERE_RADIUS + 0.06`); every entity is placed here',
   MAX_CELLS: 'logical population ceiling; pools grow on demand rather than reserving it',
   GRID: 'food spatial-hash cell size',
+  FOOD_RADIUS_MIN: 'minimum per-particle food radius',
+  FOOD_RADIUS_MAX: 'maximum per-particle food radius; feeds the sense-scan radius',
   CELL_GRID: 'cell spatial-hash cell size',
   FIXED_DT: 'physics substep, in seconds (1/60)',
   MAX_STEPS: 'per-frame substep ceiling',

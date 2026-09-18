@@ -2,6 +2,10 @@ export const SPHERE_RADIUS = 5
 export const SURFACE = SPHERE_RADIUS + 0.06
 export const MAX_CELLS = 500
 export const GRID = 0.35
+// Per-particle food radius range; the max feeds the sense-scan radius so the
+// bucket cube always covers a cell's full reach (cell-qjo.1).
+export const FOOD_RADIUS_MIN = 0.016
+export const FOOD_RADIUS_MAX = 0.04
 export const CELL_GRID = 1.0
 export const FIXED_DT = 1 / 60
 export const MAX_STEPS = 200
@@ -60,6 +64,7 @@ export const PARAM_DEFS = [
 
   { key: 'SENSE_BOOST', group: 'sensing', label: 'Sense boost', desc: 'Extra sensing reach added to the body radius.', def: 0.25, min: 0, max: 2, step: 0.05 },
   { key: 'SENSE_PERIOD', group: 'sensing', label: 'Sense period', desc: 'Seconds between chemotaxis sampling passes.', def: 0.05, min: 0.01, max: 1, step: 0.01 },
+  { key: 'SENSE_MODE', group: 'sensing', label: 'Sense mode', desc: '0 = per-spec food scan, 1 = clump-attractor sensing (Tier-2 prototype, cell-qjo.5).', def: 0, min: 0, max: 1, step: 1 },
   { key: 'GRAZE_RATE', group: 'sensing', label: 'Graze rate', desc: 'Drive factor while well fed (lower = lazier drifting).', def: 0.01, min: 0, max: 1, step: 0.01 },
   { key: 'GRAZE_GAIN', group: 'sensing', label: 'Graze gain', desc: 'How quickly feeding drops drive toward the graze rate.', def: 6, min: 0, max: 40, step: 0.5 },
   { key: 'ENERGY_PER_FOOD', group: 'sensing', label: 'Energy / food', desc: 'Energy gained per food particle absorbed.', def: 0.05, min: 0.005, max: 0.4, step: 0.005 },
