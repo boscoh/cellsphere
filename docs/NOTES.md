@@ -219,6 +219,33 @@ density (`rate *= 1 + c·(nearby−1)`) or allow N simultaneous latches — so a
 eats fast inside a clump while isolated blues survive as refuge; that needs its
 own A/B.
 
+**D. Outcome (2026-09): targeted fixes shipped.**
+
+- **Faster bites (`cell-t82`).** `PRED_DRAIN` default 0.012 → **0.02** (table
+  above); `PRED_EFF`/`PRED_RATIO` unchanged.
+- **Graze radius separated (`cell-11i`).** `concentration()` now computes the
+  drive slowdown from a new `GRAZE_RADIUS` radius (`nearSense = width +
+  GRAZE_RADIUS`) while the wide `SENSE_BOOST` radius only steers. Default
+  `GRAZE_RADIUS = 0.25` exactly reproduces the old all-range slowdown, and it was
+  **not lowered**: sweeping it down (1800 s, seeds 1–2) speeds every cell
+  (`drive` 0.04 → 0.51) but barely improves daughter growth (8 s energy 0.28 →
+  0.35) and throws the ecology into heavy oscillation (crossings 6–16 → 42, and
+  126–146 over 3600 s). It stays as a live tuning knob.
+- **Post-division forage window (`cell-x93`).** A daughter gets `MITO_FORAGE`
+  (6 s) in which it ignores the graze slowdown and turns hard at the sensed
+  gradient (`FORAGE_TURN = 20`; a deterministic heading-rate assist, drag-capped
+  at `MAX_SPIN`). This is the *targeted* version of the graze idea, so it leaves
+  the ecology alone. 1800 s, seeds 1–2: daughter energy at 8 s **0.28 → 0.40**,
+  at 16 s 0.32 → 0.41; populations stayed bounded with no extinction and
+  crossings unchanged (6–8).
+- **Post-meal re-aim (`cell-700`).** `PRED_REORIENT` 0.3 → 1.5 s, the window now
+  also zeroes the energy coast, and a `REORIENT_TURN = 20` heading-rate assist
+  turns the red toward `preyNearestDir` (drag-capped at `MAX_SPIN`). Widening the
+  window alone did **not** help (re-latch unchanged) — the bottleneck is turn
+  authority, so the assist is the effective part. 1800 s, seeds 1–2: re-latch
+  within 2 s ~30% → ~42%, mean kill gap ~82 s → ~68 s. 3600 s × 3 seeds stayed
+  bounded with no extinction (blue 19..94, red 6..51, red>blue 4–6).
+
 ---
 
 ## 2. Cell–cell collision

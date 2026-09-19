@@ -226,6 +226,8 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `SENSE_MODE` | 0 | 0 = per-spec food scan, 1 = clump-attractor sensing (Tier-2 prototype, cell-qjo.5). |
 | `GRAZE_RATE` | 0.01 | Drive factor while well fed (lower = lazier drifting). |
 | `GRAZE_GAIN` | 6 | How quickly feeding drops drive toward the graze rate. |
+| `GRAZE_RADIUS` | 0.25 | Extra radius beyond body width within which food slows the cell (drive); the wider SENSE_BOOST range only steers. At SENSE_BOOST this reproduces the original all-range slowdown; lowering it keeps speed until closer to food, but speeds up the whole ecology and increases predator/prey oscillation (cell-11i). |
+| `FORAGE_TURN` | 20 | Extra heading-rate gain toward the food gradient during the post-division forage window (cell-x93). |
 | `ENERGY_PER_FOOD` | 0.05 | Energy gained per food particle absorbed. |
 | `ABSORB_RATE` | 0.1 | Max energy a cell can absorb per second (absorption is always rate-limited). |
 
@@ -240,6 +242,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `MITO_SEP` | 2.8 | Final separation (x half child length) at division release. |
 | `MITO_DETACH` | 0.8 | Seconds a feeding predator spends separating from its prey before it can divide. |
 | `MITO_REST` | 4 | Coast (no-drive) seconds for daughters right after division. |
+| `MITO_FORAGE` | 6 | Seconds after division during which a daughter ignores the grazing slowdown and turns hard toward sensed food, so it can leave the parent spot on its own heading (cell-x93). |
 
 **Survival**
 
@@ -285,14 +288,15 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `PRED_SENSE` | 1.5 | Distance over which a red smells prey; nearby blues are weighted into a gradient direction. |
 | `PRED_BITE` | 0.18 | Distance at which draining proceeds (>= range so a latched prey is bitten). |
 | `PRED_OVERLAP` | 0.03 | How far a feeding predator sinks into its latched prey (contact distance minus this). |
-| `PRED_DRAIN` | 0.012 | Blue energy drained per second. |
+| `PRED_DRAIN` | 0.02 | Blue energy drained per second. Raised from 0.012 so a red eats faster and the red curve briefly overshoots the blue curve (NOTES 1.5C). |
 | `PRED_EFF` | 1 | Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide. |
 | `PRED_METABOLISM` | 0.001 | Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly. |
 | `PRED_DRIVE` | 0.9 | Red speed multiplier (<1 = slower). |
 | `PRED_LUNGE` | 0.6 | Distance (capsule gap) within which a red bursts forward; farther out it coasts (ambush). |
 | `PRED_COAST` | 0.35 | Drive multiplier while no prey is within PRED_LUNGE (1 = no ambush, 0 = full stop). |
 | `PRED_FOCUS` | 1 | Exponent on the prey-proximity weight (1 = linear; higher focuses the gradient on the nearest prey). |
-| `PRED_REORIENT` | 0.3 | Seconds after finishing a meal that a red steers at the nearest prey and ignores the ambush coast (0 = off). |
+| `PRED_REORIENT` | 1.5 | Seconds after finishing a meal that a red steers at the nearest prey and ignores both the ambush coast and the energy coast (0 = off). |
+| `REORIENT_TURN` | 20 | Extra heading-rate gain toward the nearest prey during the post-meal reorient window (cell-700). |
 | `PRED_RATIO` | 1 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off. |
 | `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
 <!-- END GENERATED: tuning constants -->

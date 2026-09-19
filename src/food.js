@@ -221,11 +221,16 @@ export function concentration(sim) {
     if (d.mito || d.splitting || d.split) continue
     if (d.breed === 1) continue // predators don't sense/graze food
     let sum = 0
+    let near = 0
     let fx = 0
     let fy = 0
     let fz = 0
     const halfLen = Math.max(d.radius - d.width, 0)
     const sense = d.width + P.SENSE_BOOST
+    // Drive slowdown uses a tighter radius than the steering gradient: a cell
+    // should only crawl once it is at food, not as soon as it can smell it
+    // (cell-11i). The wide `sense` still sets direction/foodAmt/foodPeak.
+    const nearSense = d.width + P.GRAZE_RADIUS
     const cx = Math.floor(d.pos.x / GRID)
     const cy = Math.floor(d.pos.y / GRID)
     const cz = Math.floor(d.pos.z / GRID)
@@ -243,6 +248,7 @@ export function concentration(sim) {
           fx += sim._fd.rx * w
           fy += sim._fd.ry * w
           fz += sim._fd.rz * w
+          if (dd < nearSense) near += 1 - dd / nearSense
         }
       }
     } else {
@@ -259,10 +265,11 @@ export function concentration(sim) {
           fx += sim._fd.rx * w
           fy += sim._fd.ry * w
           fz += sim._fd.rz * w
+          if (dd < nearSense) near += 1 - dd / nearSense
         }
       })
     }
-    d.slow = 1 + (P.GRAZE_RATE - 1) * (1 - Math.exp(-sum * P.GRAZE_GAIN))
+    d.slow = 1 + (P.GRAZE_RATE - 1) * (1 - Math.exp(-near * P.GRAZE_GAIN))
     d.foodAmt = Math.min(sum, 1)
     const fb = Math.sqrt(fx * fx + fy * fy + fz * fz)
     d.foodPeak = sum > 0 ? fb / sum / sense : 0
