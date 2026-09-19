@@ -245,6 +245,15 @@ own A/B.
   authority, so the assist is the effective part. 1800 s, seeds 1–2: re-latch
   within 2 s ~30% → ~42%, mean kill gap ~82 s → ~68 s. 3600 s × 3 seeds stayed
   bounded with no extinction (blue 19..94, red 6..51, red>blue 4–6).
+- **Clump feast (`cell-3bz`, opt-in prototype).** New `PRED_CROWD` scales the
+  bite with prey packed within `PRED_SENSE`
+  (`rate *= 1 + PRED_CROWD·(nearby−1)`), so a shoal feeds a red faster than a lone
+  blue. Default **0** keeps “a clump is not a feast”. 1800 s, seeds 1–2:
+  `PRED_CROWD` 0.5–2 lowers mean kill gap 69–92 s → 59–67 s but also suppresses
+  prey (blue max 62–67 → 50–62) and does not improve re-latch; 3600 s × 3 seeds
+  at 1.0 stayed bounded (blue min 10–16, no extinction). Left off by default as a
+  Tuner knob — the effect is real but modest, and it trades prey abundance for
+  bite speed.
 
 ---
 

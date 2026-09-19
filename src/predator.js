@@ -26,6 +26,7 @@ export function predatorSense(sim) {
   for (const cell of sim.cells) {
     cell.preyAmt = 0
     cell.preyNear = Infinity
+    cell.preyCount = 0
   }
 
   const sense = P.PRED_SENSE
@@ -64,6 +65,7 @@ export function predatorSense(sim) {
         }
         const w = P.PRED_FOCUS === 1 ? base : Math.pow(base, P.PRED_FOCUS)
         sum += w
+        red.preyCount++
         fx += sim._col.x * w
         fy += sim._col.y * w
         fz += sim._col.z * w
@@ -156,7 +158,12 @@ export function predation(sim, simDt) {
         red.pos.setLength(SURFACE)
       }
       if (dist <= P.PRED_BITE) {
-        const rate = P.PRED_DRAIN * simDt * ratioAttack
+        // Clump feast (cell-3bz): optionally scale the bite with how many prey
+        // are packed nearby, so a red in a shoal eats faster than on a lone
+        // blue while isolated prey survive as refuge. PRED_CROWD = 0 disables.
+        const nearby = red.preyCount || 1
+        const crowd = 1 + P.PRED_CROWD * Math.max(0, nearby - 1)
+        const rate = P.PRED_DRAIN * simDt * ratioAttack * crowd
         drainEnergy(sim, latch, rate)
         if (latch.energy <= 0) {
           latch.dead = true
