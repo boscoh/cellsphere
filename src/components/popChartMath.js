@@ -157,11 +157,271 @@ export function autocorrelation(samples, key, { maxLag = null } = {}) {
   return out
 }
 
-// First local maximum of the autocorrelation above `minR` (skipping lag 0).
-export function acfPeak(acf, { minR = 0.2 } = {}) {
-  if (!acf || acf.length < 3) return null
-  for (let i = 1; i < acf.length - 1; i++) {
-    if (acf[i].r > minR && acf[i].r > acf[i - 1].r && acf[i].r >= acf[i + 1].r) return acf[i]
+const ACF_MIN_SAMPLES = 8
+// Sliding sums lose precision one add/subtract at a time, so replay the window
+// from scratch this often (the window itself is bounded, so the drift is small).
+const ACF_RESYNC_EVERY = 100000
+
+// Incremental version of the autocorrelation above: an online sliding window of
+// the last `size` samples whose raw per-lag pair sums are kept current, so a
+// refresh costs O(size) instead of O(size^2). Detrending is not an obstacle
+// because `sum dev_i dev_{i+k}` expands back into the raw pair sums:
+//
+//   C_k = S_k - A*U_k - B*V_k + A^2*N_k + A*B*T1_k + B^2*T2_k
+//
+// where the window's least-squares line is `A + B*t`, `S_k = sum x_i x_{i+k}`,
+// `U_k = sum (x_i + x_{i+k})`, `V_k = sum (t_i x_{i+k} + t_{i+k} x_i)` and
+// `T1_k`/`T2_k` are the same sums of the timestamps alone. Exactly one pair
+// enters and one leaves per lag on a slide, so the update is O(size) per sample.
+// `setSize` keeps the last `min(count, size)` samples; shrinking is O(size^2)
+// because the lag rows have to be rebuilt from the retained window.
+export function createAcfTracker(size = 64) {
+  let cap = Math.max(2, Math.floor(size))
+  let bufT = new Float64Array(cap)
+  let bufX = new Float64Array(cap)
+  let start = 0
+  let count = 0
+  let K = 0
+  let S = new Float64Array(1)
+  let U = new Float64Array(1)
+  let V = new Float64Array(1)
+  let T1 = new Float64Array(1)
+  let T2 = new Float64Array(1)
+  let sx = 0
+  let sy = 0
+  let sxx = 0
+  let sxy = 0
+  let syy = 0
+  let drift = 0
+
+  function growLags(next) {
+    const len = next + 1
+    const nS = new Float64Array(len)
+    const nU = new Float64Array(len)
+    const nV = new Float64Array(len)
+    const nT1 = new Float64Array(len)
+    const nT2 = new Float64Array(len)
+    nS.set(S)
+    nU.set(U)
+    nV.set(V)
+    nT1.set(T1)
+    nT2.set(T2)
+    S = nS
+    U = nU
+    V = nV
+    T1 = nT1
+    T2 = nT2
+    K = next
   }
-  return null
+
+  function pair(k, i, j, sign) {
+    const xi = bufX[i]
+    const xj = bufX[j]
+    const ti = bufT[i]
+    const tj = bufT[j]
+    S[k] += sign * xi * xj
+    U[k] += sign * (xi + xj)
+    V[k] += sign * (ti * xj + tj * xi)
+    T1[k] += sign * (ti + tj)
+    T2[k] += sign * ti * tj
+  }
+
+  // Sum lag k over the whole window; used when the row first appears and on
+  // resync.
+  function initLag(k) {
+    S[k] = 0
+    U[k] = 0
+    V[k] = 0
+    T1[k] = 0
+    T2[k] = 0
+    for (let i = 0; i + k < count; i++) {
+      pair(k, (start + i) % cap, (start + i + k) % cap, 1)
+    }
+  }
+
+  function append(t, x) {
+    const pos = (start + count) % cap
+    bufT[pos] = t
+    bufX[pos] = x
+    count++
+    const n = count
+    const grew = Math.floor(n / 2) > K
+    if (grew) growLags(Math.floor(n / 2))
+    for (let k = 1; k < n && k <= K; k++) {
+      if (grew && k === K) break
+      pair(k, (pos - k + cap) % cap, pos, 1)
+    }
+    if (grew) initLag(K)
+    sx += t
+    sy += x
+    sxx += t * t
+    sxy += t * x
+    syy += x * x
+  }
+
+  function slide(t, x) {
+    const old = start
+    for (let k = 1; k <= K; k++) pair(k, old, (old + k) % cap, -1)
+    const ot = bufT[old]
+    const ox = bufX[old]
+    sx -= ot
+    sy -= ox
+    sxx -= ot * ot
+    sxy -= ot * ox
+    syy -= ox * ox
+    bufT[old] = t
+    bufX[old] = x
+    for (let k = 1; k <= K; k++) pair(k, (old - k + cap) % cap, old, 1)
+    sx += t
+    sy += x
+    sxx += t * t
+    sxy += t * x
+    syy += x * x
+    start = (start + 1) % cap
+  }
+
+  function reset() {
+    start = 0
+    count = 0
+    K = 0
+    S = new Float64Array(1)
+    U = new Float64Array(1)
+    V = new Float64Array(1)
+    T1 = new Float64Array(1)
+    T2 = new Float64Array(1)
+    sx = 0
+    sy = 0
+    sxx = 0
+    sxy = 0
+    syy = 0
+    drift = 0
+  }
+
+  function resync() {
+    const n = count
+    const ts = new Float64Array(n)
+    const xs = new Float64Array(n)
+    for (let i = 0; i < n; i++) {
+      const s = (start + i) % cap
+      ts[i] = bufT[s]
+      xs[i] = bufX[s]
+    }
+    reset()
+    for (let i = 0; i < n; i++) append(ts[i], xs[i])
+  }
+
+  function setSize(next) {
+    const want = Math.max(2, Math.floor(next))
+    if (want === cap) return
+    const n = count
+    const keep = Math.min(n, want)
+    const ts = new Float64Array(keep)
+    const xs = new Float64Array(keep)
+    for (let i = 0; i < keep; i++) {
+      const s = (start + n - keep + i) % cap
+      ts[i] = bufT[s]
+      xs[i] = bufX[s]
+    }
+    cap = want
+    bufT = new Float64Array(cap)
+    bufX = new Float64Array(cap)
+    reset()
+    for (let i = 0; i < keep; i++) append(ts[i], xs[i])
+  }
+
+  function push(t, x) {
+    if (count < cap) append(t, x)
+    else slide(t, x)
+    if (++drift >= ACF_RESYNC_EVERY) resync()
+  }
+
+  // Same shape as `autocorrelation`, computed from the running sums.
+  function series() {
+    const n = count
+    if (n < ACF_MIN_SAMPLES) return null
+    const den = n * sxx - sx * sx
+    const slope = den === 0 ? 0 : (n * sxy - sx * sy) / den
+    const intercept = (sy - slope * sx) / n
+    const denom =
+      syy - 2 * intercept * sy - 2 * slope * sxy +
+      n * intercept * intercept + 2 * intercept * slope * sx + slope * slope * sxx
+    if (!(denom > 0)) return null
+    const dt = (bufT[(start + n - 1) % cap] - bufT[start]) / (n - 1)
+    // Lag 0 is exactly the denominator, so it is set rather than summed.
+    const out = new Array(K + 1)
+    out[0] = { lag: 0, r: 1 }
+    for (let k = 1; k <= K; k++) {
+      const C =
+        S[k] - intercept * U[k] - slope * V[k] +
+        intercept * intercept * (n - k) +
+        intercept * slope * T1[k] + slope * slope * T2[k]
+      out[k] = { lag: k * dt, r: C / denom }
+    }
+    return out
+  }
+
+  return { push, reset, setSize, series, get count() { return count }, get size() { return cap } }
+}
+
+// Widest interior maximum of a positive series: the broadest plateau of values
+// within `tol` of a local peak, with lower values on both sides so it cannot be
+// the edge of the window (for an ACF, the lag-0 lobe). Candidates are ranked by
+// prominence -- the height above the higher of the two saddles bounding the hump
+// -- so a genuine dome beats a taller but one-sided shoulder. The plateau centre
+// is reported rather than the argmax, which is what stays stable when the top of
+// a broad peak is flat or noisy.
+export function broadMaximum(
+  series,
+  key,
+  { tol = 0.1, minWidth = 3, margin = 2, minValue = 0, minProminence = 0 } = {},
+) {
+  const n = series ? series.length : 0
+  if (n < 2 * margin + minWidth) return null
+
+  let best = null
+  for (let i = margin; i < n - margin; i++) {
+    const v = series[i][key]
+    if (!(v > minValue)) continue
+    if (!(v > series[i - 1][key] && v >= series[i + 1][key])) continue
+
+    const band = tol * v
+    let a = i
+    let b = i
+    while (a > 0 && series[a - 1][key] >= v - band) a--
+    while (b < n - 1 && series[b + 1][key] >= v - band) b++
+    const width = b - a + 1
+    if (width < minWidth) continue
+
+    // Walk out until a taller point bounds each flank; a flank that runs into
+    // the window edge (or an equal-height plateau) leaves the saddle unbounded.
+    let lo = Infinity
+    for (let j = a - 1; j >= 0 && series[j][key] < v; j--) {
+      if (series[j][key] < lo) lo = series[j][key]
+    }
+    let hi = Infinity
+    for (let j = b + 1; j < n && series[j][key] < v; j++) {
+      if (series[j][key] < hi) hi = series[j][key]
+    }
+    const saddle = Math.max(lo, hi)
+    if (saddle === Infinity) continue
+    const prominence = v - saddle
+    if (!(prominence > minProminence)) continue
+
+    if (
+      !best ||
+      prominence > best.prominence ||
+      (prominence === best.prominence && v > best.value)
+    ) {
+      best = {
+        index: i,
+        lag: (series[a].lag + series[b].lag) / 2,
+        start: series[a].lag,
+        end: series[b].lag,
+        value: v,
+        width,
+        prominence,
+      }
+    }
+  }
+  return best
 }

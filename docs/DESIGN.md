@@ -360,13 +360,24 @@ A separate **autocorrelation panel**
 (`RateChart.vue`) plots the linearly-detrended **autocorrelation** of the prey
 series — the robust cycle test, since a rate derivative is swamped by small-count
 noise whereas an autocorrelation peak at lag `T` means the population really
-repeats. A flat or monotone ACF means there is no clean cycle. Its snapshot
-spans **4x the textbook period** (clamped 600–1800 s), so the maximum lag is ~2x
+repeats. A flat or monotone ACF means there is no clean cycle. It is maintained
+incrementally (`popChartMath.createAcfTracker`): the window's raw per-lag pair
+sums are updated O(n) per sample, so a refresh costs O(n) rather than the batch
+O(n²), and the panel is current on every sample instead of every 16th. Detrending
+survives that because the detrended lag sums expand back into raw pair sums plus
+the window's least-squares line (see the tracker's header comment). Its snapshot
+spans **4x the textbook period** (clamped 600–1800 s, quantised to ~64 s steps so
+a tuning drag does not trigger repeated O(n²) tracker rebuilds), so the maximum
+lag is ~2x
 the textbook period — long enough for the expected peak to appear, since the ACF
-cannot see a period longer than half its snapshot. The peak is marked
-with a dot and dotted vertical, and the footer reads `textbook period` (the
-uncalibrated `2π/√(αγ)` from the slider-implied rates) plus `repeats about every
-X s` / `correlation peak …`. The measured-rate and rate-plane views were removed
+cannot see a period longer than half its snapshot. The cycle is the widest
+autocorrelation dome above `r = 0.2`: `broadMaximum` takes the interior local
+maxima, keeps those whose `tol`-band plateau is at least 3 lags wide and has
+lower values on both sides (so the lag-0 lobe cannot qualify), ranks them by
+prominence, and reports the plateau centre rather than the argmax. The peak is
+marked with a dot and dotted vertical, and the footer reads `textbook period`
+(the uncalibrated `2π/√(αγ)` from the slider-implied rates) plus `peak at period
+X s with Y`. The measured-rate and rate-plane views were removed
 as uninformative; per-capita rates survive only inside `popChartMath` for the
 rate-model tests. The knob-derived rates
 (`rateModel.js`) are constants of the tuning and are not calibrated to population

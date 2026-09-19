@@ -3,7 +3,7 @@ import { createServer } from 'vite'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { mulberry32 } from '../src/util.js'
-import { classifyRegime, autocorrelation, acfPeak } from '../src/components/popChartMath.js'
+import { classifyRegime, autocorrelation, createAcfTracker, broadMaximum } from '../src/components/popChartMath.js'
 import { computeRates, lvPeriod } from '../src/components/rateModel.js'
 
 const SEED = 1
@@ -540,10 +540,16 @@ try {
       const t = i * 0.5
       series.push({ t, blue: 50 + 40 * Math.sin((2 * Math.PI * t) / T) })
     }
-    const peak = acfPeak(autocorrelation(series, 'blue'))
+    const peak = broadMaximum(autocorrelation(series, 'blue'), 'r', { minValue: 0.2 })
     if (!peak) acfProblems.push('clean sinusoid had no autocorrelation peak')
     else if (Math.abs(peak.lag - T) > 0.1 * T) {
       acfProblems.push(`sinusoid acf peak at ${peak.lag.toFixed(0)}s, expected ${T}`)
+    } else if (peak.lag < T / 2) {
+      acfProblems.push(`central acf lobe reported as the cycle (lag ${peak.lag.toFixed(0)}s)`)
+    } else if (!(peak.value > 0) || peak.width < 3 || !(peak.prominence > 0)) {
+      acfProblems.push(
+        `sinusoid peak not broad/positive: value ${peak.value.toFixed(2)}, width ${peak.width}, prominence ${peak.prominence.toFixed(2)}`,
+      )
     }
     let seed = 1
     const rnd = () => {
@@ -552,9 +558,61 @@ try {
     }
     const noise = []
     for (let i = 0; i < 1200; i++) noise.push({ t: i * 0.5, blue: 50 + (rnd() - 0.5) * 20 })
-    if (acfPeak(autocorrelation(noise, 'blue'))) acfProblems.push('white noise reported a cycle')
+    if (broadMaximum(autocorrelation(noise, 'blue'), 'r', { minValue: 0.2 })) {
+      acfProblems.push('white noise reported a cycle')
+    }
   }
   report('autocorrelation cycle test', acfProblems, 'period recovered, noise rejected')
+
+  // The incremental tracker must reproduce the batch autocorrelation exactly
+  // enough for the 2-decimal footer readout, both while the window fills, while
+  // it slides, and across a window resize.
+  const trackerProblems = []
+  {
+    let seed = 11
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+    const sample = (i) => {
+      const t = i * 0.5
+      return { t, blue: 50 + 30 * Math.sin((2 * Math.PI * t) / 90) + 4 * (t / 300) + 3 * (rnd() - 0.5) }
+    }
+    const series = []
+    for (let i = 0; i < 700; i++) series.push(sample(i))
+    const same = (label, tracker, tail) => {
+      const ref = autocorrelation(tail, 'blue')
+      const got = tracker.series()
+      if (!ref || !got || ref.length !== got.length) {
+        trackerProblems.push(`${label}: batch/tracker shape mismatch`)
+        return
+      }
+      let err = 0
+      for (let i = 0; i < ref.length; i++) err = Math.max(err, Math.abs(ref[i].r - got[i].r), Math.abs(ref[i].lag - got[i].lag))
+      if (!(err < 1e-6)) trackerProblems.push(`${label}: tracker off by ${err.toExponential(1)}`)
+    }
+    const cap = 120
+    const tracker = createAcfTracker(cap)
+    for (let i = 0; i < 60; i++) tracker.push(series[i].t, series[i].blue)
+    same('filling', tracker, series.slice(0, 60))
+    for (let i = 60; i < 700; i++) tracker.push(series[i].t, series[i].blue)
+    same('sliding', tracker, series.slice(700 - cap))
+    if (tracker.count !== cap || tracker.size !== cap) trackerProblems.push('tracker window not full after sliding')
+    tracker.setSize(50)
+    same('shrink', tracker, series.slice(700 - 50))
+    if (tracker.count !== 50 || tracker.size !== 50) trackerProblems.push('tracker kept the wrong tail on shrink')
+    for (let i = 700; i < 740; i++) {
+      series.push(sample(i))
+      tracker.push(series[i].t, series[i].blue)
+    }
+    same('slide after shrink', tracker, series.slice(740 - 50))
+    tracker.setSize(200)
+    same('grow', tracker, series.slice(740 - 50))
+    const empty = createAcfTracker(32)
+    for (let i = 0; i < 3; i++) empty.push(series[i].t, series[i].blue)
+    if (empty.series() !== null) trackerProblems.push('tracker produced an ACF below the sample floor')
+  }
+  report('incremental acf tracker', trackerProblems, 'matches batch through fill, slide and resize')
 
   // Component smoke: the chart SFCs must render to a string without touching the
   // DOM (scaleCanvas/draw only run on mount, which SSR skips).
