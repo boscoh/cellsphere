@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { computeCellColor } from '../cells.js'
 import { POP_SAMPLES } from '../constants.js'
-import { classifyRegime, fitRatePlane } from './popChartMath.js'
+import { fitRatePlane } from './popChartMath.js'
 import { scaleCanvas, fmtTime, drawAxes, drawYLabel, drawAxisMax } from './chartCanvas.js'
 
 const props = defineProps({
@@ -26,7 +26,6 @@ const nulls = computed(() => {
   const f = fitRatePlane(analysis.value)
   return { prey: f.preyNull, pred: f.predNull }
 })
-const regime = computed(() => classifyRegime(analysis.value))
 const huntLabel = computed(() => (props.rates ? props.rates.attack.toFixed(2) : '—'))
 
 function colorRgb(c) {
@@ -165,6 +164,7 @@ function drawPhase(ctx, pad, w, h, samples) {
 }
 
 function draw() {
+  if (!expanded.value) return
   const canvas = canvasRef.value
   if (!canvas) return
   const { ctx, w, h } = scaleCanvas(canvas)
@@ -241,14 +241,7 @@ onBeforeUnmount(() => {
     </div>
     <canvas v-show="expanded" ref="canvasRef" class="pop-canvas"></canvas>
     <div
-      v-show="expanded"
-      class="pop-foot"
-      title="Regime from the trajectory (persistence, envelope trend, period stability)."
-    >
-      <span class="badge" :class="regime.tone">{{ regime.label }}</span>
-    </div>
-    <div
-      v-show="expanded"
+      v-if="expanded"
       class="pop-hunt"
       title="Ratio-dependent hunting strength: how hard each predator hunts at the current prey-per-predator ratio (PRED_RATIO)"
     >
@@ -351,51 +344,9 @@ onBeforeUnmount(() => {
   height: 130px;
 }
 
-.pop-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  color: #6b7484;
-  white-space: nowrap;
-  min-height: 11px;
-}
-
 .pop-hunt {
   font-size: 9px;
   color: #556072;
   white-space: nowrap;
-}
-
-.badge {
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 9px;
-  letter-spacing: 0.2px;
-  text-transform: uppercase;
-}
-
-.badge.good {
-  color: #b6f2c4;
-  background: rgba(80, 200, 120, 0.18);
-  border: 1px solid rgba(80, 200, 120, 0.4);
-}
-
-.badge.warn {
-  color: #ffd9a0;
-  background: rgba(255, 179, 71, 0.16);
-  border: 1px solid rgba(255, 179, 71, 0.4);
-}
-
-.badge.bad {
-  color: #ffb3b3;
-  background: rgba(255, 107, 107, 0.16);
-  border: 1px solid rgba(255, 107, 107, 0.4);
-}
-
-.badge.muted {
-  color: #9aa6ba;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 </style>

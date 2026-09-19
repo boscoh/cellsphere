@@ -331,33 +331,24 @@ has a **Time / Phase** toggle (count vs time, or the red-vs-blue phase portrait
 where Lotka-Volterra cycles show as closed loops); its footer is just the regime
 badge, plus `hunting effort` on the line below.
 
-A separate **rates panel**
-(`RateChart.vue`) has two modes. **growth** plots the measured per-capita growth
-rates from the population history — `rN = (1/N)dN/dt`, `rP = (1/P)dP/dt`
-(`popChartMath.perCapitaRates`) — over a **time stencil** of ±20 s rather than
-between adjacent samples: counts are small integers, so adjacent differences are
-dominated by counting noise (one prey event is ~`1/N`). The stencil makes the
-curves show the slow growth/decline phases, with dashed verticals at the prey
-mean-crossings, on-canvas `prey`/`predators`/`rising`/`falling` labels and
-turning-point dots at the rate zero-crossings. It shows a **sliding window** of
-recent sim time — about 4 **autocorrelation** cycles, clamped to 120–600 s and
-labelled on the x-axis (`time window (N s)`) — so the window tracks the actual
-period; history is sampled on a fixed sim-time cadence (`SAMPLE_DT`) so the
-window is constant at any speed. The cycle-length readout lives **only** here in
-`cycle` mode (there is a number to show only when the cycle test applies): the
-footer's `cycle length` is the autocorrelation peak lag (`popChartMath.cycleLength`)
-and the next line is the clearly-labelled `textbook guess` `2π/√(αγ)` from the
-slider-implied rates, which is uncalibrated and should not be trusted over the
-measurement.
-**cycle** plots the linearly-detrended **autocorrelation** of the prey series:
-the robust cycle test, since a rate derivative is swamped by small-count noise
-whereas an autocorrelation peak at lag `T` means the population really repeats.
-A flat or monotone ACF means there is no clean cycle. The **phase** view of the
+A separate **autocorrelation panel**
+(`RateChart.vue`) plots the linearly-detrended **autocorrelation** of the prey
+series — the robust cycle test, since a rate derivative is swamped by small-count
+noise whereas an autocorrelation peak at lag `T` means the population really
+repeats. A flat or monotone ACF means there is no clean cycle. Its snapshot
+spans **4x the textbook period** (clamped 600–1800 s), so the maximum lag is ~2x
+the textbook period — long enough for the expected peak to appear, since the ACF
+cannot see a period longer than half its snapshot. The peak is marked
+with a dot and dotted vertical, and the footer reads `textbook period` (the
+uncalibrated `2π/√(αγ)` from the slider-implied rates) plus `repeats about every
+X s` / `correlation peak …`. The measured-rate and rate-plane views were removed
+as uninformative; per-capita rates survive only inside `popChartMath` for the
+nullclines and the rate-model tests. The **phase** view of the
 population chart draws the fitted **nullclines** — where each species' per-capita
 growth is zero (`prey steady` at `P = α/β`, `predators steady` at `N = γ/δ`) —
 so a cycle reads as a loop around their intersection. The knob-derived rates
 (`rateModel.js`) are constants of the tuning and are not calibrated to population
-units, so they are no longer plotted.
+units, so they are not plotted.
 
 **Regime.** The four rates set the clock and the coexistence scale, but whether
 the trajectory settles onto a limit cycle is decided by the food resource and
@@ -365,11 +356,8 @@ the ratio-dependent response, so it is classified empirically from the prey
 series (`popChartMath.classifyRegime`): persistence first (`prey extinct` /
 `predators extinct`), then the peak-envelope trend (`damped` / `diverging`), then
 period stability (`cyclic` / `irregular`), with `transient` until two cycles
-exist. The badge is shown in **both** chart footers, next to the measured period
-and the indicative `2π/√(αγ)` prediction. On the rates panel the verdict is also
-in the graphics: a subtle background tint in the regime colour, and dashed
-vertical lines at each prey mean-crossing so the cycle cadence overlays the rate
-curves directly.
+exist. The badge is shown in the autocorrelation panel's footer.
+also tints its background in the regime colour.
 
 ## Scene look
 

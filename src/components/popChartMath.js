@@ -161,8 +161,7 @@ export function perCapitaRates(samples, { window = 20 } = {}) {
 // Times where each per-capita rate crosses zero. At an rN = 0 crossing the
 // predator count equals the effective P* = alpha/beta; at rP = 0 the prey count
 // equals N* = gamma/delta. These are the turning points of the cycle.
-export function rateZeroCrossings(samples, opts = {}) {
-  const rates = perCapitaRates(samples, opts)
+export function zeroCrossingsFromRates(rates) {
   const rN = []
   const rP = []
   for (let i = 1; i < rates.length; i++) {
@@ -178,6 +177,10 @@ export function rateZeroCrossings(samples, opts = {}) {
     }
   }
   return { rN, rP }
+}
+
+export function rateZeroCrossings(samples, opts = {}) {
+  return zeroCrossingsFromRates(perCapitaRates(samples, opts))
 }
 
 // Keep only samples within `span` (in t units) of the newest sample. Used to show
@@ -300,11 +303,4 @@ export function acfPeak(acf, { minR = 0.2 } = {}) {
     if (acf[i].r > minR && acf[i].r > acf[i - 1].r && acf[i].r >= acf[i + 1].r) return acf[i]
   }
   return null
-}
-
-// Measured cycle length in seconds: the autocorrelation peak lag, or null when
-// there is no clear repeating period. Shared by both chart footers so they agree.
-export function cycleLength(samples, key = 'blue') {
-  const pk = acfPeak(autocorrelation(samples, key))
-  return pk ? pk.lag : null
 }
