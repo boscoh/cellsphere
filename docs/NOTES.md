@@ -254,6 +254,17 @@ own A/B.
   at 1.0 stayed bounded (blue min 10–16, no extinction). Left off by default as a
   Tuner knob — the effect is real but modest, and it trades prey abundance for
   bite speed.
+- **Predator re-aim (`cell-zby`).** The visible “red takes a long curve” is
+  mostly the freshly divided red: born facing its sibling (tails out), it had the
+  forage window’s drive but no aim, so it swam off and curved back. Two fixes:
+  (1) the forage heading-rate assist now also serves reds, aimed at the nearest
+  prey — red-daughter aim at 2 s goes **87° → ~20°** (10 s latch rate 91–95% →
+  94–96%); (2) new `PRED_HUNT` (1 s) opens the same hard-turn assist the moment a
+  red *newly* smells prey, so adults re-aim onto a new shoal instead of arcing.
+  Making reds *permanently* agile was rejected: an unconditional turn assist
+  halves populations (blue max 62–67 → 50, reds crash) and high gain goes
+  extinct, so the assist stays event/window-limited. 3600 s ×3 at `PRED_HUNT=1`
+  stayed bounded, no extinction.
 
 ---
 

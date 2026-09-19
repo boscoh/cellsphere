@@ -73,6 +73,11 @@ export function predatorSense(sim) {
     })
 
     red.preyNear = near
+    // Open a short hunt window the moment a red newly smells prey, so it can
+    // turn onto the shoal instead of arcing in slowly (cell-zby).
+    const nowSees = near < Infinity
+    if (nowSees && !red.preySeen) red.huntT = P.PRED_HUNT
+    red.preySeen = nowSees
     if (near < Infinity) red.preyNearestDir.set(nfx, nfy, nfz)
     if (sum > 0) {
       red.preyDir.set(fx, fy, fz)

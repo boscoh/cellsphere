@@ -164,6 +164,7 @@ export class Simulation {
         continue
       }
       if (d.reorientT > 0) d.reorientT = Math.max(0, d.reorientT - dt)
+      if (d.huntT > 0) d.huntT = Math.max(0, d.huntT - dt)
       if (d.forageT > 0) d.forageT = Math.max(0, d.forageT - dt)
       const normal = this._v1.copy(d.pos).normalize()
 
@@ -251,7 +252,7 @@ export class Simulation {
         // than only the single nearest blue inside a hard cutoff. Once it has a
         // latched prey it stops steering and holds the latch.
         if (d.breed === 1 && !d.detach && !(d.target && d.target.paralysed)) {
-          if (d.reorientT > 0 && d.preyNear < Infinity) {
+          if ((d.reorientT > 0 || d.huntT > 0) && d.preyNear < Infinity) {
             // Just finished a meal: steer straight at the nearest prey, not the
             // shoal gradient (cell-erd).
             const ang = signedAngleTo(this, d, d.preyNearestDir)
@@ -279,16 +280,22 @@ export class Simulation {
             }
           }
         }
-        // Post-division forage: a fresh daughter turns hard toward sensed food
-        // so it re-aims off its inward birth heading instead of drifting
-        // (cell-x93). Deterministic, unlike the collision kicks.
-        if (d.forageT > 0 && d.breed === 0 && d.foodAmt > 0.01) {
-          const ang = signedAngleTo(this, d, d.foodDir)
-          if (ang != null) d.headingRate += ang * P.FORAGE_TURN * dt
+        // Post-division forage: a fresh daughter turns hard toward its target so
+        // it re-aims off the inward birth heading instead of drifting. Blue aims
+        // at food (cell-x93); red at the nearest prey, which otherwise drives off
+        // and takes a long curve to come back (cell-zby).
+        if (d.forageT > 0) {
+          if (d.breed === 0 && d.foodAmt > 0.01) {
+            const ang = signedAngleTo(this, d, d.foodDir)
+            if (ang != null) d.headingRate += ang * P.FORAGE_TURN * dt
+          } else if (d.breed === 1 && d.preyNear < Infinity) {
+            const ang = signedAngleTo(this, d, d.preyNearestDir)
+            if (ang != null) d.headingRate += ang * P.FORAGE_TURN * dt
+          }
         }
         // Symmetric post-meal re-aim for a red: without it the tail turn is too
         // slow to chain kills (cell-700).
-        if (d.reorientT > 0 && d.breed === 1 && d.preyNear < Infinity) {
+        if ((d.reorientT > 0 || d.huntT > 0) && d.breed === 1 && d.preyNear < Infinity) {
           const ang = signedAngleTo(this, d, d.preyNearestDir)
           if (ang != null) d.headingRate += ang * P.REORIENT_TURN * dt
         }

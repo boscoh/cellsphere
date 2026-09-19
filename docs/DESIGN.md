@@ -297,6 +297,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `PRED_FOCUS` | 1 | Exponent on the prey-proximity weight (1 = linear; higher focuses the gradient on the nearest prey). |
 | `PRED_REORIENT` | 1.5 | Seconds after finishing a meal that a red steers at the nearest prey and ignores both the ambush coast and the energy coast (0 = off). |
 | `REORIENT_TURN` | 20 | Extra heading-rate gain toward the nearest prey during the post-meal reorient window (cell-700). |
+| `PRED_HUNT` | 1 | Seconds after a red newly smells prey that it turns hard at the nearest blue. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby). |
 | `PRED_RATIO` | 1 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off. |
 | `PRED_CROWD` | 0 | Extra drain per additional prey packed within PRED_SENSE: rate *= 1 + PRED_CROWD*(nearby-1). 0 = a clump is not a feast; higher = a shoal feeds a red faster (cell-3bz). |
 | `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
