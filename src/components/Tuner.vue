@@ -260,7 +260,7 @@ function fillPct(value, min, max) {
 }
 
 .param {
-  padding: 6px 0 8px;
+  padding: 8px 0 14px;
 }
 
 .param-head {
@@ -271,12 +271,14 @@ function fillPct(value, min, max) {
 }
 
 .param-label {
-  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 10px;
   color: #c6cfdf;
 }
 
 .readout {
-  font-size: 11px;
+  font-size: 10px;
   color: #8a93a6;
   font-variant-numeric: tabular-nums;
 }

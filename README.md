@@ -65,6 +65,9 @@ rather than a chart drawn beside it.
   proxy until they separate
 - **Chemotaxis on a peaked gradient** — cells only turn toward food when the
   local gradient is sharply peaked, and slow to a near-stop inside a clump
+- **Predator behaviour** — reds ambush and burst, reorient after a meal, and
+  share scarce prey: the bite scales with prey-per-predator and stops below one
+  prey per predator, so rare prey get a refuge
 - **Capsule–capsule collisions** — a mass-weighted soft spring on true capsule
   distance, so elongated bodies repel without phantom contact
 - **Chunked instanced rendering** — body/tail `InstancedMesh`es grow on demand,

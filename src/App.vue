@@ -1,11 +1,10 @@
 <script setup>
-import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Simulation } from './sim.js'
 import {
   P,
   FIXED_DT,
   MAX_SIM_RATE,
-  POP_SAMPLES,
   SAMPLE_DT,
   resetParams,
   setParam,
@@ -26,8 +25,7 @@ const blueCount = ref(0)
 const redCount = ref(0)
 const foodCount = ref(0)
 const popHistory = ref([])
-const rateHistory = ref([])
-const latestRates = computed(() => rateHistory.value[rateHistory.value.length - 1] || null)
+const latestRates = ref(null)
 const perf = ref({})
 const MAX_BACKLOG = MAX_SIM_RATE * FIXED_DT
 
@@ -48,14 +46,14 @@ function onReset() {
   tunerRef.value?.syncValues()
   simRate.value = P.SIM_SPEED
   popHistory.value = []
-  rateHistory.value = []
+  latestRates.value = null
   nextSampleT = 0
   sim.reset()
 }
 
 function onRestart() {
   popHistory.value = []
-  rateHistory.value = []
+  latestRates.value = null
   nextSampleT = 0
   sim.reset()
 }
@@ -112,11 +110,9 @@ onMounted(() => {
       }
       blueCount.value = blue
       redCount.value = red
-      // The population chart keeps the whole run (no sliding window); only the
-      // rate analysis and rateHistory are capped, via POP_SAMPLES below.
+      // The population chart keeps the whole run (no sliding window).
       popHistory.value.push({ t: sim.simTime, blue, red })
-      rateHistory.value.push({ t: sim.simTime, ...computeRates(blue, red) })
-      if (rateHistory.value.length > POP_SAMPLES) rateHistory.value.shift()
+      latestRates.value = computeRates(blue, red)
       nextSampleT = sim.simTime + SAMPLE_DT
     }
 
@@ -170,7 +166,7 @@ onBeforeUnmount(() => {
   <div class="bottom-left">
     <PerfPanel :frame-ms="frameMs" :perf="perf" />
     <PopChart :samples="popHistory" :rates="latestRates" />
-    <RateChart :samples="rateHistory" :pop-samples="popHistory" />
+    <RateChart :rates="latestRates" :pop-samples="popHistory" />
   </div>
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>

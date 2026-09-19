@@ -35,7 +35,7 @@ explorations, experiments, rejected options, and subsystem history.
 
 - `src/App.vue` — thin shell: lifecycle, frame timing, overlay state
 - `src/components/Hud.vue` — top-left HUD (counts, speed slider, tails, restart)
-- `src/components/PerfPanel.vue` — perf breakdown panel; `src/components/PopChart.vue` — population chart (time / phase); `src/components/RateChart.vue` — prey autocorrelation cycle panel (`rateModel.js`, `popChartMath.js`, `chartCanvas.js` are its pure data/canvas helpers)
+- `src/components/PerfPanel.vue` — perf breakdown panel; `src/components/PopChart.vue` — population counts chart; `src/components/RateChart.vue` — prey autocorrelation cycle panel (`rateModel.js`, `popChartMath.js`, `chartCanvas.js` are its pure data/canvas helpers)
 - `src/sim.js` — `Simulation` orchestrator: physics loop + data (render
   lifecycle is delegated to `View`)
 - `src/view.js` — `View`: owns scene/camera/renderer/controls/pools/meshes +

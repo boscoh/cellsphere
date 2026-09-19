@@ -12,8 +12,8 @@ import { lvPeriod } from './rateModel.js'
 import { SAMPLE_DT } from '../constants.js'
 
 const props = defineProps({
-  // Latest knob-derived rates (for the textbook period); only the last entry is used.
-  samples: { type: Array, default: () => [] },
+  // Latest knob-derived rates (for the textbook period).
+  rates: { type: Object, default: null },
   popSamples: { type: Array, default: () => [] },
 })
 
@@ -29,7 +29,7 @@ const TONE_FILL = {
   muted: 'rgba(255, 255, 255, 0.02)',
 }
 
-const latestKnob = computed(() => props.samples[props.samples.length - 1])
+const latestKnob = computed(() => props.rates)
 const textbook = computed(() =>
   latestKnob.value ? lvPeriod(latestKnob.value.alpha, latestKnob.value.gamma) : null,
 )
@@ -174,7 +174,7 @@ function draw() {
 }
 
 watch(
-  () => props.samples[props.samples.length - 1],
+  () => props.rates,
   () => draw(),
   { flush: 'post' },
 )

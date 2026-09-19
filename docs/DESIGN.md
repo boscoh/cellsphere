@@ -188,8 +188,7 @@ _Fixed constants (not tunable at runtime)._
 | `MAX_SIM_RATE` | 50 | speed slider cap, and the `SIM_SPEED` parameter maximum |
 | `MAX_STEPS` | 200 | per-frame substep ceiling |
 | `MIN_RADIUS` | 0.1 | radius at zero energy |
-| `POP_SAMPLES` | 1200 | population-chart history length (`SAMPLE_DT` per sample) |
-| `SAMPLE_DT` | 0.5 | sim-time spacing between population-history samples; fixed so the charts span a constant sim-time window at any speed |
+| `SAMPLE_DT` | 0.5 | sim-time spacing between population-history samples; fixed so sample spacing stays constant at any speed |
 | `SHELL_GAP` | 0.06 | gap between the collision surface and the sphere shell mesh |
 | `START_RADIUS` | 0.13 | spawn radius |
 | `SURFACE` | 5.06 | surface offset (`SPHERE_RADIUS + SHELL_GAP`); every entity is placed here |
@@ -253,7 +252,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 
 | Parameter | Default | Role |
 |---|---|---|
-| `MITO_TIME` | 5 | Duration (sim seconds) of the full division sequence. |
+| `MITO_TIME` | 80 | Duration (sim seconds) of the full division sequence — the mitosis animation. Also the physics window: during it the parent is an immovable collision proxy and the daughters are inactive, invulnerable and food-blind. Raised 5 → 10 → 20 → 80 (16x the original) for a slow, legible division; very large values freeze a big fraction of the population in mitosis. |
 | `MITO_HOLD` | 0.2 | Fraction of mitosis before the parent starts fading. |
 | `MITO_FADE` | 0.4 | Fraction of mitosis over which the parent fades out. |
 | `MITO_NEAR` | 2.1 | Starting separation (x half child length) as daughters form. |
@@ -327,9 +326,9 @@ Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (blue/
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`
 default **1×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
 top-right, the population chart bottom-left, drag hint bottom-center. The chart
-has a **Time / Phase** toggle (count vs time, or the red-vs-blue phase portrait
-where Lotka-Volterra cycles show as closed loops); its footer is just the regime
-badge, plus `hunting effort` on the line below.
+shows prey and predator **counts vs time** (whole run, no window); its only
+footer line is `hunting effort` (the ratio-dependent attack `PRED_RATIO` applies
+at the current prey-per-predator ratio).
 
 A separate **autocorrelation panel**
 (`RateChart.vue`) plots the linearly-detrended **autocorrelation** of the prey
@@ -343,10 +342,7 @@ with a dot and dotted vertical, and the footer reads `textbook period` (the
 uncalibrated `2π/√(αγ)` from the slider-implied rates) plus `repeats about every
 X s` / `correlation peak …`. The measured-rate and rate-plane views were removed
 as uninformative; per-capita rates survive only inside `popChartMath` for the
-nullclines and the rate-model tests. The **phase** view of the
-population chart draws the fitted **nullclines** — where each species' per-capita
-growth is zero (`prey steady` at `P = α/β`, `predators steady` at `N = γ/δ`) —
-so a cycle reads as a loop around their intersection. The knob-derived rates
+rate-model tests. The knob-derived rates
 (`rateModel.js`) are constants of the tuning and are not calibrated to population
 units, so they are not plotted.
 

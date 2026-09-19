@@ -1,7 +1,7 @@
 // Shared primitives for the small 2D canvas panels (PopChart, RateChart).
 
-export const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)'
-export const LABEL_COLOR = '#6b7484'
+const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)'
+const LABEL_COLOR = '#6b7484'
 
 export function scaleCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1
