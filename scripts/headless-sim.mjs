@@ -13,7 +13,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Simulation } from '../src/sim.js'
-import { MAX_CELLS, SURFACE } from '../src/constants.js'
+import { MAX_CELLS, SURFACE, P } from '../src/constants.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = resolve(HERE, '../src')
@@ -41,6 +41,7 @@ const PHYSICS = [
   'food.js',
   'predator.js',
   'tail.js',
+  'gait.js',
 ]
 const RENDER = new Set([
   'materials.js',
@@ -116,6 +117,51 @@ const stepProblems = []
   if (sim.foodMesh !== undefined) stepProblems.push('food mesh appeared headless')
 }
 report('headless build + step', stepProblems, '600 steps, cells finite and on-surface')
+
+// --- 2b. Opt-in gait stays physical ----------------------------------------
+// GAIT_MODE is off by default; turning it on must not put a cell off the
+// surface or into NaN, and the controller must actually engage (a turn phase
+// and a non-general forward mode observed).
+const gaitProblems = []
+{
+  const savedGait = P.GAIT_MODE
+  const savedTumble = P.GAIT_TUMBLE
+  const savedRandom = Math.random
+  P.GAIT_MODE = 1
+  P.GAIT_TUMBLE = 2
+  try {
+    const sim = new Simulation()
+    sim.poseEnabled = false
+    sim.buildWorld()
+    let sawTurn = false
+    let sawEat = false
+    let sawTumble = false
+    for (let i = 0; i < 600; i++) {
+      sim.advance(1 / 60)
+      for (const d of sim.cells) {
+        if (d.gait === 1) sawTurn = true
+        if (d.gaitMode === 2) sawEat = true
+        if (d.gaitForced) sawTumble = true
+        if (!Number.isFinite(d.pos.x + d.pos.y + d.pos.z)) {
+          gaitProblems.push('non-finite cell position')
+          break
+        }
+        if (Math.abs(d.pos.length() - SURFACE) > 1e-6) {
+          gaitProblems.push('cell left the sphere surface')
+          break
+        }
+      }
+    }
+    if (!sawTurn) gaitProblems.push('no cell ever entered a turn phase')
+    if (!sawEat) gaitProblems.push('no cell ever entered slow-eat mode')
+    if (!sawTumble) gaitProblems.push('no cell ever entered a forced tumble')
+  } finally {
+    P.GAIT_MODE = savedGait
+    P.GAIT_TUMBLE = savedTumble
+    Math.random = savedRandom
+  }
+}
+report('gait prototype', gaitProblems, 'gait-on 600 steps physical; turn + eat + tumble engaged')
 
 // --- 3. Headless view is optional -------------------------------------------
 const viewProblems = []

@@ -94,6 +94,13 @@ export function createCell(sim, pos, heading, length, breed = Math.random() < 0.
     steer: 0,
     tailPhase: Math.random() * Math.PI * 2,
     slow: 1,
+    // Alternating-gait state (cell-d4z), written by gait.js. Inert while
+    // P.GAIT_MODE is 0.
+    gait: 0,
+    gaitT: 0,
+    gaitMode: 0,
+    gaitForced: false,
+    gaitTurnDir: 1,
     foodDir: new THREE.Vector3(),
     foodAmt: 0,
     foodPeak: 0,

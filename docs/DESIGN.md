@@ -22,7 +22,8 @@ distance, cell hash, collision solve), `src/grid.js` (spatial hash key packing
 and neighbourhood scan), `src/cells.js` (cell domain — create/grow/mitose),
 `src/bodyPool.js` (pooled body instances per length bucket), `src/tailPool.js`
 (tail instance pool, slot claims/transfers, segment placement), `src/tail.js`
-(tail physics — steering control and spring-chain pose), `src/food.js` (food
+(tail physics — steering control and spring-chain pose), `src/gait.js` (opt-in
+alternating turn/move locomotion; `GAIT_MODE = 0` is a no-op), `src/food.js` (food
 grid, eating + sensing, clumps), `src/foodRender.js` (food mesh create/sync from
 `food.dirty`); tuning constants in `src/constants.js`;
 scene/lights in `src/sceneSetup.js` (`createSceneCore` + `attachGraphics`);
@@ -74,7 +75,11 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   below `STARVE_SLOW`) a starving cell slows. `slow` likewise ramps to ~0 near
   food (graze). Reds additionally **ambush**: `drive` is scaled by `PRED_COAST`
   while no prey is within `PRED_LUNGE`, so a red cruises slowly and bursts when
-  a blue comes close. Steering stays active regardless of `drive`.
+  a blue comes close. Steering stays active regardless of `drive`. An **opt-in
+  alternating gait** (`GAIT_MODE`, `src/gait.js`, `cell-d4z`) can instead cut
+  `drive` and boost `steer` in a TURN phase and scale them by a forward mode
+  (general / drift / eat) in a MOVE phase; it edits only `drive`/`steer`, so with
+  it off the locomotion above is unchanged. See `NOTES.md` §5.
 - **One consistent time loop**: `App.vue` banks real time in an accumulator
   and calls `sim.step(simDt×simRate)`; `step` subdivides into
   `clamp(ceil(simDt/FIXED_DT),1,MAX_STEPS)` substeps of `advance(dt)`. Render
@@ -227,6 +232,27 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `COLLISION_KICK` | 0.5 | Strength of the heading deflection when cells collide. |
 | `MITO_SLOW_FRAC` | 0.9 | Energy fraction above which a cell begins coasting toward mitosis (keeps seeking food until just before dividing). |
 | `PEAK_MIN` | 0.18 | Minimum gradient sharpness required before chemotaxis steers. |
+
+**Gait (turn/move)**
+
+| Parameter | Default | Role |
+|---|---|---|
+| `GAIT_MODE` | 0 | 0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z). |
+| `GAIT_PREY` | 1 | Apply the alternating gait to prey (blue) when GAIT_MODE = 1. |
+| `GAIT_PRED` | 1 | Apply the alternating gait to predators (red) when GAIT_MODE = 1. |
+| `GAIT_TURN_ON` | 0.45 | Steering demand |steer| at which a MOVE phase ends and a TURN phase begins. |
+| `GAIT_TURN_OFF` | 0.15 | Steering demand at or below which a TURN phase ends and MOVE resumes. |
+| `GAIT_MOVE_TIME` | 0.8 | Seconds a cell holds a straight MOVE phase before re-aligning (if it still has steering demand). |
+| `GAIT_TURN_TIME` | 0.35 | Maximum seconds a TURN phase lasts, even if the target keeps moving. |
+| `GAIT_TURN_DRIVE` | 0.2 | Forward-drive multiplier during a TURN phase; low = pivot in place, higher = keep closing while turning. |
+| `GAIT_TURN_STEER` | 1.5 | Steering multiplier during a TURN phase. |
+| `GAIT_MOVE_STEER` | 0.5 | Steering multiplier in the general/drift MOVE modes; < 1 makes the straight run straighter. |
+| `GAIT_DRIFT_DRIVE` | 0.3 | Forward-drive multiplier for the drift mode (well-fed cells coast instead of swimming). |
+| `GAIT_EAT_DRIVE` | 1 | Forward-drive multiplier for the slow-eat mode (stacks on the existing graze slowdown). |
+| `GAIT_EAT_SLOW` | 0.9 | Food-contact slow factor at or below which a cell is in slow-eat mode (1 = never, GRAZE_RATE = always in contact). |
+| `GAIT_DRIFT_FRAC` | 0.6 | Energy fraction above which a non-eating cell drifts rather than swimming at full drive. |
+| `GAIT_TUMBLE` | 0 | Seconds a target-less cell swims before a random tumble turn, so it re-searches instead of running straight (0 = off; run-and-tumble). |
+| `GAIT_TUMBLE_STEER` | 1 | Steering command magnitude of a random tumble turn. |
 
 **Collision**
 

@@ -782,12 +782,121 @@ headless-test).
 
 ---
 
-## 5. Render bug post-mortem
+## 5. Alternating turn/move gait
+
+> **Status:** prototype shipped (`cell-d4z`, 2026-09), **default off**
+> (`GAIT_MODE = 0`). Full 1800s x 5-seed sweep done (`cell-aj9`): all configs
+> bounded, no extinction, no NaN; kept off by default. Run-and-tumble added
+> (`cell-mml`, default off). Harnesses: `scripts/gait-experiment.mjs`,
+> `scripts/gait-sweep.sh`.
+
+This is the untested *windowed pivot* variant left open in §1.5D (`cell-1eo`):
+instead of steering and thrusting continuously, a cell alternates a **TURN**
+phase (low forward drive, boosted steer -> a tight pivot) with a **MOVE** phase
+whose forward speed is set by a **forward mode**.
+
+### 5.1 Model (`src/gait.js`)
+
+- **Phase.** `d.gait` is `MOVE` or `TURN`; `d.gaitT` times the phase.
+  `MOVE -> TURN` when the steering demand `|d.steer|` reaches `GAIT_TURN_ON`, or
+  after `GAIT_MOVE_TIME` if there is still demand. `TURN -> MOVE` when demand
+  falls to `GAIT_TURN_OFF`, or after the `GAIT_TURN_TIME` cap. `|steer|` (already
+  clamped to `[-1, 1]`) is the turn-demand proxy; a cell with no target never
+  leaves `MOVE` unless the tumble timer is on.
+- **Tumble (opt-in).** `GAIT_TUMBLE > 0` makes a target-less cell
+  (`demand <= GAIT_TURN_OFF`) enter a *forced* `TURN` after `GAIT_TUMBLE`
+  seconds, with a random turn direction (`GAIT_TUMBLE_STEER` magnitude) held for
+  the full `GAIT_TURN_TIME`. A chemotactic turn still ends early on-target; a
+  forced tumble does not. This is run-and-tumble: a cell tracking nothing
+  re-randomises its heading instead of running straight (`cell-mml`).
+- **Mode.** In `MOVE`, `d.gaitMode` is picked from cell state: food contact
+  (`d.slow <= GAIT_EAT_SLOW`) -> **eat**; else energy fraction above
+  `GAIT_DRIFT_FRAC` -> **drift**; else **general**. `TURN` always uses the turn
+  multipliers.
+- **Writes.** `TURN`: `drive *= GAIT_TURN_DRIVE`, `steer *= GAIT_TURN_STEER`.
+  `MOVE`: general/drift scale `steer` by `GAIT_MOVE_STEER` (go straighter);
+  drift also scales `drive` by `GAIT_DRIFT_DRIVE`; eat scales `drive` by
+  `GAIT_EAT_DRIVE` (stacks on the existing graze `d.slow`). Only `drive` and
+  `steer` change, so the tail control (`tailBend -> headingRate`) is untouched
+  and the sim/view split still holds.
+- **Gates.** Off outside `paralysed/rest/detach` and while latched onto a
+  paralysed prey; `GAIT_PREY` / `GAIT_PRED` select which breed uses it.
+- `GAIT_MODE = 0` returns immediately: the shipped locomotion is byte-identical
+  (`test:headless` also runs a gait-on 600-step physical check).
+
+The mode multipliers are deliberately ordinary: the point of the prototype is
+that the *alternation* is now explicit and tunable, not that these defaults are
+right.
+
+### 5.2 Full sweep (`scripts/gait-sweep.sh`, 1800s, seeds 1-5)
+
+One process per config, five seeds each; `cross` = total red-blue curve
+crossings over the five runs; `turn%` = mean cell-time in `TURN`; `bDrive` /
+`rDrive` / `rSpeed` are per-cell means. No run had a NaN; `ex` is the number of
+seeds with an extinction.
+
+| config | ex | cross | blue | red | births | bDrive | rDrive | rSpeed | turn% b/r |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | 0 | 6 | 18..193 | 4..125 | 583 | .053 | .115 | .189 | 0 / 0 |
+| gait (default) | 0 | 13 | 8..91 | 5..51 | 360 | .037 | .084 | .152 | 19 / 28 |
+| prey-only | 0 | 17 | 19..156 | 7..90 | **635** | .036 | .109 | .194 | 20 / 0 |
+| pred-only | 0 | 4 | 12..100 | 2..44 | 370 | .051 | .083 | .156 | 0 / 26 |
+| `TURN_DRIVE 0.35` | 0 | 10 | 16..220 | 4..96 | 532 | .044 | .085 | .158 | 19 / 35 |
+| `TURN_DRIVE 0.5` | 0 | **29** | 17..293 | 3..179 | **746** | .049 | .087 | .170 | 21 / 36 |
+| `MOVE_TIME 1.2` | 0 | 10 | 13..138 | 3..61 | 443 | .040 | .079 | .159 | 18 / 28 |
+| `DRIFT_FRAC 1` (no drift) | 0 | 16 | 9..217 | 2..140 | 536 | .041 | .086 | .166 | 21 / 31 |
+| `TUMBLE 2` | 0 | 8 | 12..182 | 4..88 | 463 | .040 | .073 | .160 | 24 / 32 |
+
+An earlier 1200s seeds-1-2 pass plus 2400s seeds-1-3 runs showed the same
+picture, and caught the one fragile corner: `MOVE_TIME 1.5` with weak move
+steering (`STEER 0.25`) nearly crashed seed 1 (blue 6..50). The shipped script
+keeps the milder `MOVE_TIME 1.2`.
+
+### 5.3 Reading and decision (`cell-aj9`)
+
+- **Safe.** Every config survived 1800s on all five seeds and stayed bounded and
+  finite, so the prototype is safe to keep exposed in the Tuner.
+- **The gait amplifies the cycle.** Baseline already oscillates (6 crossings);
+  the pivot/demand gate roughly doubles-to-quintuples that (default 13, prey-only
+  17, `TURN_DRIVE 0.5` 29). This is the intended direction — a more pronounced
+  but still bounded red-blue cycle, not a collapse.
+- **Most configs cost prey productivity.** Default gait and pred-only cut births
+  to ~360-370 (prey `drive` down), while `TURN_DRIVE 0.5` and prey-only keep or
+  raise births (746 / 635) because they pivot without throttling prey as much.
+- **Predator-only is the mildest change** (4 crossings, like baseline): pivoting
+  reds alone does little; the added cycle comes from the prey gait / interaction.
+- **`TURN_DRIVE 0.5` is the standout knob** — highest births and amplitude
+  (blue 293 / red 179) with 29 crossings: a lively, bounded cycle. `DRIFT_FRAC 1`
+  vs default is within noise, so "drift hurts reds" is not confirmed at this
+  sample size.
+- **Decision: keep `GAIT_MODE = 0` default.** No config dominates baseline on
+  every criterion, and five seeds is too few to flip a shipped default. If a
+  stronger cycle is wanted, start from `GAIT_TURN_DRIVE = 0.5` (prey-only if
+  productivity matters), then re-run the sweep with more seeds.
+
+### 5.4 Run-and-tumble and open follow-ups (`cell-mml`)
+
+Run-and-tumble is implemented (`GAIT_TUMBLE`, `GAIT_TUMBLE_STEER`; default off).
+In the sweep its row (8 crossings, births 463, turn 24/32, lowest red speed
+.073) raises turn duty as designed but is not a clear win, so it stays default
+off. Remaining:
+
+- The sweep is still seed-limited (5); confirm `TURN_DRIVE 0.5`'s amplitude
+  before adopting, and check its cycle period with the RateChart autocorrelation.
+- `eat` mode is currently just a multiplier on the existing graze slowdown
+  (`GRAZE_RATE` already near zero); giving it a small forward creep would make
+  "slow eating" move while feeding, and needs its own A/B.
+- The "windowed pivot" now has a positive result (§1.5D): gating the throttle to
+  strong steering demand tightens turns without the permanent-throttle collapse.
+
+---
+
+## 6. Render bug post-mortem
 
 Two rendering bugs, both resolved by auditing the render path numerically rather
 than tweaking materials. Only the conclusions that carry forward are kept.
 
-### 5.1 "Cell goes black / body vanishes, tail remains"
+### 6.1 "Cell goes black / body vanishes, tail remains"
 
 A far-side cell lost its body but kept its tail: far-side culling only hid
 `cos ≤ −0.06`, while the opaque shell eclipses bodies in a wider limb band
@@ -800,7 +909,7 @@ re-adding it was reverted.
 and **cull tails at the horizon** (`sideHidden = cosFace <= 0`; `placeTail`
 clears a hidden cell's tail, `renderBodies` ignores `sideHidden`).
 
-### 5.2 "Bodies blink on scroll-zoom" (`cell-6uj`)
+### 6.2 "Bodies blink on scroll-zoom" (`cell-6uj`)
 
 Pooled `InstancedMesh`es were `frustumCulled` against a `boundingSphere` cached
 on first render. A body pool born with one cell froze its sphere at ~one capsule
@@ -811,7 +920,7 @@ hid it.
 and `ensureTailChunk` (`src/cells.js`), `foodMesh` (`src/sim.js`), and each tail
 chunk.
 
-### 5.3 Lessons
+### 6.3 Lessons
 
 - Two independent culling layers exist: cell-level `sideHidden` (per-cell,
   recomputed each frame) and mesh-level `frustumCulled` (three.js, per pool,
@@ -838,4 +947,8 @@ discarded warm-up run preceded each sweep so lazy geometry/pool PRNG draws
 wouldn't skew the first set. Candidates were scored on: no extinction over
 ≥1800s, bounded amplitude, red lagging blue, and no NaN. Temporary scripts were
 removed after each pass; `scripts/tail-equivalence.mjs` shows the reproducible
-seeded-run pattern.
+seeded-run pattern. The gait harnesses (`scripts/gait-experiment.mjs` and
+`scripts/gait-sweep.sh`/`gait-sweep.mjs`, §5) are kept as plain-Node variants of
+the same method: they override `P` directly, disable pose, run one process per
+config in parallel, and report population ranges, crossings, births and
+locomotion stats.

@@ -37,6 +37,7 @@ export const CULL_COS = 0
 export const GROUPS = [
   { key: 'world', label: 'World' },
   { key: 'movement', label: 'Movement' },
+  { key: 'gait', label: 'Gait (turn/move)' },
   { key: 'collision', label: 'Collision' },
   { key: 'sensing', label: 'Sensing & Feeding' },
   { key: 'mitosis', label: 'Mitosis' },
@@ -62,6 +63,23 @@ export const PARAM_DEFS = [
   { key: 'COLLISION_KICK', group: 'movement', label: 'Collision kick', desc: 'Strength of the heading deflection when cells collide.', def: 0.5, min: 0, max: 2, step: 0.05 },
   { key: 'MITO_SLOW_FRAC', group: 'movement', label: 'Mito slow frac', desc: 'Energy fraction above which a cell begins coasting toward mitosis (keeps seeking food until just before dividing).', def: 0.9, min: 0.05, max: 0.99, step: 0.01 },
   { key: 'PEAK_MIN', group: 'movement', label: 'Steer peak min', desc: 'Minimum gradient sharpness required before chemotaxis steers.', def: 0.18, min: 0, max: 1, step: 0.01 },
+
+  { key: 'GAIT_MODE', group: 'gait', label: 'Gait mode', desc: '0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z).', def: 0, min: 0, max: 1, step: 1 },
+  { key: 'GAIT_PREY', group: 'gait', label: 'Gait: prey', desc: 'Apply the alternating gait to prey (blue) when GAIT_MODE = 1.', def: 1, min: 0, max: 1, step: 1 },
+  { key: 'GAIT_PRED', group: 'gait', label: 'Gait: predators', desc: 'Apply the alternating gait to predators (red) when GAIT_MODE = 1.', def: 1, min: 0, max: 1, step: 1 },
+  { key: 'GAIT_TURN_ON', group: 'gait', label: 'Turn on demand', desc: 'Steering demand |steer| at which a MOVE phase ends and a TURN phase begins.', def: 0.45, min: 0, max: 1, step: 0.01 },
+  { key: 'GAIT_TURN_OFF', group: 'gait', label: 'Turn off demand', desc: 'Steering demand at or below which a TURN phase ends and MOVE resumes.', def: 0.15, min: 0, max: 1, step: 0.01 },
+  { key: 'GAIT_MOVE_TIME', group: 'gait', label: 'Move phase', desc: 'Seconds a cell holds a straight MOVE phase before re-aligning (if it still has steering demand).', def: 0.8, min: 0.1, max: 4, step: 0.05 },
+  { key: 'GAIT_TURN_TIME', group: 'gait', label: 'Turn phase', desc: 'Maximum seconds a TURN phase lasts, even if the target keeps moving.', def: 0.35, min: 0.05, max: 2, step: 0.05 },
+  { key: 'GAIT_TURN_DRIVE', group: 'gait', label: 'Turn drive', desc: 'Forward-drive multiplier during a TURN phase; low = pivot in place, higher = keep closing while turning.', def: 0.2, min: 0, max: 1, step: 0.05 },
+  { key: 'GAIT_TURN_STEER', group: 'gait', label: 'Turn steer', desc: 'Steering multiplier during a TURN phase.', def: 1.5, min: 0, max: 4, step: 0.1 },
+  { key: 'GAIT_MOVE_STEER', group: 'gait', label: 'Move steer', desc: 'Steering multiplier in the general/drift MOVE modes; < 1 makes the straight run straighter.', def: 0.5, min: 0, max: 1.5, step: 0.05 },
+  { key: 'GAIT_DRIFT_DRIVE', group: 'gait', label: 'Drift drive', desc: 'Forward-drive multiplier for the drift mode (well-fed cells coast instead of swimming).', def: 0.3, min: 0, max: 1, step: 0.05 },
+  { key: 'GAIT_EAT_DRIVE', group: 'gait', label: 'Eat drive', desc: 'Forward-drive multiplier for the slow-eat mode (stacks on the existing graze slowdown).', def: 1, min: 0, max: 1, step: 0.05 },
+  { key: 'GAIT_EAT_SLOW', group: 'gait', label: 'Eat slow below', desc: 'Food-contact slow factor at or below which a cell is in slow-eat mode (1 = never, GRAZE_RATE = always in contact).', def: 0.9, min: 0, max: 1, step: 0.01 },
+  { key: 'GAIT_DRIFT_FRAC', group: 'gait', label: 'Drift above energy', desc: 'Energy fraction above which a non-eating cell drifts rather than swimming at full drive.', def: 0.6, min: 0, max: 1, step: 0.01 },
+  { key: 'GAIT_TUMBLE', group: 'gait', label: 'Tumble interval', desc: 'Seconds a target-less cell swims before a random tumble turn, so it re-searches instead of running straight (0 = off; run-and-tumble).', def: 0, min: 0, max: 10, step: 0.1 },
+  { key: 'GAIT_TUMBLE_STEER', group: 'gait', label: 'Tumble steer', desc: 'Steering command magnitude of a random tumble turn.', def: 1, min: 0, max: 1, step: 0.05 },
 
   { key: 'SPRING', group: 'collision', label: 'Spring', desc: 'Stiffness of the soft cell-cell collision response.', def: 22, min: 0, max: 100, step: 1 },
 
