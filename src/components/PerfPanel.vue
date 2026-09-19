@@ -6,7 +6,7 @@ defineProps({
   perf: { type: Object, default: () => ({}) },
 })
 
-const expanded = ref(true)
+const expanded = ref(false)
 
 const PERF_LABELS = {
   grid: 'grid (spatial hash)',
