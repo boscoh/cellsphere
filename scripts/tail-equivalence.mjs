@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { createServer } from 'vite'
+import { mulberry32 } from '../src/util.js'
 
 const SEED = 1
 const DT = 1 / 60
@@ -7,16 +8,6 @@ const DT = 1 / 60
 // enough: a pose write-back would surface on the next `advance`. Everything
 // else exercises the tail pathway directly, without stepping the simulation.
 const EQUIV_STEPS = 8
-
-function mulberry32(a) {
-  return function () {
-    a |= 0
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 function checksum(sim) {
   let h = 2166136261 >>> 0

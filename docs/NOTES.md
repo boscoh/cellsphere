@@ -123,7 +123,8 @@ only ratio-dependent predation survived.
 
 ### 1.4 Open follow-ups
 
-- Clumps are still not a feast (fixed single-target intake).
+- Clumps are still not a feast (fixed single-target intake); see §1.5 for the
+  measured eating-speed options and the division-orientation bug.
 - Reds cannot graze food at all; grazing would give a survival floor.
 - Early dip: reds fall 15 → ~6–11 around t=90–150s before blue builds.
 - Ambush refinement (`cell-fgh`: `PRED_SIGHT`/`PRED_LUNGE`, pivoting while
@@ -131,6 +132,92 @@ only ratio-dependent predation survived.
 - `FOOD_COUNT 3000` changes the non-predator base feel; revert if undesired.
 
 The full `predator` parameter table is generated into `DESIGN.md`.
+
+### 1.5 Clump camping, division orientation, eating speed
+
+> **Status:** investigation only (2026-09). No default changed. Seeded headless
+> runs (`ssrLoadModule('/src/sim.js')`, `mulberry32` from `src/util.js`), 600–
+> 3600 s, seeds 1–3, PRED_* overridden directly on `P`.
+
+**A. Daughters face each other by design; the defect is post-division
+food-seeking.** Facing each other is *deliberate, not a bug*: each daughter's
+tail must stream **outward**, away from its sibling, and since the tail trails
+`-heading` the body heading must point inward. `mitose()` places the `back` cell
+at `startPos + headBack·(-half·MITO_NEAR)` with heading `headBack` (backward) and
+mirrors `front`, which is exactly what keeps the two tails outside — correct.
+
+The real problem is what happens next: a freshly divided cell is bad at finding
+the food right beside it, so a blue that divides on a clump often leaves it.
+
+- `concentration()` and `eatAndRespawn()` skip cells while `d.mito || d.splitting`,
+  so daughters are **food-blind for the whole `MITO_TIME` (5 s)**.
+- `finalizeMito` then gives each daughter `rest = MITO_REST` (4 s) with
+  `drive = 0`: it coasts in place and may only turn. Steering is live after one
+  sense pass (`foodPeak ≈ 0.46`, `|steer| ≈ 0.44`), but the tail-driven
+  `headingRate` is drag-limited (`≈ TAIL_TURN·tailBend/ANG_DRAG`), so the body
+  swings only ≈13° during the 4 s rest.
+- The outward-facing tails also mean the birth heading points at the sibling —
+  ~90° off the nearest food on average — and when drive resumes the near-food
+  `slow` (grazing) term keeps the daughter crawling, so it mills/drifts instead
+  of closing.
+
+Measured over 516 divisions (seed 1, 1200 s): nearest-food distance at release
+0.166–0.211; by 16 s it is essentially unchanged (0.172–0.195) and system-wide
+mean `|headingRate|` is 0.036 rad/s (≈0.07 for daughters). So the failure is an
+**actuation/re-aim problem in the division aftermath** — an inward birth heading
+plus a ~9 s blind/coast window the cell cannot turn through — not the facing
+itself. Candidate fixes: let daughters sense during `MITO_REST` (or during
+mitosis), shorten `MITO_REST`, seed a stronger initial turn toward the sensed
+gradient at release, or raise steering authority for the re-aim window.
+
+**B. Why a red does not camp a clump.** Measured (600 s, seeds 1–2): reds are
+latched ~40–50 % of their lives, mean kill gap ~65–71 s, mean re-latch ~30 s, and
+only ~40–50 % of meals are followed by a fresh latch within 2 s. Causes, in order:
+
+1. **Single-target, fixed-rate intake.** `PRED_DRAIN` on one latched blue; a
+   clump only shortens search dead-time (§1.2.B). This caps throughput hardest.
+2. **Short re-orient window.** `PRED_REORIENT` is 0.3 s; after it the red reverts
+   to the shoal gradient (`preyDir`), a proximity-weighted average that can point
+   off the nearest blue, and re-enables the ambush coast (`PRED_COAST`) so it
+   closes on the next blue at 0.35 drive while beyond `PRED_LUNGE`.
+3. **Energy coast band.** Above `MITO_SLOW_FRAC = 0.9` drive ramps to 0, so the
+   best-fed red — the one that just ate — is the least inclined to chase again.
+4. **Ratio gate.** `PRED_RATIO = 1` stops hunting entirely once `prey/pred < 1`.
+   That is what protects prey at the crossover, but it also truncates camping.
+
+Multi-red competition and the shared ratio throttle amplify all four.
+
+**C. Eating faster with a transient red > blue, without a prey wipeout.** Keeping
+`PRED_EFF = 1`, `PRED_COAST`, `PRED_LUNGE`, `PRED_METABOLISM` and `PRED_RATIO`
+unchanged, raise `PRED_DRAIN` alone. 3600 s, seeds 1/2/3 (`red>blue` = max
+red−blue; `×` = red/blue curve crossings):
+
+| `PRED_DRAIN` | blue min..max | red min..max | red>blue | crossings | extinct? |
+|---|---|---|---|---|---|
+| 0.02 | 15/15/12..158/76/141 | 5/6/2..84/39/79 | 7/3/2 | 4/4/10 | no |
+| 0.025 | 19/24/21..59/62/85 | 7/5/7..30/34/53 | 1/3/2 | 2/6/2 | no |
+| 0.03 | 18/9/22..72/70/126 | 6/1/6..43/32/71 | 2/1/3 | 4/4/10 | no |
+
+Baseline `PRED_DRAIN = 0.012` (1800 s, seeds 1–2) never crosses: blue 26..92,
+red 9..55, `red>blue = 0`, 0 crossings. So the crossover comes entirely from a
+faster bite.
+
+**Rejected in the same sweep.** `PRED_EFF = 0.5` (drain 0.03): reds convert too
+little, prey bloom to 191–300, crossover becomes seed-dependent (4/0) — reject.
+`PRED_RATIO = 2–3`: suppresses the crossover entirely and lets prey bloom to 343.
+`PRED_METABOLISM = 0.002` (drain 0.03): seed 2 starved all reds (blue 500,
+red 0) — reject. Raising `PRED_REORIENT` to 2 s gave a small kill-gap gain
+(60–63 s vs 65–71 s) but nothing else, because intake is intake-limited.
+
+**Recommendation.** `PRED_DRAIN` 0.012 → **0.02** (1.67×): shortest change that
+shortens time-on-prey, produces repeated transient red > blue overshoots (up to
++7 cells), and kept both populations alive in all six long runs. `0.025` is the
+conservative alternative; `0.03` also survived these seeds but seed 2 dropped to
+a single red, so treat it as riskier. If a stronger, more visible boom is wanted,
+the structural move is the §1.4 **clump feast** — scale drain with local prey
+density (`rate *= 1 + c·(nearby−1)`) or allow N simultaneous latches — so a red
+eats fast inside a clump while isolated blues survive as refuge; that needs its
+own A/B.
 
 ---
 

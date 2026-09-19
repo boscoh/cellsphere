@@ -48,6 +48,7 @@ explorations, experiments, rejected options, and subsystem history.
 - `src/glow.js`, `src/pops.js` — death-burst billboards
 - `src/perf.js` — per-frame timing; `src/components/Tuner.vue` — parameter UI
 - `src/math.js` — pure helpers
+- `src/util.js` — dependency-free script/test helpers (seeded PRNG)
 
 Invariants an agent must not break:
 

@@ -22,7 +22,8 @@ and neighbourhood scan), `src/cells.js` (cell domain — create/grow/mitose),
 (tail physics — steering control and spring-chain pose), `src/food.js` (food
 grid, eating + sensing, clumps); tuning constants in `src/constants.js`;
 scene/lights in `src/sceneSetup.js`; shared geos/materials in
-`src/materials.js`; pure helpers in `src/math.js`.
+`src/materials.js`; pure helpers in `src/math.js`; dependency-free script/test
+helpers (seeded `mulberry32`) in `src/util.js`.
 
 ## How it works (architecture)
 
@@ -102,8 +103,10 @@ scene/lights in `src/sceneSetup.js`; shared geos/materials in
   food beyond that (and food a nearly-full cell touches) is eaten but wasted.
 - **Energy → mitosis**: at full energy, `mitose()` spawns two daughters, each
   at **half the parent's length** so both fit exactly inside the parent's
-  outline, facing away. The parent **shrinks to nothing** (its `fade` scales the
-  body down via the instance matrix), then its mesh is dropped but it **keeps
+  outline. The two daughters face each other so their tails stream outward; see
+  `NOTES.md` §1.5A for the post-division food-seeking problem. The parent
+  **shrinks to nothing** (its `fade` scales the body down via the instance
+  matrix), then its mesh is dropped but it **keeps
   colliding** until the daughters finish separating; `finalizeMito` marks it dead
   and releases the daughters (with a `MITO_REST` coast). Because metabolism keeps
   draining, a full cell that can't split (cap pressure) shrinks and resumes
