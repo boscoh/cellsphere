@@ -13,6 +13,10 @@ export const MAX_STEPS = 200
 // Host/UI limits: the HUD speed slider cap and the population chart history.
 export const MAX_SIM_RATE = 50
 export const POP_SAMPLES = 1200
+// Sim-time spacing between population-history samples. Fixed regardless of
+// simRate so the charts span a constant sim-time window and the finite-
+// difference rates stay smooth when running fast.
+export const SAMPLE_DT = 0.5
 
 // Pools grow on demand in fixed-size chunks rather than sizing every buffer to
 // MAX_CELLS up-front, so memory/upload scale with the high-water mark of
@@ -126,8 +130,9 @@ export const PARAM_DEFS = [
   { key: 'REORIENT_TURN', group: 'predator', label: 'Reorient turn', desc: 'Extra heading-rate gain toward the nearest prey during the post-meal reorient window (cell-700).', def: 20, min: 0, max: 60, step: 1 },
   { key: 'PRED_HUNT', group: 'predator', label: 'Hunt window', desc: 'Seconds after a red newly smells prey that it turns hard at the nearest blue. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby).', def: 1, min: 0, max: 5, step: 0.1 },
   { key: 'PRED_TURN_SLOW', group: 'predator', label: 'Turn-phase throttle', desc: 'How much a red throttles back while its heading is off the nearest prey: drive *= 1 - PRED_TURN_SLOW*(1-cos(error))/2. Higher = tighter pivot turns but slower hunting (cell-1eo).', def: 0, min: 0, max: 1, step: 0.05 },
-  { key: 'PRED_RATIO', group: 'predator', label: 'Ratio half-saturation', desc: 'Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off.', def: 1, min: 0, max: 20, step: 0.5 },
+  { key: 'PRED_RATIO', group: 'predator', label: 'Ratio half-saturation', desc: 'Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); lower = weaker suppression so reds can overshoot blue before starving; 0 = off (overshoot then collapse). Lowered 1 to 0.75 so a transient red > blue overshoot appears while 1800 s runs still survive.', def: 0.75, min: 0, max: 20, step: 0.25 },
   { key: 'PRED_CROWD', group: 'predator', label: 'Clump feast', desc: 'Extra drain per additional prey packed within PRED_SENSE: rate *= 1 + PRED_CROWD*(nearby-1). 0 = a clump is not a feast; higher = a shoal feeds a red faster (cell-3bz).', def: 0, min: 0, max: 3, step: 0.1 },
+  { key: 'PRED_T3_HALF', group: 'predator', label: 'Type III half-density', desc: 'Prey visible within PRED_SENSE at which a red bites at half its full rate. The bite scales as a smooth sigmoid (Hill, exponent 2) in local prey count, so one lone blue is hard to catch while a shoal is easy: a continuous rare-prey refuge that can stand in for the hard stop-hunting gate. 0 = off (Type II, density-independent bite).', def: 0, min: 0, max: 20, step: 0.5 },
   { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of blue (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.01 },
 ]
 

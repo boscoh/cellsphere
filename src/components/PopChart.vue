@@ -1,89 +1,48 @@
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { computeCellColor } from '../cells.js'
+import { POP_SAMPLES } from '../constants.js'
+import { classifyRegime, fitRatePlane } from './popChartMath.js'
+import { scaleCanvas, fmtTime, drawAxes, drawYLabel, drawAxisMax } from './chartCanvas.js'
 
 const props = defineProps({
   samples: { type: Array, default: () => [] },
+  rates: { type: Object, default: null },
 })
 
 const canvasRef = ref(null)
 const expanded = ref(true)
+const mode = ref('time')
 const blueColor = '#' + computeCellColor(0).getHexString()
 const redColor = '#' + computeCellColor(1).getHexString()
-const axisColor = 'rgba(255, 255, 255, 0.12)'
-const labelColor = '#6b7484'
+const redRgb = colorRgb(computeCellColor(1))
+const blueRgb = colorRgb(computeCellColor(0))
+
+const analysis = computed(() => {
+  const s = props.samples
+  return s.length > POP_SAMPLES ? s.slice(s.length - POP_SAMPLES) : s
+})
+const nulls = computed(() => {
+  const f = fitRatePlane(analysis.value)
+  return { prey: f.preyNull, pred: f.predNull }
+})
+const regime = computed(() => classifyRegime(analysis.value))
+const huntLabel = computed(() => (props.rates ? props.rates.attack.toFixed(2) : '—'))
+
+function colorRgb(c) {
+  return [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)]
+}
+
+function rgba(rgb, a) {
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`
+}
 
 let ro
-
-function scaleCanvas(canvas) {
-  const dpr = window.devicePixelRatio || 1
-  const w = canvas.clientWidth
-  const h = canvas.clientHeight
-  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-    canvas.width = Math.round(w * dpr)
-    canvas.height = Math.round(h * dpr)
-  }
-  const ctx = canvas.getContext('2d')
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  return { ctx, w, h }
-}
 
 function maxOf(samples, key) {
   let m = 1
   for (let i = 0; i < samples.length; i++) if (samples[i][key] > m) m = samples[i][key]
   return m
-}
-
-function fmtTime(t) {
-  if (!isFinite(t)) return '—'
-  return Math.abs(t) >= 10 ? t.toFixed(0) : t.toFixed(1)
-}
-
-function drawAxisMax(ctx, x, y, text, align, baseline) {
-  ctx.fillStyle = labelColor
-  ctx.font = '9px system-ui, sans-serif'
-  ctx.textAlign = align
-  ctx.textBaseline = baseline
-  ctx.fillText(text, x, y)
-}
-
-function drawYLabel(ctx, pad, h, text) {
-  ctx.save()
-  ctx.fillStyle = labelColor
-  ctx.font = '9px system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'bottom'
-  ctx.translate(pad.l - 3, h - pad.b)
-  ctx.rotate(-Math.PI / 2)
-  const tw = ctx.measureText(text).width
-  ctx.fillText(text, 0, 0)
-  const ay = -4.5
-  const ax = tw + 3
-  ctx.strokeStyle = labelColor
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(ax, ay)
-  ctx.lineTo(ax + 5, ay)
-  ctx.moveTo(ax + 2.5, ay - 2.5)
-  ctx.lineTo(ax + 5, ay)
-  ctx.lineTo(ax + 2.5, ay + 2.5)
-  ctx.stroke()
-  ctx.restore()
-}
-
-function drawAxes(ctx, pad, w, h, xLabel) {
-  ctx.strokeStyle = axisColor
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(pad.l, pad.t)
-  ctx.lineTo(pad.l, h - pad.b)
-  ctx.lineTo(w - pad.r, h - pad.b)
-  ctx.stroke()
-  ctx.fillStyle = labelColor
-  ctx.font = '9px system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'bottom'
-  ctx.fillText(xLabel, pad.l + 1, h - 3)
 }
 
 function drawTime(ctx, pad, w, h, samples) {
@@ -95,21 +54,112 @@ function drawTime(ctx, pad, w, h, samples) {
   const X = (t) => pad.l + ((t - t0) / (t1 - t0 || 1)) * pw
   const Y = (c) => pad.t + ph - (c / maxC) * ph
 
-  drawAxes(ctx, pad, w, h, 'time →')
+  drawAxes(ctx, pad, w, h, 'time')
   drawYLabel(ctx, pad, h, 'count')
   drawAxisMax(ctx, pad.l - 3, pad.t, String(maxC), 'right', 'top')
-  drawAxisMax(ctx, w - pad.r, h - 3, fmtTime(t1), 'right', 'bottom')
+  drawAxisMax(ctx, pad.l - 3, h - pad.b, '0', 'right', 'bottom')
+  drawAxisMax(ctx, pad.l, h - 3, `${fmtTime(t0)} s`, 'left', 'bottom')
+  drawAxisMax(ctx, w - pad.r, h - 3, `${fmtTime(t1)} s`, 'right', 'bottom')
 
+  const n = samples.length
+  const step = Math.max(1, Math.floor(n / 1200))
   for (const [key, color] of [['blue', blueColor], ['red', redColor]]) {
     ctx.strokeStyle = color
     ctx.lineWidth = 1.5
     ctx.beginPath()
-    for (let i = 0; i < samples.length; i++) {
+    for (let i = 0; i < n; i += step) {
       const x = X(samples[i].t)
       const y = Y(samples[i][key])
       if (i === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
     }
+    if ((n - 1) % step !== 0) {
+      ctx.lineTo(X(samples[n - 1].t), Y(samples[n - 1][key]))
+    }
+    ctx.stroke()
+  }
+}
+
+function drawPhase(ctx, pad, w, h, samples) {
+  const maxB = maxOf(samples, 'blue')
+  const maxR = maxOf(samples, 'red')
+  const pw = w - pad.l - pad.r
+  const ph = h - pad.t - pad.b
+  const X = (b) => pad.l + (b / maxB) * pw
+  const Y = (r) => pad.t + ph - (r / maxR) * ph
+
+  drawAxes(ctx, pad, w, h, 'prey (blue)')
+  drawYLabel(ctx, pad, h, 'predators')
+  drawAxisMax(ctx, pad.l - 3, pad.t, String(maxR), 'right', 'top')
+  drawAxisMax(ctx, pad.l - 3, h - pad.b, '0', 'right', 'bottom')
+  drawAxisMax(ctx, pad.l, h - 3, '0', 'left', 'bottom')
+  drawAxisMax(ctx, w - pad.r, h - 3, String(maxB), 'right', 'bottom')
+
+  // Fading trail: the cycle's direction of travel is blue->bright. Subsample so
+  // long histories stay cheap to draw.
+  const n = samples.length
+  const step = Math.max(1, Math.floor(n / 500))
+  ctx.lineWidth = 1.5
+  for (let i = step; i < n; i += step) {
+    const a = i / n
+    ctx.strokeStyle = rgba(redRgb, 0.06 + 0.7 * a)
+    ctx.beginPath()
+    ctx.moveTo(X(samples[i - step].blue), Y(samples[i - step].red))
+    ctx.lineTo(X(samples[i].blue), Y(samples[i].red))
+    ctx.stroke()
+  }
+
+  const last = samples[n - 1]
+  ctx.fillStyle = rgba(blueRgb, 1)
+  ctx.beginPath()
+  ctx.arc(X(last.blue), Y(last.red), 2.5, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Empirical cycle center (mean of the window) — the loop should encircle it.
+  let sb = 0
+  let sr = 0
+  for (const s of samples) {
+    sb += s.blue
+    sr += s.red
+  }
+  const cb = X(sb / n)
+  const cr = Y(sr / n)
+  ctx.strokeStyle = rgba(blueRgb, 0.85)
+  ctx.setLineDash([2, 2])
+  ctx.beginPath()
+  ctx.moveTo(cb - 4, cr)
+  ctx.lineTo(cb + 4, cr)
+  ctx.moveTo(cb, cr - 4)
+  ctx.lineTo(cb, cr + 4)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // Fitted nullclines: where each species' per-capita growth is zero. A cycle is
+  // a loop around their intersection, so this is the cycle test in state space.
+  const nc = nulls.value
+  const okPrey = nc.prey !== null && nc.prey > 0 && nc.prey <= maxR
+  const okPred = nc.pred !== null && nc.pred > 0 && nc.pred <= maxB
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+  ctx.setLineDash([3, 3])
+  if (okPrey) {
+    ctx.beginPath()
+    ctx.moveTo(pad.l, Y(nc.prey))
+    ctx.lineTo(w - pad.r, Y(nc.prey))
+    ctx.stroke()
+    drawAxisMax(ctx, w - pad.r, Y(nc.prey) - 2, 'prey steady', 'right', 'bottom')
+  }
+  if (okPred) {
+    ctx.beginPath()
+    ctx.moveTo(X(nc.pred), pad.t)
+    ctx.lineTo(X(nc.pred), h - pad.b)
+    ctx.stroke()
+    drawAxisMax(ctx, X(nc.pred) + 2, pad.t + 8, 'predators steady', 'left', 'top')
+  }
+  ctx.setLineDash([])
+  if (okPrey && okPred) {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+    ctx.beginPath()
+    ctx.arc(X(nc.pred), Y(nc.prey), 3, 0, Math.PI * 2)
     ctx.stroke()
   }
 }
@@ -122,7 +172,8 @@ function draw() {
   const samples = props.samples
   if (samples.length < 2) return
   const pad = { l: 30, r: 10, t: 12, b: 16 }
-  drawTime(ctx, pad, w, h, samples)
+  if (mode.value === 'phase') drawPhase(ctx, pad, w, h, samples)
+  else drawTime(ctx, pad, w, h, samples)
 }
 
 watch(
@@ -130,6 +181,7 @@ watch(
   () => draw(),
   { flush: 'post' },
 )
+watch([mode, expanded], () => draw(), { flush: 'post' })
 
 onMounted(() => {
   ro = new ResizeObserver(() => draw())
@@ -150,7 +202,7 @@ onBeforeUnmount(() => {
         class="expand-btn"
         :class="{ collapsed: !expanded }"
         :aria-expanded="String(expanded)"
-        :title="expanded ? 'Collapse graph' : 'Expand graph'"
+        :title="expanded ? 'Collapse population chart' : 'Expand population chart'"
         @click="expanded = !expanded"
       >
         <svg
@@ -167,9 +219,41 @@ onBeforeUnmount(() => {
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      <span class="ctl">Graph</span>
+      <span class="ctl">Population</span>
+      <div class="mode-toggle">
+        <button
+          type="button"
+          class="mode-btn"
+          :class="{ active: mode === 'time' }"
+          @click="mode = 'time'"
+        >
+          Time
+        </button>
+        <button
+          type="button"
+          class="mode-btn"
+          :class="{ active: mode === 'phase' }"
+          @click="mode = 'phase'"
+        >
+          Phase
+        </button>
+      </div>
     </div>
     <canvas v-show="expanded" ref="canvasRef" class="pop-canvas"></canvas>
+    <div
+      v-show="expanded"
+      class="pop-foot"
+      title="Regime from the trajectory (persistence, envelope trend, period stability)."
+    >
+      <span class="badge" :class="regime.tone">{{ regime.label }}</span>
+    </div>
+    <div
+      v-show="expanded"
+      class="pop-hunt"
+      title="Ratio-dependent hunting strength: how hard each predator hunts at the current prey-per-predator ratio (PRED_RATIO)"
+    >
+      hunting effort {{ huntLabel }}
+    </div>
   </div>
 </template>
 
@@ -231,9 +315,87 @@ onBeforeUnmount(() => {
   color: #6b7484;
 }
 
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.mode-btn {
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  color: #9aa6ba;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.mode-btn:hover {
+  color: #eef2f8;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.mode-btn.active {
+  color: #eef2f8;
+  background: rgba(120, 160, 255, 0.22);
+  border-color: rgba(120, 160, 255, 0.45);
+}
+
 .pop-canvas {
   display: block;
   width: 250px;
   height: 130px;
+}
+
+.pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #6b7484;
+  white-space: nowrap;
+  min-height: 11px;
+}
+
+.pop-hunt {
+  font-size: 9px;
+  color: #556072;
+  white-space: nowrap;
+}
+
+.badge {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 9px;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+
+.badge.good {
+  color: #b6f2c4;
+  background: rgba(80, 200, 120, 0.18);
+  border: 1px solid rgba(80, 200, 120, 0.4);
+}
+
+.badge.warn {
+  color: #ffd9a0;
+  background: rgba(255, 179, 71, 0.16);
+  border: 1px solid rgba(255, 179, 71, 0.4);
+}
+
+.badge.bad {
+  color: #ffb3b3;
+  background: rgba(255, 107, 107, 0.16);
+  border: 1px solid rgba(255, 107, 107, 0.4);
+}
+
+.badge.muted {
+  color: #9aa6ba;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 </style>

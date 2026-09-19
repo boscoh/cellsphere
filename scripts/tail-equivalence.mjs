@@ -1,6 +1,10 @@
 import * as THREE from 'three'
 import { createServer } from 'vite'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import { mulberry32 } from '../src/util.js'
+import { estimateCyclePeriod, classifyRegime, perCapitaRates, fitRatePlane, rateZeroCrossings, sliceWindow, autocorrelation, acfPeak } from '../src/components/popChartMath.js'
+import { computeRates, lvPeriod } from '../src/components/rateModel.js'
 
 const SEED = 1
 const DT = 1 / 60
@@ -477,6 +481,194 @@ try {
     budgetProblems,
     'per-joint normals shared across loops',
   )
+
+  // Cycle-period estimate for the chart's phase/period readout. A clean
+  // sinusoid has a known period; flat and stub series must report "no cycle".
+  const chartProblems = []
+  {
+    const T = 120
+    const samples = []
+    for (let i = 0; i < 1200; i++) {
+      const t = i * 0.5
+      samples.push({ t, blue: 50 + 40 * Math.sin((2 * Math.PI * t) / T), red: 20 })
+    }
+    const est = estimateCyclePeriod(samples, 'blue')
+    if (!est) chartProblems.push('sinusoid returned null')
+    else if (Math.abs(est.period - T) / T > 0.05) {
+      chartProblems.push(`sinusoid period ${est.period.toFixed(1)} expected ${T}`)
+    } else if (Math.abs(est.omega - (2 * Math.PI) / T) > 0.01) {
+      chartProblems.push(`sinusoid omega ${est.omega.toFixed(4)} off`)
+    }
+    if (estimateCyclePeriod([{ t: 0, blue: 30 }, { t: 1, blue: 30 }, { t: 2, blue: 30 }], 'blue')) {
+      chartProblems.push('flat series reported a cycle')
+    }
+    if (estimateCyclePeriod([{ t: 0, blue: 1 }], 'blue') !== null) {
+      chartProblems.push('stub series reported a cycle')
+    }
+  }
+  report('chart cycle-period estimate', chartProblems, 'sinusoid period recovered, flat/stub = null')
+
+  // Rate panel model: the four LV analogs must stay internally consistent and
+  // the ratio-dependent response must switch off attack when PRED_RATIO is set.
+  const rateProblems = []
+  {
+    const r = computeRates(50, 10)
+    if (!(r.alpha > 0)) rateProblems.push('alpha not positive on defaults')
+    if (!(r.gamma > 0)) rateProblems.push('gamma not positive on defaults')
+    if (Math.abs(r.delta - r.beta * P.PRED_EFF) > 1e-9) {
+      rateProblems.push('delta is not beta * PRED_EFF')
+    }
+    const direct = (2 * Math.PI) / Math.sqrt(r.alpha * r.gamma)
+    if (Math.abs(lvPeriod(r.alpha, r.gamma) - direct) > 1e-9) {
+      rateProblems.push('lvPeriod disagrees with 2*pi/sqrt(alpha*gamma)')
+    }
+    if (lvPeriod(0, 1) !== null || lvPeriod(1, 0) !== null) {
+      rateProblems.push('lvPeriod should be null when alpha or gamma is 0')
+    }
+    if (P.PRED_RATIO > 0 && (computeRates(0, 10).beta !== 0 || computeRates(0, 10).delta !== 0)) {
+      rateProblems.push('ratio response should zero attack when there are no prey')
+    }
+  }
+  report('rate-panel model', rateProblems, 'alpha/beta/delta/gamma consistent, ratio response gated')
+
+  // Regime classifier: a sustained sinusoid is cyclic, a decaying one is damped,
+  // and a series that ends at zero population is extinct.
+  const regimeProblems = []
+  {
+    const make = (amp, t) => ({ t, blue: Math.max(0, 50 + amp * Math.sin((2 * Math.PI * t) / 120)), red: 20 })
+    const cyclic = []
+    const damped = []
+    for (let i = 0; i < 1200; i++) {
+      const t = i * 0.5
+      cyclic.push(make(40, t))
+      damped.push(make(40 * Math.exp(-t / 150), t))
+    }
+    if (classifyRegime(cyclic).label !== 'cyclic') {
+      regimeProblems.push(`sustained sinusoid classified ${classifyRegime(cyclic).label}`)
+    }
+    if (classifyRegime(damped).label !== 'damped') {
+      regimeProblems.push(`decaying sinusoid classified ${classifyRegime(damped).label}`)
+    }
+    const extinct = cyclic.map((s) => ({ ...s }))
+    extinct[extinct.length - 1].red = 0
+    if (classifyRegime(extinct).label !== 'predators extinct') {
+      regimeProblems.push(`red-zero series classified ${classifyRegime(extinct).label}`)
+    }
+    if (classifyRegime([{ t: 0, blue: 1, red: 1 }]).label !== 'no data') {
+      regimeProblems.push('stub series not classified as no data')
+    }
+  }
+  report('regime classifier', regimeProblems, 'cyclic/damped/extinct distinguished')
+
+  // Measured per-capita rates + LV rate-plane fit. Integrate real LV with known
+  // rates and check the fit recovers them from the trajectory alone.
+  const planeProblems = []
+  {
+    const A = 0.5
+    const B = 0.02
+    const D = 0.01
+    const G = 0.3
+    const dt = 0.05
+    const pops = []
+    let N = 30
+    let Pp = 10
+    for (let i = 0; i < 4000; i++) {
+      pops.push({ t: i * dt, blue: N, red: Pp })
+      const dN = N * (A - B * Pp)
+      const dP = Pp * (D * N - G)
+      N += dN * dt
+      Pp += dP * dt
+    }
+    const W = 0.25 // stencil window: the LV cycle is short, so use a small one
+    const rates = perCapitaRates(pops, { window: W })
+    if (rates.length !== pops.length) planeProblems.push('perCapitaRates length mismatch')
+    if (!rates.every((r) => Number.isFinite(r.rN) && Number.isFinite(r.rP))) {
+      planeProblems.push('perCapitaRates produced non-finite values')
+    }
+    const f = fitRatePlane(pops, { window: W })
+    const check = (name, got, want, tol) => {
+      if (got === null || Math.abs(got - want) > tol) {
+        planeProblems.push(`${name} fit ${got} expected ~${want}`)
+      }
+    }
+    check('alpha', f.alpha, A, 0.05)
+    check('beta', f.beta, B, 0.004)
+    check('delta', f.delta, D, 0.001)
+    check('gamma', f.gamma, G, 0.03)
+    check('preyNull', f.preyNull, A / B, 1)
+    check('predNull', f.predNull, G / D, 1)
+
+    // Zero-crossing levels recover the equilibria directly: rN = 0 at P* = A/B,
+    // rP = 0 at N* = G/D.
+    const cross = rateZeroCrossings(pops, { window: W })
+    if (!cross.rN.length || !cross.rP.length) {
+      planeProblems.push('rateZeroCrossings found no crossings')
+    } else {
+      const avgLevel = (arr) => arr.reduce((s, x) => s + x.level, 0) / arr.length
+      const pStar = avgLevel(cross.rN)
+      const nStar = avgLevel(cross.rP)
+      if (Math.abs(pStar - A / B) > 1) planeProblems.push(`P* from rN=0 is ${pStar.toFixed(1)}, expected ${A / B}`)
+      if (Math.abs(nStar - G / D) > 1) planeProblems.push(`N* from rP=0 is ${nStar.toFixed(1)}, expected ${G / D}`)
+    }
+
+    // Sliding window keeps only the recent span.
+    const series = Array.from({ length: 100 }, (_, i) => ({ t: i, v: i }))
+    const win = sliceWindow(series, 10)
+    if (win.length !== 11 || win[0].t !== 89) {
+      planeProblems.push(`sliceWindow returned ${win.length} samples starting at ${win[0] && win[0].t}`)
+    }
+    if (sliceWindow([], 10).length !== 0) planeProblems.push('sliceWindow of empty is not empty')
+  }
+  report('measured rates + rate-plane fit', planeProblems, 'LV rates recovered from trajectory')
+
+  // Autocorrelation is the robust cycle test: a clean sinusoid peaks at its
+  // period, white noise does not.
+  const acfProblems = []
+  {
+    const T = 120
+    const series = []
+    for (let i = 0; i < 1200; i++) {
+      const t = i * 0.5
+      series.push({ t, blue: 50 + 40 * Math.sin((2 * Math.PI * t) / T) })
+    }
+    const peak = acfPeak(autocorrelation(series, 'blue'))
+    if (!peak) acfProblems.push('clean sinusoid had no autocorrelation peak')
+    else if (Math.abs(peak.lag - T) > 0.1 * T) {
+      acfProblems.push(`sinusoid acf peak at ${peak.lag.toFixed(0)}s, expected ${T}`)
+    }
+    let seed = 1
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+    const noise = []
+    for (let i = 0; i < 1200; i++) noise.push({ t: i * 0.5, blue: 50 + (rnd() - 0.5) * 20 })
+    if (acfPeak(autocorrelation(noise, 'blue'))) acfProblems.push('white noise reported a cycle')
+  }
+  report('autocorrelation cycle test', acfProblems, 'period recovered, noise rejected')
+
+  // Component smoke: the chart SFCs must render to a string without touching the
+  // DOM (scaleCanvas/draw only run on mount, which SSR skips).
+  const componentProblems = []
+  {
+    const props = {
+      samples: [
+        { t: 0, blue: 50, red: 15, alpha: 0.1, beta: 0.016, delta: 0.016, gamma: 0.0025, attack: 0.8 },
+        { t: 10, blue: 60, red: 14, alpha: 0.1, beta: 0.016, delta: 0.016, gamma: 0.0025, attack: 0.8 },
+      ],
+      rates: { alpha: 0.1, beta: 0.016, delta: 0.016, gamma: 0.0025, attack: 0.8 },
+    }
+    for (const path of ['/src/components/PopChart.vue', '/src/components/RateChart.vue']) {
+      try {
+        const mod = await server.ssrLoadModule(path)
+        const html = await renderToString(createSSRApp(mod.default, { ...props, popSamples: props.samples }))
+        if (!html || html.length < 50) componentProblems.push(`${path} rendered empty`)
+      } catch (err) {
+        componentProblems.push(`${path}: ${err && err.message ? err.message : String(err)}`)
+      }
+    }
+  }
+  report('chart components SSR render', componentProblems, 'PopChart/RateChart render to string')
 } finally {
   await server.close()
 }

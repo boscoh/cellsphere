@@ -92,6 +92,21 @@ helpers (seeded `mulberry32`) in `src/util.js`.
 - **Food**: one `InstancedMesh`; spatial hash (`GRID`) limits lookups;
   `eatAndRespawn` (per substep, tight scan) and `concentration`
   (every `SENSE_PERIOD`, wide scan) update `slow/foodAmt/foodPeak/foodDir`.
+- **Predation**: a red latches one blue within `PRED_RANGE` and drains it at a
+  fixed `PRED_DRAIN`/s (gaining `PRED_EFF` of that). Holding only one prey at a
+  time means a red's eating rate levels off when prey are common — the classic
+  recipe for a predator boom-and-bust. So the bite is scaled by how much prey
+  there is *per predator* (`ratio/(ratio + PRED_RATIO)`), and hunting stops
+  entirely once there is less than one prey per predator: a refuge that lets
+  scarce prey recover. Unfed reds burn `METABOLISM + PRED_METABOLISM +` move/turn
+  cost and die, so they cannot finish off the last prey. See `NOTES §1.5`,
+  `§1.6`.
+- **Net effect**: these rules give a **bounded predator–prey cycle**, not a steady
+  state — reds follow blues with roughly a quarter-cycle lag and both persist.
+  Four things keep it from tipping into overshoot-and-collapse: predators share
+  scarce prey (`PRED_RATIO`), rare prey get a refuge (the stop-hunting gate),
+  unfed reds starve quickly, and prey have their own regrowing food. See
+  `NOTES §1` (executive summary) and `§1.6`.
 - **Cell–cell collision**: true capsule–capsule min distance; soft spring +
   positional correction + a heading kick; pairs limited by a cell spatial hash
   (`CELL_GRID`). Splitting daughters are excluded; a dividing **parent stays as
@@ -173,7 +188,8 @@ _Fixed constants (not tunable at runtime)._
 | `MAX_SIM_RATE` | 50 | speed slider cap, and the `SIM_SPEED` parameter maximum |
 | `MAX_STEPS` | 200 | per-frame substep ceiling |
 | `MIN_RADIUS` | 0.1 | radius at zero energy |
-| `POP_SAMPLES` | 1200 | population-chart history length (one sample per 0.5s) |
+| `POP_SAMPLES` | 1200 | population-chart history length (`SAMPLE_DT` per sample) |
+| `SAMPLE_DT` | 0.5 | sim-time spacing between population-history samples; fixed so the charts span a constant sim-time window at any speed |
 | `SHELL_GAP` | 0.06 | gap between the collision surface and the sphere shell mesh |
 | `START_RADIUS` | 0.13 | spawn radius |
 | `SURFACE` | 5.06 | surface offset (`SPHERE_RADIUS + SHELL_GAP`); every entity is placed here |
@@ -301,15 +317,59 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `REORIENT_TURN` | 20 | Extra heading-rate gain toward the nearest prey during the post-meal reorient window (cell-700). |
 | `PRED_HUNT` | 1 | Seconds after a red newly smells prey that it turns hard at the nearest blue. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby). |
 | `PRED_TURN_SLOW` | 0 | How much a red throttles back while its heading is off the nearest prey: drive *= 1 - PRED_TURN_SLOW*(1-cos(error))/2. Higher = tighter pivot turns but slower hunting (cell-1eo). |
-| `PRED_RATIO` | 1 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off. |
+| `PRED_RATIO` | 0.75 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); lower = weaker suppression so reds can overshoot blue before starving; 0 = off (overshoot then collapse). Lowered 1 to 0.75 so a transient red > blue overshoot appears while 1800 s runs still survive. |
 | `PRED_CROWD` | 0 | Extra drain per additional prey packed within PRED_SENSE: rate *= 1 + PRED_CROWD*(nearby-1). 0 = a clump is not a feast; higher = a shoal feeds a red faster (cell-3bz). |
+| `PRED_T3_HALF` | 0 | Prey visible within PRED_SENSE at which a red bites at half its full rate. The bite scales as a smooth sigmoid (Hill, exponent 2) in local prey count, so one lone blue is hard to catch while a shoal is easy: a continuous rare-prey refuge that can stand in for the hard stop-hunting gate. 0 = off (Type II, density-independent bite). |
 | `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
 <!-- END GENERATED: tuning constants -->
 
 Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (blue/red) · Food
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`
 default **1×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
-top-right, the population chart bottom-left, drag hint bottom-center.
+top-right, the population chart bottom-left, drag hint bottom-center. The chart
+has a **Time / Phase** toggle (count vs time, or the red-vs-blue phase portrait
+where Lotka-Volterra cycles show as closed loops); its footer is just the regime
+badge, plus `hunting effort` on the line below.
+
+A separate **rates panel**
+(`RateChart.vue`) has two modes. **growth** plots the measured per-capita growth
+rates from the population history — `rN = (1/N)dN/dt`, `rP = (1/P)dP/dt`
+(`popChartMath.perCapitaRates`) — over a **time stencil** of ±20 s rather than
+between adjacent samples: counts are small integers, so adjacent differences are
+dominated by counting noise (one prey event is ~`1/N`). The stencil makes the
+curves show the slow growth/decline phases, with dashed verticals at the prey
+mean-crossings, on-canvas `prey`/`predators`/`rising`/`falling` labels and
+turning-point dots at the rate zero-crossings. It shows a **sliding window** of
+recent sim time — about 4 **autocorrelation** cycles, clamped to 120–600 s and
+labelled on the x-axis (`time window (N s)`) — so the window tracks the actual
+period; history is sampled on a fixed sim-time cadence (`SAMPLE_DT`) so the
+window is constant at any speed. The cycle-length readout lives **only** here in
+`cycle` mode (there is a number to show only when the cycle test applies): the
+footer's `cycle length` is the autocorrelation peak lag (`popChartMath.cycleLength`)
+and the next line is the clearly-labelled `textbook guess` `2π/√(αγ)` from the
+slider-implied rates, which is uncalibrated and should not be trusted over the
+measurement.
+**cycle** plots the linearly-detrended **autocorrelation** of the prey series:
+the robust cycle test, since a rate derivative is swamped by small-count noise
+whereas an autocorrelation peak at lag `T` means the population really repeats.
+A flat or monotone ACF means there is no clean cycle. The **phase** view of the
+population chart draws the fitted **nullclines** — where each species' per-capita
+growth is zero (`prey steady` at `P = α/β`, `predators steady` at `N = γ/δ`) —
+so a cycle reads as a loop around their intersection. The knob-derived rates
+(`rateModel.js`) are constants of the tuning and are not calibrated to population
+units, so they are no longer plotted.
+
+**Regime.** The four rates set the clock and the coexistence scale, but whether
+the trajectory settles onto a limit cycle is decided by the food resource and
+the ratio-dependent response, so it is classified empirically from the prey
+series (`popChartMath.classifyRegime`): persistence first (`prey extinct` /
+`predators extinct`), then the peak-envelope trend (`damped` / `diverging`), then
+period stability (`cyclic` / `irregular`), with `transient` until two cycles
+exist. The badge is shown in **both** chart footers, next to the measured period
+and the indicative `2π/√(αγ)` prediction. On the rates panel the verdict is also
+in the graphics: a subtle background tint in the regime colour, and dashed
+vertical lines at each prey mean-crossing so the cycle cadence overlays the rate
+curves directly.
 
 ## Scene look
 
@@ -387,7 +447,10 @@ top-right, the population chart bottom-left, drag hint bottom-center.
 ## In progress / next steps
 
 - **Predator–prey** is implemented (red hunts/immobilises/eats blue), tuned to a
-  bounded cycle with `PRED_RATIO = 1` + `FOOD_COUNT 3000`.
+  bounded cycle with `PRED_RATIO = 0.75` + `FOOD_COUNT 3000`. Weakened from 1
+  (2026-09) so a transient red > blue overshoot appears; going lower (≤0.5) risks
+  a prey wipeout on some seeds, so 0.75 is the mildest weakening that stayed
+  bounded over 1800 s on three seeds.
 - **Tail** is a damped spring chain (restored), with a switchable O(S)
   **kinematic mode** (`TAIL_MODE`) — visual-only apart from the `tailBend`
   steering scalar.

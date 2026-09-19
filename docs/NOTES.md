@@ -24,6 +24,49 @@ References are by symbol rather than line number, which drifts.
 > **Status:** implemented. Beads `cell-k2g` (+ subtasks `.1`–`.5`), `cell-v9d`
 > (energy economy), `cell-dmd` (coupling), `cell-erd` (re-acquisition).
 
+### Executive summary
+
+The ecology is a **predator–prey cycle**, and the goal state is a *bounded
+oscillation* — blue and red numbers rise and fall indefinitely without either
+species dying out. Each breed follows a simple strategy, and four design choices
+keep the cycle from tipping into a boom-and-bust. The rest of §1 is the detail
+behind this paragraph.
+
+**Prey (blue): graze food, grow, divide, avoid being eaten.**
+
+- Sense the food gradient, steer up it, and slow to graze once food is close.
+- Energy drives size; full energy triggers division, zero energy is instant death.
+- Steer away from nearby reds.
+
+**Predator (red): find prey, latch one, drain it, then divide or starve.**
+
+- Follow the local prey gradient; short "hunt" and "reorient" windows turn hard
+  at the nearest blue, and it ambushes (cruises at range, bursts when close).
+- Holds **one** prey at a time and drains it — its only energy source.
+- Energy drives division, but an unfed red burns extra energy and dies quickly.
+
+**Four stabilisers make it a *good* cycle** (weaken any and it can collapse):
+
+| design choice | in plain terms | knob |
+|---|---|---|
+| predators share scarce prey | per-predator kill falls as predators outnumber prey | `PRED_RATIO` |
+| rare prey get a refuge | hunting stops below one prey per predator | stop-hunting gate |
+| predators starve fast | no fat reserve; an unfed red dies in seconds | `METABOLISM`, `PRED_METABOLISM` |
+| prey have their own food | clumped food regrows, so prey can recover | food grid, `FOOD_RESPAWN` |
+
+**The resulting cycle.** Predators lag prey by roughly a quarter-cycle: prey rise
+on food, predators follow and over-hunt a little, prey dip, predators starve and
+dip, prey recover. Counts stay bounded (order 10–80 blue, 5–45 red at defaults)
+and both survive on every seed tested — a bounded oscillation, not a fixed point
+or a collapse. This is the classic predator–prey picture; §1.6 names the models
+it matches.
+
+**What breaks it.** `PRED_EFF > 1` (predators gaining free energy), or weakening
+the ratio response / refuge, tips the cycle into **overshoot**: predators pass
+blue, wipe out prey, then starve. Measured with the ratio response off: reds
+overshoot by +34 cells, then both go extinct. §1.6 maps these roles to classic
+ecology.
+
 ### 1.1 Model
 
 - **Breeds.** Blue (breed `0`) grazes food and divides as usual. Red (breed `1`)
@@ -98,8 +141,8 @@ Together they produce a sustained bounded cycle:
 
 Reds lag blues by a quarter-cycle: as prey drop, predators starve and drop; as
 prey recover, predators follow. Shipped defaults: `FOOD_COUNT = 3000`,
-`PRED_RATIO = 1`. `PRED_EFF > 1` (energy creation) is the single most
-destabilising knob — it always ends in prey wipeout.
+`PRED_RATIO = 1` (later lowered to 0.75; see §1.6). `PRED_EFF > 1` (energy
+creation) is the single most destabilising knob — it always ends in prey wipeout.
 
 **E. Re-acquisition A/B (`cell-erd`).** Seeded A/B (relatch within 2s): baseline
 14/15%, `PRED_FOCUS=2` 24/19%, `PRED_REORIENT=0.3` 23/20%; mean nearest-blue
@@ -274,6 +317,99 @@ own A/B.
   untested variant is a *windowed* pivot — also cut drive inside the existing
   reorient/hunt/forage heading-assist windows — which is the only version that
   could tighten the visible arc without permanent-agility blow-up.
+
+### 1.6 External context: how ecologists explain booms and crashes
+
+> **Status:** reference note (2026-09), drawn from encyclopedia- and
+> model-documentation-level sources (listed below), not primary literature. No
+> behaviour or parameter changed for this note.
+
+**The problem.** Predators eat prey, so more predators mean fewer prey, and
+fewer prey mean predators starve. Left unchecked this swings hard: predators
+breed while prey are plentiful, keep eating after prey start to fall, drive prey
+to near zero, then starve themselves. Predators passing the level the prey can
+sustain is **overshoot**; the wipeout-and-crash that follows is what we want to
+avoid. With our stabilisers switched off the sim does exactly this — reds
+overshoot blues by ~34 cells, then both die out.
+
+**How fast a predator eats is the key knob.** The rule for "eating rate vs how
+common prey are" is called the **functional response**. There are three standard
+shapes:
+
+- **Rises without limit** — twice the prey, twice the eating rate. (Called
+  *Type I*; used by the original textbook model.)
+- **Rises, then levels off** — a predator eats faster as prey appear but tops
+  out, because chasing and handling each meal takes time. This is what our reds
+  do: one latched blue at a time, at a fixed bite rate. (Called *Type II*.) On
+  its own it is the classic cause of overshoot — when prey are common every
+  predator is full, so predator numbers grow until the prey run out. The
+  boom-and-bust has a famous name, the **paradox of enrichment**: making life
+  richer for the prey makes the whole system *less* stable.
+- **Slow start** — when prey are rare the predator is unusually bad at finding
+  them, and intake only ramps up once prey are common. (Called *Type III*.) The
+  effect is a natural **refuge**: rare prey are hard to catch, so enough survive
+  to recover.
+
+**The fixes ecologists use**, in plain terms:
+
+- **Share the prey.** The more predators there are, the less each one catches.
+  This is our `PRED_RATIO` (the "ratio-dependent" rule: a predator's success
+  depends on prey *per predator*, not the raw prey count).
+- **Give rare prey a refuge.** Stop hunting when prey become scarce — our
+  stop-hunting gate.
+- **Let predators starve quickly.** An unfed predator that dies fast cannot
+  finish off the last prey — our `PRED_METABOLISM`.
+- **Give prey their own food supply.** Prey that regrow from food recover,
+  giving predators something to rebound on — our food grid and `FOOD_RESPAWN`.
+
+**What CellSphere actually does:**
+
+| our knob | in plain terms | why it helps |
+|---|---|---|
+| `PRED_RATIO` | predators share scarce prey | stops them over-hunting once they outnumber prey |
+| stop-hunting gate | rare prey are left alone | guarantees prey can recover |
+| metabolism + `PRED_METABOLISM` | unfed predators die quickly | predators can't linger and finish prey off |
+| food grid + `FOOD_RESPAWN` | prey have their own food supply | prey recover, so the cycle keeps going |
+| `PRED_EFF = 1` | predators gain no free energy | `> 1` reliably wipes out the prey |
+
+**What we tried before landing here.** `§1.3` implemented and tested the
+textbook fixes, then dropped most of them: a global "never below N" floor (felt
+artificial), predator interference (no help), longer handling time (only delayed
+the crash — and handling time is what *causes* the problem, not a cure), a
+crowding penalty (right idea, wrong feedback), and a weak slow-start threshold
+(only worked in a narrow range). Sharing the prey is the one that worked, and it
+also has the best pedigree in the theory.
+
+**One caveat.** Ecologists don't agree that "share the prey" describes real
+predators: Ginzburg argues for it, Abrams against, and a review concluded the
+evidence doesn't clearly favour either. So `PRED_RATIO` is a reasonable, standard
+choice — not settled fact.
+
+**Another simulation reaches the same answer.** NetLogo's *Wolf Sheep Predation*
+is the closest public equivalent. With unlimited grass it is "ultimately
+unstable" (predators overshoot and everything dies); add a regrowing grass
+resource and it becomes "generally stable". Its predators also spend energy each
+step and die at zero energy — the same metabolism mechanic we use.
+
+**If we drop the gate.** Relying only on shared prey: weak sharing → overshoot
+then extinction on all tested seeds; very strong sharing → survives, but prey dip
+lower. The smoother replacement for the gate would be a proper slow-start
+(*Type III*) rule instead of a hard cutoff; `§1.3` only tested a crude threshold,
+so that A/B is still open. `PRED_T3_HALF` now implements that smooth rule (a
+Hill sigmoid in local prey count; default `0` = off), so it can be tried in the
+Tuner.
+
+**Sources.** Overview-level: [Paradox of
+enrichment](https://en.wikipedia.org/wiki/Paradox_of_enrichment), [Functional
+response](https://en.wikipedia.org/wiki/Functional_response), [Lotka–Volterra
+equations](https://en.wikipedia.org/wiki/Lotka%E2%80%93Volterra_equations),
+[Arditi–Ginzburg
+equations](https://en.wikipedia.org/wiki/Arditi%E2%80%93Ginzburg_equations),
+[Refuge (ecology)](https://en.wikipedia.org/wiki/Refuge_(ecology)), [Predator
+satiation](https://en.wikipedia.org/wiki/Predator_satiation), [NetLogo Wolf Sheep
+Predation](https://ccl.northwestern.edu/netlogo/models/WolfSheepPredation). Primary:
+Rosenzweig 1971 (*Science* 171); Arditi & Ginzburg 1989; Beddington 1975 /
+DeAngelis et al. 1975; Roy & Chattopadhyay 2007 (*J. Biosci.* 32).
 
 ---
 

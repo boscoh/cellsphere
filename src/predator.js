@@ -18,6 +18,14 @@ function validPredator(d) {
   return d.breed === 1 && !d.mito && !d.splitting && !d.detach && !d.dead
 }
 
+// Holling Type III (sigmoid, exponent 2) in local prey density: the bite is near
+// zero for an isolated blue and near full inside a shoal. `half` is the prey
+// count at half rate; 0 disables (pure Type II, density-independent bite).
+function type3Factor(preyCount, half) {
+  const c = Math.max(1, preyCount)
+  return (c * c) / (c * c + half * half)
+}
+
 // Smell the shoal: sum proximity-weighted unit vectors to every valid prey
 // within P.PRED_SENSE into a gradient direction (d.preyDir), mirroring how
 // food.concentration() gives blue a food gradient. A red then steers up this
@@ -168,7 +176,9 @@ export function predation(sim, simDt) {
         // blue while isolated prey survive as refuge. PRED_CROWD = 0 disables.
         const nearby = red.preyCount || 1
         const crowd = 1 + P.PRED_CROWD * Math.max(0, nearby - 1)
-        const rate = P.PRED_DRAIN * simDt * ratioAttack * crowd
+        // Type III: smooth sigmoid in local prey density (rare-prey refuge).
+        const t3 = P.PRED_T3_HALF > 0 ? type3Factor(red.preyCount, P.PRED_T3_HALF) : 1
+        const rate = P.PRED_DRAIN * simDt * ratioAttack * crowd * t3
         drainEnergy(sim, latch, rate)
         if (latch.energy <= 0) {
           latch.dead = true

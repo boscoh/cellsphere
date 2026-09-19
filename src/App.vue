@@ -1,11 +1,12 @@
 <script setup>
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import { Simulation } from './sim.js'
 import {
   P,
   FIXED_DT,
   MAX_SIM_RATE,
   POP_SAMPLES,
+  SAMPLE_DT,
   resetParams,
   setParam,
 } from './constants.js'
@@ -13,6 +14,8 @@ import Hud from './components/Hud.vue'
 import PerfPanel from './components/PerfPanel.vue'
 import Tuner from './components/Tuner.vue'
 import PopChart from './components/PopChart.vue'
+import RateChart from './components/RateChart.vue'
+import { computeRates } from './components/rateModel.js'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
@@ -23,6 +26,8 @@ const blueCount = ref(0)
 const redCount = ref(0)
 const foodCount = ref(0)
 const popHistory = ref([])
+const rateHistory = ref([])
+const latestRates = computed(() => rateHistory.value[rateHistory.value.length - 1] || null)
 const perf = ref({})
 const MAX_BACKLOG = MAX_SIM_RATE * FIXED_DT
 
@@ -32,6 +37,7 @@ let lastTime = performance.now()
 let accumulator = 0
 let fpsCount = 0
 let fpsTime = 0
+let nextSampleT = 0
 const handleResize = () => sim.onResize()
 const onKey = (e) => {
   if (e.key === 'Escape') tunerRef.value?.collapse()
@@ -42,11 +48,15 @@ function onReset() {
   tunerRef.value?.syncValues()
   simRate.value = P.SIM_SPEED
   popHistory.value = []
+  rateHistory.value = []
+  nextSampleT = 0
   sim.reset()
 }
 
 function onRestart() {
   popHistory.value = []
+  rateHistory.value = []
+  nextSampleT = 0
   sim.reset()
 }
 
@@ -88,6 +98,28 @@ onMounted(() => {
     }
     sim.render(tailsActive.value ? 1 : 0.0001, rawDt)
 
+    // Population history is sampled on a fixed *sim-time* cadence, not wall
+    // time: wall-time sampling coarsens the spacing as simRate rises (25 s per
+    // sample at 50x), which would make the rate curves noisy exactly when you
+    // speed up to watch a cycle. The history therefore spans a fixed sim-time
+    // window at any rate.
+    if (sim.simTime >= nextSampleT) {
+      let blue = 0
+      let red = 0
+      for (const c of sim.cells) {
+        if (c.breed === 0) blue++
+        else red++
+      }
+      blueCount.value = blue
+      redCount.value = red
+      // The population chart keeps the whole run (no sliding window); only the
+      // rate analysis and rateHistory are capped, via POP_SAMPLES below.
+      popHistory.value.push({ t: sim.simTime, blue, red })
+      rateHistory.value.push({ t: sim.simTime, ...computeRates(blue, red) })
+      if (rateHistory.value.length > POP_SAMPLES) rateHistory.value.shift()
+      nextSampleT = sim.simTime + SAMPLE_DT
+    }
+
     fpsCount++
     fpsTime += rawDt
     if (fpsTime >= 0.5) {
@@ -98,16 +130,6 @@ onMounted(() => {
       frameMs.value = (fpsTime / frames) * 1000
       fpsCount = 0
       fpsTime = 0
-      let blue = 0
-      let red = 0
-      for (const c of sim.cells) {
-        if (c.breed === 0) blue++
-        else red++
-      }
-      blueCount.value = blue
-      redCount.value = red
-      popHistory.value.push({ t: sim.simTime, blue, red })
-      if (popHistory.value.length > POP_SAMPLES) popHistory.value.shift()
       foodCount.value = 0
       for (const f of sim.foods) if (f.visible) foodCount.value++
       perf.value = {}
@@ -147,7 +169,8 @@ onBeforeUnmount(() => {
   <Tuner ref="tunerRef" @rebuild="onRestart" @default="onReset" @param="onParamChange" />
   <div class="bottom-left">
     <PerfPanel :frame-ms="frameMs" :perf="perf" />
-    <PopChart :samples="popHistory" />
+    <PopChart :samples="popHistory" :rates="latestRates" />
+    <RateChart :samples="rateHistory" :pop-samples="popHistory" />
   </div>
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
