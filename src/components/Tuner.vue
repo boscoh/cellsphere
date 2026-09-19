@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, computed } from 'vue'
+import { reactive, computed, ref } from 'vue'
 import { GROUPS, P, PARAM_DEFS, setParam } from '../constants.js'
 
 const emit = defineEmits(['rebuild', 'default', 'param'])
@@ -34,6 +34,31 @@ const groups = computed(() => {
   }))
 })
 
+// Sticky header scroll-spy: the label tracks the topmost group currently visible
+// in the scroll body. Measured with getBoundingClientRect so it does not depend
+// on offsetParent or the body's padding.
+const bodyRef = ref(null)
+const groupEls = []
+const currentIndex = ref(0)
+
+function setGroupEl(el, i) {
+  if (el) groupEls[i] = el
+}
+
+function onScroll() {
+  const body = bodyRef.value
+  if (!body) return
+  const bodyTop = body.getBoundingClientRect().top
+  let idx = 0
+  for (let i = 0; i < groupEls.length; i++) {
+    const el = groupEls[i]
+    if (el && el.getBoundingClientRect().top - bodyTop <= 16) idx = i
+  }
+  currentIndex.value = idx
+}
+
+const currentCategory = computed(() => groups.value[currentIndex.value]?.label ?? '')
+
 function onInput(row, event) {
   const v = Number(event.target.value)
   row.value = v
@@ -56,11 +81,14 @@ function fillPct(value, min, max) {
 
 <template>
   <aside id="tuner-panel" class="panel">
-    <div class="body">
+    <header class="head">
+      <span class="title">Tune</span>
+      <span class="category">{{ currentCategory }}</span>
       <button
         type="button"
         class="secondary-btn"
         title="Reset all parameters to defaults"
+        aria-label="Reset all parameters to defaults"
         @click="emit('default')"
       >
         <svg
@@ -77,9 +105,15 @@ function fillPct(value, min, max) {
           <path d="M3 12a9 9 0 1 0 3-6.7" />
           <polyline points="3 3 3 9 9 9" />
         </svg>
-        Reset
       </button>
-      <section v-for="g in groups" :key="g.label" class="group">
+    </header>
+    <div ref="bodyRef" class="body" @scroll="onScroll">
+      <section
+        v-for="(g, gi) in groups"
+        :key="g.label"
+        :ref="(el) => setGroupEl(el, gi)"
+        class="group"
+      >
         <h2 class="group-title">{{ g.label }}</h2>
         <div v-for="p in g.params" :key="p.key" class="param" :title="p.desc">
           <div class="param-head">
@@ -125,23 +159,57 @@ function fillPct(value, min, max) {
 
 .secondary-btn {
   pointer-events: auto;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
   box-sizing: border-box;
-  height: 26px;
-  padding: 0 12px;
-  margin: 2px 0 4px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
   color: #b7c2d4;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #eef2f8;
+  white-space: nowrap;
+}
+
+.category {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #9aa6ba;
+  white-space: nowrap;
+}
+
+.category::before {
+  content: '·';
+  color: #4a5364;
+}
+
+.head .secondary-btn {
+  margin-left: auto;
 }
 
 .secondary-btn:hover {
