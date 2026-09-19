@@ -13,18 +13,28 @@ function select(key, current) {
 
 <template>
   <div class="tabs" role="tablist" aria-label="Panels">
-    <button
-      v-for="tab in tabs"
-      :key="tab.key"
-      type="button"
-      role="tab"
-      class="tab"
-      :class="{ active: active === tab.key }"
-      :aria-selected="String(active === tab.key)"
-      @click="select(tab.key, active)"
-    >
-      {{ tab.label }}
-    </button>
+    <template v-for="tab in tabs" :key="tab.key">
+      <a
+        v-if="tab.href"
+        class="tab"
+        :href="tab.href"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {{ tab.label }}
+      </a>
+      <button
+        v-else
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ active: active === tab.key }"
+        :aria-selected="String(active === tab.key)"
+        @click="select(tab.key, active)"
+      >
+        {{ tab.label }}
+      </button>
+    </template>
   </div>
 </template>
 
@@ -45,6 +55,7 @@ function select(key, current) {
 }
 
 .tab {
+  display: inline-block;
   padding: 5px 12px;
   font-size: 10px;
   text-transform: uppercase;
@@ -53,6 +64,7 @@ function select(key, current) {
   background: transparent;
   border: 0;
   border-radius: 7px;
+  text-decoration: none;
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }

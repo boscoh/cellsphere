@@ -36,6 +36,7 @@ const PANEL_TABS = [
   { key: 'population', label: 'Population' },
   { key: 'cycles', label: 'Cycles' },
   { key: 'perf', label: 'Perf' },
+  { key: 'github', label: 'GitHub', href: 'https://github.com/boscoh/cellsphere' },
 ]
 
 let sim
@@ -192,7 +193,6 @@ onBeforeUnmount(() => {
     <PerfPanel v-else-if="activePanel === 'perf'" :frame-ms="frameMs" :perf="perf" />
   </div>
   <PanelTabs v-model:active="activePanel" :tabs="PANEL_TABS" class="tabs" />
-  <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
 
 <style scoped>
@@ -219,19 +219,5 @@ onBeforeUnmount(() => {
   left: 12px;
   bottom: 9px;
   z-index: 4;
-}
-
-.hint {
-  position: fixed;
-  bottom: 9px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: #5c6472;
-  font-family: system-ui, sans-serif;
-  font-size: 11px;
-  letter-spacing: 0.2px;
-  pointer-events: none;
-  user-select: none;
 }
 </style>
