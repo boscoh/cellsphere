@@ -1,6 +1,6 @@
 # Beads project configuration.
 #
-# Dolt is the only storage backend as of bd 1.2.x; the legacy SQLite and
+# Dolt is the only storage backend as of bd 1.3.x; the legacy SQLite and
 # JSONL-as-source-of-truth modes are gone. This file and metadata.json are
 # tracked by git; per-machine runtime state is gitignored via .beads/.gitignore.
 #

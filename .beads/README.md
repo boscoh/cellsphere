@@ -13,8 +13,9 @@ committed to git. `bd dolt status` reports the current mode.
 | Local backup | `.beads/backup/` (gitignored) | same-machine Dolt snapshots |
 | Export | `.beads/issues.jsonl` (gitignored) | optional export for viewers/review; not the database |
 
-`bd dolt push` / `bd dolt pull` move the database to and from the Dolt remote;
-neither is a git commit. Off-machine recovery relies on the Dolt remote — no
+`bd sync` runs the full pull → conflict-check → push cycle against the Dolt
+remote; `bd dolt push` / `bd dolt pull` are the low-level primitives. None of
+these is a git commit. Off-machine recovery relies on the Dolt remote — no
 filesystem backup destination is configured.
 
 ## Files here
@@ -38,12 +39,13 @@ bd show <id>                            # issue + dependencies
 bd create "title" -t task -p 2 -d "why"
 bd update <id> --claim
 bd close <id> --reason "done"
-bd dolt push                            # sync the database to the Dolt remote
+bd sync                                 # pull, check conflicts, push (Dolt remote)
 bd export -o .beads/issues.jsonl        # refresh the optional JSONL export
 ```
 
-There is no `bd sync` in bd 1.2.2. Cross-machine transfer is
-`bd dolt push` / `bd dolt pull` against the configured Dolt remote;
-`bd export` is for viewers and interchange only.
+`bd sync` (bd 1.3.0) is the cross-machine transfer command: it pulls, checks
+conflicts, recomputes `is_blocked`, and pushes, with bounded retries;
+`bd dolt push` / `bd dolt pull` remain the low-level primitives. `bd export`
+is for viewers and interchange only — never the sync protocol.
 
 See `AGENTS.md` for the agent workflow and `docs/DESIGN.md` for the project.

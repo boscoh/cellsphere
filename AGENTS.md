@@ -83,21 +83,24 @@ Invariants an agent must not break:
 ## Issue tracking (Beads)
 
 Work is tracked in **Beads** (`bd`, Dolt-backed). `bd prime` is the single
-source of truth for the workflow; run it after compaction or in a new session
-(Codex auto-loads it via native hooks). The `beads` skill lives at
-`.agents/skills/beads/SKILL.md`. Never keep a second task list in markdown.
+source of truth for the workflow; run it after compaction or in a new session.
+The `beads` skill lives at `.agents/skills/beads/SKILL.md`. Never keep a second
+task list in markdown.
 
 ```bash
 bd ready                       # unblocked work
 bd create "title" -t task -p 2 # new issue; add --json for structured output
 bd update <id> --claim         # claim atomically
 bd close <id> --reason "..."   # complete
+bd sync                        # full pull/check/push (only when authorized)
 bd dolt push                   # push Dolt history (only when authorized)
 ```
 
-- Issues live in a local Dolt DB; `bd dolt push`/`pull` sync `refs/dolt/data`
-  over the git remote (configured in `.beads/config.yaml`). Fresh clones run
-  `bd bootstrap`. The JSONL export is a passive artifact, not the sync protocol.
+- Issues live in a local Dolt DB. `bd sync` runs the full pull → conflict-check
+  → push cycle; `bd dolt push`/`pull` are the low-level primitives. Both target
+  `refs/dolt/data` on the git remote (configured in `.beads/config.yaml`). Fresh
+  clones run `bd bootstrap`. The JSONL export is a passive artifact, not the
+  sync protocol.
 - Never use `bd edit` (it opens an interactive `$EDITOR`); update fields with
   flags such as `bd update <id> --description ...` instead.
 - Link discovered work with `--deps discovered-from:<id>`.
