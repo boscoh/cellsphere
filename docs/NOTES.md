@@ -265,6 +265,15 @@ own A/B.
   halves populations (blue max 62–67 → 50, reds crash) and high gain goes
   extinct, so the assist stays event/window-limited. 3600 s ×3 at `PRED_HUNT=1`
   stayed bounded, no extinction.
+- **Slow-drive turn mode (`cell-1eo`, rejected).** `headingRate` comes only from
+  the tail (`+= TAIL_TURN·tailBend·dt`, damped by `ANG_DRAG`); `drive` is not in
+  it, so slowing shrinks the turn radius R = v/ω but never the time to turn.
+  Scaling predator drive by heading error (`PRED_TURN_SLOW`) made aim worse
+  (73–74° → 87–90° at full) and cut kills, because the agent just loses ground;
+  prey would be penalised identically. Left as an off-by-default knob. The
+  untested variant is a *windowed* pivot — also cut drive inside the existing
+  reorient/hunt/forage heading-assist windows — which is the only version that
+  could tighten the visible arc without permanent-agility blow-up.
 
 ---
 

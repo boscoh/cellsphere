@@ -51,12 +51,12 @@ function onRestart() {
 }
 
 function onParamChange(key, value) {
-  if (key === 'P.SIM_SPEED') simRate.value = value
+  if (key === 'SIM_SPEED') simRate.value = value
 }
 
 function onSpeed(v) {
   simRate.value = v
-  setParam('P.SIM_SPEED', v)
+  setParam('SIM_SPEED', v)
 }
 
 function onTails(active) {

@@ -208,6 +208,13 @@ export class Simulation {
             if (d.reorientT <= 0 && d.preyNear > P.PRED_LUNGE) {
               d.drive *= P.PRED_COAST
             }
+            // Slow-move turn phase: throttle back while the heading is off the
+            // nearest prey, so the red pivots tightly instead of carving a wide
+            // arc (cell-1eo). Aligned -> full drive, opposed -> (1 - TURN_SLOW).
+            if (P.PRED_TURN_SLOW > 0 && !(d.target && d.target.paralysed) && d.preyNear < Infinity) {
+              const a = signedAngleTo(this, d, d.preyNearestDir)
+              if (a != null) d.drive *= 1 - P.PRED_TURN_SLOW * (1 - Math.cos(a)) * 0.5
+            }
             // While feeding on a latched prey, stop entirely so it holds the
             // latch and drains the blue instead of swimming past/through.
             if (d.target && d.target.paralysed) d.drive = 0

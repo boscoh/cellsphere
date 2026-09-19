@@ -102,7 +102,9 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   (`headingRate += TAIL_TURN*tailBend`): chemotaxis (turn toward food gradient
   when `foodPeak > PEAK_MIN`) and predator/prey gradients feed `steer`, which the
   tail control turns into `tailBend`; collision kicks add directly. No random
-  tumble.
+  tumble. Note `drive` does **not** enter this equation: turn rate is set by the
+  tail alone, so an agent cannot turn around sooner by slowing — slowing only
+  shrinks the turn radius R = v/ω (see `NOTES.md` §1.5D, `cell-1eo`).
 - **Energy → size & death**: the whole growth/starvation loop is one value,
   `d.energy` in `[0, ENERGY_MAX]`. `radius = MIN_RADIUS + (energy/ENERGY_MAX)*(MAX_RADIUS-MIN_RADIUS)`
   (linear food→energy→length). Eating (`gainEnergy`, +`ENERGY_PER_FOOD`) grows it;
@@ -298,6 +300,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `PRED_REORIENT` | 1.5 | Seconds after finishing a meal that a red steers at the nearest prey and ignores both the ambush coast and the energy coast (0 = off). |
 | `REORIENT_TURN` | 20 | Extra heading-rate gain toward the nearest prey during the post-meal reorient window (cell-700). |
 | `PRED_HUNT` | 1 | Seconds after a red newly smells prey that it turns hard at the nearest blue. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby). |
+| `PRED_TURN_SLOW` | 0 | How much a red throttles back while its heading is off the nearest prey: drive *= 1 - PRED_TURN_SLOW*(1-cos(error))/2. Higher = tighter pivot turns but slower hunting (cell-1eo). |
 | `PRED_RATIO` | 1 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); 0 = off. |
 | `PRED_CROWD` | 0 | Extra drain per additional prey packed within PRED_SENSE: rate *= 1 + PRED_CROWD*(nearby-1). 0 = a clump is not a feast; higher = a shoal feeds a red faster (cell-3bz). |
 | `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
