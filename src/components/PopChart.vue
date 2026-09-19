@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { computeCellColor } from '../cells'
+import { computeCellColor } from '../cells.js'
 
 const props = defineProps({
   samples: { type: Array, default: () => [] },

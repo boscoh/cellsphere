@@ -17,13 +17,17 @@ explorations, experiments, rejected options, and subsystem history.
   `.github/workflows/deploy-pages.yml` publishes `dist/` to GitHub Pages on
   push to `main`.
 - `npm run preview` — preview the built site
-- `npm run test:tail` — the only test, and fast (<1s). Headless Vite-SSR:
+- `npm run test:tail` — headless Vite-SSR checks, fast (<1s):
   constants registry integrity, capsule-distance geometry, a minimal
   hidden/visible physics equivalence (8 substeps), then direct tail-pathway
   checks — control/pose write no body state, `warmTail` decoupling, wave phase,
   slot handover, pool invariants, render smoke, normalize budget. It calls the
   tail functions directly rather than stepping the simulation. Run it after
   changing physics, tail code, or `constants.js`.
+- `npm run test:headless` — plain-Node (no Vite, no WebGL) smoke test: asserts no
+  physics module imports a render module, then builds and steps a world through
+  `scripts/headless-sim.mjs` assertions. Use it to verify the sim/view boundary.
+- `npm run test` — runs both of the above.
 - `node scripts/gen-params-table.mjs --write` — regenerate the tuning table in
   `docs/DESIGN.md` from `PARAM_DEFS`. The build fails if it is stale.
 
@@ -32,19 +36,26 @@ explorations, experiments, rejected options, and subsystem history.
 - `src/App.vue` — thin shell: lifecycle, frame timing, overlay state
 - `src/components/Hud.vue` — top-left HUD (counts, speed slider, tails, restart)
 - `src/components/PerfPanel.vue` — perf breakdown panel; `src/components/PopChart.vue` — population chart
-- `src/sim.js` — `Simulation` orchestrator: physics loop, render lifecycle
+- `src/sim.js` — `Simulation` orchestrator: physics loop + data (render
+  lifecycle is delegated to `View`)
+- `src/view.js` — `View`: owns scene/camera/renderer/controls/pools/meshes +
+  render scratch; created by `sim.attach()`
+- `src/renderSync.js` — render-side slot reconcile (allocate/rehome/free bodies
+  and tails) driven by the cell list
 - `src/collision.js` — capsule distance, cell hash, collision solve
 - `src/grid.js` — spatial hash: key packing + neighbourhood scan
 - `src/cells.js` — cell domain: create/grow/mitose (bodies and tails are separate)
 - `src/bodyPool.js` — pooled body `InstancedMesh`es, one pool per length bucket
 - `src/tailPool.js` — tail instance pool, slot claims/transfers, segment placement
 - `src/tail.js` — tail physics: steering control, spring-chain + kinematic pose, re-aim
-- `src/food.js` — food grid, eating + sensing, clumps
+- `src/food.js` — food grid, eating + sensing, clumps (plain data)
+- `src/foodRender.js` — food `InstancedMesh` create/sync from `food.dirty`
 - `src/predator.js` — predation: latch + drain
 - `src/constants.js` — tuning registry (`PARAM_DEFS`/`P`/`GROUPS`) + plain consts
-- `src/sceneSetup.js` — scene / renderer / camera / controls / sphere shell
+- `src/sceneSetup.js` — `createSceneCore` (scene/shell) + `attachGraphics`
+  (camera/renderer/controls/lights)
 - `src/materials.js` — shared geometries & materials (body shader hooks)
-- `src/render.js` — visibility culling + render pass
+- `src/render.js` — visibility culling + render passes (take a `View`)
 - `src/glow.js`, `src/pops.js` — death-burst billboards
 - `src/perf.js` — per-frame timing; `src/components/Tuner.vue` — parameter UI
 - `src/math.js` — pure helpers
@@ -56,14 +67,26 @@ Invariants an agent must not break:
   fields directly (`pos`, tangent `vel`/`heading`, `energy`, tail state, `quat`).
 - **Time loop**: `App.vue` banks real time and calls `sim.step(simDt * simRate)`;
   `step` subdivides into `clamp(ceil(simDt/FIXED_DT), 1, MAX_STEPS)` substeps of
-  `advance(dt)`. Rendering is a separate `sim.render(tailScale)`.
+  `advance(dt)`. Rendering is separate: `sim.render(tailScale, dt)` delegates to
+  the `View`.
 - **Headless physics**: `new Simulation(); sim.buildWorld(); sim.step(dt)` works
-  with no WebGL/`attach()`. Use this for tests and debugging.
+  with no WebGL and no `View` at all. Render resources (scene, pools, meshes,
+  materials) live on `View`, which is created by `sim.attach()`; a `View` can be
+  built without a container for headless pooled-render tests.
+- **Sim/view boundary**: physics modules (`cells`, `food`, `predator`, `tail`,
+  `collision`, `grid`, `math`) must never import a render module (`view`,
+  `render`, `renderSync`, `bodyPool`, `tailPool`, `sceneSetup`, `materials`,
+  `glow`, `pops`, `foodRender`). `npm run test:headless` enforces this.
+- **Slot lifecycle is render-owned**: physics never allocates body/tail slots.
+  `renderSync.syncCells(view)` reconciles pools with `sim.cells`; cell records
+  carry `body*/tail*` handle fields as render-written state only.
 - `energy` in `[0, ENERGY_MAX]` drives size linearly; `ENERGY_MAX` → mitosis,
   `0` → immediate death (no fade).
 - Cell–cell collision must use **capsule–capsule** distance, not sphere distance.
 - Tails are visual-only except the `tailBend` scalar that drives `headingRate`;
-  tail control runs even while tails are hidden, so steering is unaffected.
+  tail control runs even while tails are hidden, so steering is unaffected. The
+  cosmetic pose is gated by the sim-owned `poseEnabled` (set by `App.vue` from
+  the HUD toggle); `View.tailsHidden` is render-only mesh visibility.
 - Body/tail `InstancedMesh`es grow on demand in fixed-size chunks; they are not
   sized to `MAX_CELLS`.
 

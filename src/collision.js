@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { P, SURFACE, CELL_GRID } from './constants'
-import { gridKey } from './grid'
+import { P, SURFACE, CELL_GRID } from './constants.js'
+import { gridKey } from './grid.js'
 
 // Cell-cell collision and surface geometry. Pure helpers over the cell data
 // objects plus the sim scratch vectors (_v3.._v6, _col) and the cell hash

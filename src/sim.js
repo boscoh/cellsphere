@@ -7,19 +7,14 @@ import {
   MAX_STEPS,
   ENERGY_MAX,
   CELL_GRID,
-} from './constants'
-import { smoothstep } from './math'
+} from './constants.js'
+import { smoothstep } from './math.js'
 import {
   buildCellGrid,
   capsuleDist,
   signedAngleTo,
   solveCollisions,
-} from './collision'
-import {
-  foodGeo,
-  foodMat,
-  disposeSharedMaterials,
-} from './materials'
+} from './collision.js'
 import {
   makeCell,
   mitose,
@@ -27,51 +22,43 @@ import {
   updateDetach,
   updateMito,
   updateEnergy,
-} from './cells'
-import {
-  initBodyPools,
-  removeBody,
-  disposeBodyPools,
-  disposeBodyGeos,
-} from './bodyPool'
-import { releaseTail, placeTail, disposeTailPool } from './tailPool'
-import { updateTailControl, updateTailPose } from './tail'
+} from './cells.js'
+import { updateTailControl, updateTailPose } from './tail.js'
 import {
   generateClumps,
   makeFood,
   buildFoodGrid,
   eatAndRespawn,
   concentration,
-} from './food'
-import { predation, predatorSense } from './predator'
-import { forEachNearby } from './grid'
-import { initPops, spawnPop, disposePops } from './pops'
-import { disposeGlowMaterial } from './glow'
-import { createScene, resizeSphereShell, scaleSphereFraming } from './sceneSetup'
-import { renderView } from './render'
-import { createPerf } from './perf'
+} from './food.js'
+import { predation, predatorSense } from './predator.js'
+import { forEachNearby } from './grid.js'
+import { spawnPop } from './pops.js'
+import { createPerf } from './perf.js'
+import { View } from './view.js'
 
 export class Simulation {
   constructor() {
-    this.scene = new THREE.Scene()
+    // Render resources (scene, camera, pools, meshes) live on `view`, created by
+    // attach(). A headless Simulation never constructs them.
+    this.view = null
     this.cells = []
     this.foods = []
     this.foodGrid = new Map()
     this.cellGrid = new Map()
     this.clumps = []
-    this.foodMesh = null
-    this.tailChunks = []
+    this.pops = []
     this.simTime = 0
-    this.tailScale = 1
-    this.tailsHidden = false
-    this._tailDirty = new Set()
+    this.poseEnabled = true
     this.respawning = []
+    this.removed = []
     this.senseAccum = 0
 
     // Scratch vectors and objects, allocated once per Simulation and reused every
     // step so the physics path allocates nothing. The rule: never hold one across
     // a call into another module. Different phases of a step may reuse the same
     // vector (they never overlap), but two live references in one phase must not.
+    // Render scratch lives on the View, so it can never alias these.
     //   movement/collision  _v1 normal, _v2 right, _v3/_v4 angle cross,
     //                       _v5 normal2, _v6 deflect direction, _v10 forward,
     //                       _v11/_v12 angle temporaries, _col
@@ -79,7 +66,6 @@ export class Simulation {
     //                       _v7 spine, _v8 wave step
     //   mitosis             _v10/_v11/_v12 basis, _m
     //   food                _fd
-    //   render              _v9 fade scale, _m, _dummy, _q, _one, _camDir
     this._v1 = new THREE.Vector3()
     this._v2 = new THREE.Vector3()
     this._v3 = new THREE.Vector3()
@@ -88,31 +74,20 @@ export class Simulation {
     this._v6 = new THREE.Vector3()
     this._v7 = new THREE.Vector3()
     this._v8 = new THREE.Vector3()
-    this._v9 = new THREE.Vector3()
     this._v10 = new THREE.Vector3()
     this._v11 = new THREE.Vector3()
     this._v12 = new THREE.Vector3()
     this._q = new THREE.Quaternion()
     this._m = new THREE.Matrix4()
-    this._dummy = new THREE.Object3D()
     this._col = { dist: 0, x: 0, y: 0, z: 0 }
     this._fd = { rx: 0, ry: 0, rz: 0 }
     this._eatContact = []
-    this._one = new THREE.Vector3(1, 1, 1)
-    this._camDir = new THREE.Vector3()
     this.perf = createPerf()
-    initBodyPools(this)
   }
 
   attach(container) {
-    const { scene, camera, renderer, controls, sphereShell } =
-      createScene(container)
-    this.scene = scene
-    this.camera = camera
-    this.renderer = renderer
-    this.controls = controls
-    this.sphereShell = sphereShell
-    this._shellRadius = P.SPHERE_RADIUS
+    this.view = new View(this)
+    if (container) this.view.attach(container)
   }
 
   buildWorld() {
@@ -123,47 +98,28 @@ export class Simulation {
       this.cells.push(makeCell(this, 1))
     }
 
-    this.foodMesh = new THREE.InstancedMesh(foodGeo, foodMat, P.FOOD_COUNT)
-    this.foodMesh.frustumCulled = false
-    this.foodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    this.scene.add(this.foodMesh)
-    initPops(this)
     generateClumps(this)
     for (let i = 0; i < P.FOOD_COUNT; i++) makeFood(this)
     buildFoodGrid(this)
-    this.foodMesh.instanceMatrix.needsUpdate = true
   }
 
   reset() {
-    disposeBodyPools(this)
-    disposeTailPool(this)
-    if (this.foodMesh) {
-      this.scene.remove(this.foodMesh)
-      this.foodMesh.dispose()
-    }
     this.cells = []
     this.foods = []
     this.foodGrid = new Map()
     this.cellGrid = new Map()
     this.clumps = []
     this.respawning = []
+    this.removed = []
     this.simTime = 0
-    this.tailScale = 1
-    this.tailsHidden = false
+    this.poseEnabled = true
     this.senseAccum = 0
-    this.foodMesh = null
     this.pops = []
-    this.resizeShell()
-    initBodyPools(this)
+    if (this.view) {
+      this.view.resetResources()
+      this.view.resizeShell()
+    }
     this.buildWorld()
-  }
-
-  resizeShell() {
-    if (!this.sphereShell || P.SPHERE_RADIUS === this._shellRadius) return
-    const ratio = P.SPHERE_RADIUS / this._shellRadius
-    resizeSphereShell(this.sphereShell)
-    scaleSphereFraming(this.camera, this.controls, this.scene.fog, ratio)
-    this._shellRadius = P.SPHERE_RADIUS
   }
 
   processSplits() {
@@ -187,9 +143,9 @@ export class Simulation {
   }
 
   removeCell(cell) {
-    const d = cell
-    removeBody(this, d)
-    releaseTail(this, d)
+    // Slot teardown is deferred to the next render sync, so physics never
+    // touches a pool.
+    this.removed.push(cell)
   }
 
   advance(dt) {
@@ -208,6 +164,7 @@ export class Simulation {
         continue
       }
       if (d.reorientT > 0) d.reorientT = Math.max(0, d.reorientT - dt)
+      if (d.forageT > 0) d.forageT = Math.max(0, d.forageT - dt)
       const normal = this._v1.copy(d.pos).normalize()
 
       d.heading.addScaledVector(normal, -d.heading.dot(normal)).normalize()
@@ -234,7 +191,14 @@ export class Simulation {
           const fatigue = smoothstep(
             THREE.MathUtils.clamp(frac / P.STARVE_SLOW, 0, 1),
           )
-          d.drive = d.slow * (1 - coastFrac) * fatigue
+          // A daughter in its post-division forage window ignores the grazing
+          // slowdown so it can actually leave the parent spot (cell-x93).
+          const graze = d.forageT > 0 ? 1 : d.slow
+          // A red that just finished a meal (reorientT) also ignores the
+          // energy coast, so a fed red can still chase the next prey instead
+          // of idling at high energy (cell-700).
+          const coast = d.breed === 1 && d.reorientT > 0 ? 0 : coastFrac
+          d.drive = graze * (1 - coast) * fatigue
           if (d.breed === 1) {
             d.drive *= P.PRED_DRIVE
             // Ambush: burst when prey is within PRED_LUNGE, coast outside it.
@@ -315,6 +279,19 @@ export class Simulation {
             }
           }
         }
+        // Post-division forage: a fresh daughter turns hard toward sensed food
+        // so it re-aims off its inward birth heading instead of drifting
+        // (cell-x93). Deterministic, unlike the collision kicks.
+        if (d.forageT > 0 && d.breed === 0 && d.foodAmt > 0.01) {
+          const ang = signedAngleTo(this, d, d.foodDir)
+          if (ang != null) d.headingRate += ang * P.FORAGE_TURN * dt
+        }
+        // Symmetric post-meal re-aim for a red: without it the tail turn is too
+        // slow to chain kills (cell-700).
+        if (d.reorientT > 0 && d.breed === 1 && d.preyNear < Infinity) {
+          const ang = signedAngleTo(this, d, d.preyNearestDir)
+          if (ang != null) d.headingRate += ang * P.REORIENT_TURN * dt
+        }
         // The tail's steering bend imparts a heading rate (0 when the tail is
         // straight), then angular drag quickly damps it.
         d.headingRate += P.TAIL_TURN * (d.tailBend || 0) * dt
@@ -392,29 +369,14 @@ export class Simulation {
     // cosmetic spring-chain pose is only integrated when tails are drawn.
     this.perf.begin('tail')
     for (const cell of this.cells) updateTailControl(this, cell, dt)
-    if (!this.tailsHidden) {
+    if (this.poseEnabled) {
       for (const cell of this.cells) updateTailPose(this, cell, dt)
     }
     this.perf.end('tail')
   }
 
   renderTails() {
-    const dirty = this._tailDirty
-    dirty.clear()
-    // Ranges only ever describe this frame's writes, so drop any left over from
-    // advance-time clears (or from a frame where tails were hidden).
-    for (const chunk of this.tailChunks) {
-      for (const a of chunk.attrList) a.clearUpdateRanges()
-    }
-    if (this.tailsHidden) return
-    for (const cell of this.cells) {
-      const chunk = placeTail(this, cell)
-      if (chunk) dirty.add(chunk)
-    }
-    // One needsUpdate per attribute per touched chunk instead of per cell.
-    for (const chunk of dirty) {
-      for (const a of chunk.attrList) a.needsUpdate = true
-    }
+    if (this.view) this.view.renderTails()
   }
 
   step(simDt) {
@@ -426,31 +388,14 @@ export class Simulation {
   }
 
   render(tailScale, dt) {
-    renderView(this, tailScale, dt)
+    if (this.view) this.view.render(tailScale, dt)
   }
 
   onResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight
-    this.camera.updateProjectionMatrix()
-    this.renderer.setSize(window.innerWidth, window.innerHeight)
+    if (this.view) this.view.onResize()
   }
 
   dispose() {
-    if (this.controls) this.controls.dispose()
-    if (this.renderer) this.renderer.dispose()
-    // Meshes and pooled geometry first, then the shared templates/materials they
-    // reference, so nothing is disposed out from under a live draw call.
-    disposeBodyPools(this)
-    disposeTailPool(this)
-    disposePops(this)
-    if (this.foodMesh) this.foodMesh.dispose()
-    if (this.sphereShell) {
-      this.sphereShell.geometry.dispose()
-      this.sphereShell.material.dispose()
-    }
-    disposeBodyGeos()
-    disposeSharedMaterials()
-    disposeGlowMaterial()
-    if (this.renderer) this.renderer.domElement.remove()
+    if (this.view) this.view.dispose()
   }
 }

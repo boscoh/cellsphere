@@ -5,7 +5,7 @@ import {
   TAIL_SEGMENTS,
   TAIL_MOTOR_AMP,
   TAIL_DYN_SUB,
-} from './constants'
+} from './constants.js'
 
 // Tail physics: the O(1) steering control plus the spring-chain pose. Purely
 // visual apart from `tailBend`, the single scalar the body reads. Split out of

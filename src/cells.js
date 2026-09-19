@@ -10,10 +10,8 @@ import {
   WIDTH,
   TAIL_SEGMENTS,
   TAIL_LINK,
-} from './constants'
-import { randomSurfacePoint, randomTangent, smoothstep } from './math'
-import { addBody, removeBody, rehomeBody, setInstanceColor } from './bodyPool'
-import { claimTailSlot, inheritTailSlot, setTailColor } from './tailPool'
+} from './constants.js'
+import { randomSurfacePoint, randomTangent, smoothstep } from './math.js'
 
 // Cell domain: creation, growth/energy and mitosis. The body and tail instance
 // pools live in bodyPool.js and tailPool.js, tail physics in tail.js.
@@ -120,8 +118,14 @@ export function createCell(sim, pos, heading, length, breed = Math.random() < 0.
     tailGrow: 1,
     fade: 1,
     rest: 0,
+    forageT: 0,
     tailChunk: null,
     tailSlot: -1,
+    // Render-written slot state. `noTail` marks a fading mitosis parent that must
+    // not be given a new tail, and `tailHeir` asks the next render sync to hand
+    // this cell's tail slot to a daughter. Physics never reads either.
+    noTail: false,
+    tailHeir: null,
     absorbAcc: 0,
     bodyBucket: null,
     bodyChunk: null,
@@ -129,7 +133,6 @@ export function createCell(sim, pos, heading, length, breed = Math.random() < 0.
     quat: new THREE.Quaternion(),
   }
   setCellColor(d)
-  addBody(sim, d, length)
   return d
 }
 
@@ -142,7 +145,6 @@ export function makeCell(sim, breed) {
   const normal = pos.clone().normalize()
   const heading = randomTangent(normal)
   const d = createCell(sim, pos, heading, length, breed)
-  claimTailSlot(sim, d)
   return d
 }
 
@@ -151,14 +153,7 @@ function setSize(sim, d, energy, checkSplit) {
   const r = radiusFromEnergy(next, d.breed)
   d.energy = next
   d.mass = Math.max(r * r * 0.25, 0.05)
-  if (r !== d.radius) {
-    d.radius = r
-    if (rehomeBody(sim, d, r)) {
-      setCellColor(d)
-      setInstanceColor(sim, d)
-      setTailColor(sim, d)
-    }
-  }
+  if (r !== d.radius) d.radius = r
   if (checkSplit && next >= ENERGY_MAX - 1e-6 && !d.splitPending) d.split = true
   else if (next < ENERGY_MAX - 1e-6) d.splitPending = false
 }
@@ -238,10 +233,10 @@ export function mitose(sim, parent) {
 
   const back = createCell(sim, backPos, headBack, childLen, d.breed)
   const front = createCell(sim, frontPos, headFront, childLen, d.breed)
-  claimTailSlot(sim, back)
-  // The front daughter inherits the parent's slot so the tail does not jump; the
-  // fading parent is left slotless.
-  inheritTailSlot(sim, d, front)
+  // The front daughter inherits the parent's tail slot at the next render sync
+  // so the tail does not jump; the fading parent is left slotless.
+  front.tailHeir = d
+  d.noTail = true
   back.splitting = true
   front.splitting = true
   back.tailGrow = 0
@@ -287,12 +282,6 @@ export function updateMito(sim, d, simDt) {
 
   const opac = 1 - fadeK
   pd.fade = Math.max(opac, 0)
-  if (opac <= 0 && !m.fadeDone) {
-    m.fadeDone = true
-    removeBody(sim, pd)
-    // The parent's tail slot was handed to the front daughter in mitose, so the
-    // parent is already slotless and there is nothing to clear here.
-  }
 
   if (m.t >= m.dur) finalizeMito(d, m)
 }
@@ -303,6 +292,8 @@ function finalizeMito(d, m) {
   m.front.splitting = false
   m.back.rest = P.MITO_REST
   m.front.rest = P.MITO_REST
+  m.back.forageT = P.MITO_FORAGE
+  m.front.forageT = P.MITO_FORAGE
   m.parent.dead = true
 }
 

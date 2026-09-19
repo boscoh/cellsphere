@@ -1,10 +1,11 @@
 import * as THREE from 'three'
-import { P, SURFACE, TAIL_SEGMENTS, TAIL_CHUNK_CELLS } from './constants'
-import { tailGeo, tailMat } from './materials'
+import { P, SURFACE, TAIL_SEGMENTS, TAIL_CHUNK_CELLS } from './constants.js'
+import { tailGeo, tailMat } from './materials.js'
 
 // Tail instance pool and placement. Slots are packed per chunk so mesh.count is
-// exact; freeing a slot moves the last live slot into the hole. Cell code never
-// touches chunk internals - it claims, inherits or releases a slot (cell-cv6.5).
+// exact; freeing a slot moves the last live slot into the hole. Cells and the
+// physics loop never touch chunk internals: the render sync pass claims,
+// inherits or releases a slot. Operates on a View.
 
 const TAIL_CHUNK_SIZE = TAIL_CHUNK_CELLS * TAIL_SEGMENTS
 
@@ -29,7 +30,7 @@ function makeTailAttrs() {
   return { pos, x, y, scale }
 }
 
-export function createTailChunk(sim) {
+export function createTailChunk(view) {
   // Each chunk owns a geometry clone so its compact per-segment attributes
   // (midpoint, axis X, up Y, scale) are independent of other chunks.
   const geo = tailGeo.clone()
@@ -45,7 +46,7 @@ export function createTailChunk(sim) {
   mesh.setColorAt(0, new THREE.Color(1, 1, 1))
   mesh.instanceColor.needsUpdate = true
   mesh.count = 0
-  sim.scene.add(mesh)
+  view.scene.add(mesh)
   const chunk = {
     mesh,
     live: 0,
@@ -53,27 +54,27 @@ export function createTailChunk(sim) {
     attrs,
     attrList: [attrs.pos, attrs.x, attrs.y, attrs.scale],
   }
-  sim.tailChunks.push(chunk)
+  view.tailChunks.push(chunk)
   return chunk
 }
 
 // Tail cell slots are packed contiguously from 0..live-1, so `mesh.count` can
 // exclude every unused (reserved or freed) instance from the draw.
-function allocTailSlot(sim) {
-  for (const chunk of sim.tailChunks) {
+function allocTailSlot(view) {
+  for (const chunk of view.tailChunks) {
     if (chunk.live < TAIL_CHUNK_CELLS) {
       const slot = chunk.live++
       chunk.mesh.count = chunk.live * TAIL_SEGMENTS
       return { chunk, slot }
     }
   }
-  const chunk = createTailChunk(sim)
+  const chunk = createTailChunk(view)
   const slot = chunk.live++
   chunk.mesh.count = chunk.live * TAIL_SEGMENTS
   return { chunk, slot }
 }
 
-function freeTailSlot(sim, d) {
+function freeTailSlot(view, d) {
   const chunk = d.tailChunk
   if (!chunk || !chunk.mesh) return
   const slot = d.tailSlot
@@ -86,7 +87,7 @@ function freeTailSlot(sim, d) {
     chunk.owners[slot] = owner
     if (owner) {
       owner.tailSlot = slot
-      setTailColor(sim, owner)
+      setTailColor(view, owner)
     }
   }
   chunk.owners[last] = null
@@ -96,25 +97,25 @@ function freeTailSlot(sim, d) {
   d.tailSlot = -1
 }
 
-export function releaseTail(sim, d) {
+export function releaseTail(view, d) {
   if (d.tailTransfer) return
-  clearTail(sim, d)
-  freeTailSlot(sim, d)
+  clearTail(view, d)
+  freeTailSlot(view, d)
 }
 
-export function disposeTailPool(sim) {
-  for (const chunk of sim.tailChunks) {
+export function disposeTailPool(view) {
+  for (const chunk of view.tailChunks) {
     if (chunk.mesh) {
-      sim.scene.remove(chunk.mesh)
+      view.scene.remove(chunk.mesh)
       chunk.mesh.geometry.dispose()
       chunk.mesh.dispose()
       chunk.mesh = null
     }
   }
-  sim.tailChunks = []
+  view.tailChunks = []
 }
 
-export function setTailColor(sim, d) {
+export function setTailColor(view, d) {
   if (!d.color || !d.tailChunk || !d.tailChunk.mesh) return
   const mesh = d.tailChunk.mesh
   const base = d.tailSlot * TAIL_SEGMENTS
@@ -124,8 +125,8 @@ export function setTailColor(sim, d) {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
 }
 
-function markTailRange(sim, chunk, base) {
-  if (!sim.renderer) return
+function markTailRange(view, chunk, base) {
+  if (!view.renderer) return
   const S = TAIL_SEGMENTS
   chunk.attrs.pos.addUpdateRange(base * 3, S * 3)
   chunk.attrs.x.addUpdateRange(base * 3, S * 3)
@@ -143,22 +144,22 @@ function hideTailSegments(chunk, base) {
   }
 }
 
-export function clearTail(sim, d) {
+export function clearTail(view, d) {
   const chunk = d.tailChunk
   if (!chunk || !chunk.mesh) return
   const base = d.tailSlot * TAIL_SEGMENTS
   hideTailSegments(chunk, base)
-  markTailRange(sim, chunk, base)
+  markTailRange(view, chunk, base)
   for (const a of chunk.attrList) a.needsUpdate = true
 }
 
-export function placeTail(sim, d) {
+export function placeTail(view, d) {
   const chunk = d.tailChunk
   if (!chunk || !chunk.mesh) return null
   const base = d.tailSlot * TAIL_SEGMENTS
   if (d.sideHidden) {
     hideTailSegments(chunk, base)
-    markTailRange(sim, chunk, base)
+    markTailRange(view, chunk, base)
     return chunk
   }
   const dirs = d.tailDirs
@@ -166,24 +167,24 @@ export function placeTail(sim, d) {
   // scales proportionally with the cell.
   const pitch = ((P.TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   const draw = pitch * P.TAIL_LINK_FILL
-  const ts = sim.tailScale
+  const ts = view.tailScale
   const { pos, x: ax, y: ay, scale } = chunk.attrs
   const posArr = pos.array
   const xArr = ax.array
   const yArr = ay.array
   const sArr = scale.array
-  const a = sim._v1
+  const a = view._v1
     .copy(d.pos)
     .addScaledVector(d.heading, -(d.radius - d.width * P.TAIL_HINGE))
   a.setLength(SURFACE)
   for (let i = 0; i < TAIL_SEGMENTS; i++) {
-    const b = sim._v2.copy(a).addScaledVector(dirs[i], pitch)
+    const b = view._v2.copy(a).addScaledVector(dirs[i], pitch)
     b.setLength(SURFACE)
-    const x = sim._v3.subVectors(b, a).normalize()
+    const x = view._v3.subVectors(b, a).normalize()
     // The cross-section is circular, so only the segment axis matters: use the
     // outward sphere normal as the up vector (z is derived in the shader).
-    const n = sim._v4.copy(a).add(b).normalize()
-    const y = sim._v5.copy(n).addScaledVector(x, -n.dot(x))
+    const n = view._v4.copy(a).add(b).normalize()
+    const y = view._v5.copy(n).addScaledVector(x, -n.dot(x))
     if (y.lengthSq() < 1e-12) y.set(0, 1, 0).addScaledVector(x, -x.y)
     y.normalize()
     const k = base + i
@@ -201,24 +202,24 @@ export function placeTail(sim, d) {
     sArr[k * 2 + 1] = ts
     a.copy(b)
   }
-  markTailRange(sim, chunk, base)
+  markTailRange(view, chunk, base)
   return chunk
 }
 
 // Bind a freshly allocated slot to a cell. Ownership, colour and the tail chain
-// are the pool's business, so cell creation never touches chunk internals.
-export function claimTailSlot(sim, d) {
-  const { chunk, slot } = allocTailSlot(sim)
+// are the pool's business, so physics never touches chunk internals.
+export function claimTailSlot(view, d) {
+  const { chunk, slot } = allocTailSlot(view)
   chunk.owners[slot] = d
   d.tailChunk = chunk
   d.tailSlot = slot
-  setTailColor(sim, d)
+  setTailColor(view, d)
 }
 
 // Hand the parent's slot to a daughter so the tail does not visibly jump when a
 // cell divides. The parent ends up slotless, which makes releaseTail/clearTail
 // no-ops for it, so no transfer flag is needed.
-export function inheritTailSlot(sim, from, to) {
+export function inheritTailSlot(view, from, to) {
   const chunk = from.tailChunk
   const slot = from.tailSlot
   from.tailChunk = null
@@ -227,5 +228,5 @@ export function inheritTailSlot(sim, from, to) {
   chunk.owners[slot] = to
   to.tailChunk = chunk
   to.tailSlot = slot
-  setTailColor(sim, to)
+  setTailColor(view, to)
 }

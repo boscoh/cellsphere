@@ -2,10 +2,10 @@ import {
   P,
   SURFACE,
   CELL_GRID,
-} from './constants'
-import { forEachNearby } from './grid'
-import { drainEnergy, gainEnergy } from './cells'
-import { capsuleDist } from './collision'
+} from './constants.js'
+import { forEachNearby } from './grid.js'
+import { drainEnergy, gainEnergy } from './cells.js'
+import { capsuleDist } from './collision.js'
 
 // How fast a feeding predator closes the last gap to sink into its prey.
 const LATCH_CLOSE_RATE = 0.5

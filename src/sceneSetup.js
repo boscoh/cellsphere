@@ -1,12 +1,31 @@
 import * as THREE from 'three'
 import { ArcballControls } from 'three/addons/controls/ArcballControls.js'
-import { P } from './constants'
+import { P } from './constants.js'
 
-export function createScene(container) {
+// Scene graph and lighting are split so a headless View can build the scene,
+// shell and lights-free core without a WebGL context; `attachGraphics` adds the
+// camera, renderer, controls and lights that need a canvas.
+
+export function createSceneCore() {
   const R = P.SPHERE_RADIUS
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x0e110b)
   scene.fog = new THREE.Fog(0x0e110b, R * 3.6, R * 6.8)
+
+  const sphereShell = new THREE.Mesh(
+    new THREE.SphereGeometry(R, 32, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0x1c2316,
+      side: THREE.FrontSide,
+    }),
+  )
+  scene.add(sphereShell)
+
+  return { scene, sphereShell }
+}
+
+export function attachGraphics(scene, container) {
+  const R = P.SPHERE_RADIUS
 
   // Frame the shell in the viewport area below the HUD bar: pull back far
   // enough that the whole sphere fits, and pivot slightly above its centre so
@@ -54,7 +73,7 @@ export function createScene(container) {
   // Key light hangs top-left and behind the viewer (directional, so zoom and
   // orbit do not change brightness), with a soft opposite fill for shape. A
   // low hemisphere light lifts the sheltered side so capsule bodies never go
-  // near-black.
+  // near-black. Lights are parented to the camera so they follow the view.
   scene.add(camera)
   const key = new THREE.DirectionalLight(0xe6eeff, 1.1)
   key.position.set(-8, 6, 12)
@@ -64,16 +83,7 @@ export function createScene(container) {
   camera.add(rim)
   scene.add(new THREE.HemisphereLight(0xbfd0e2, 0x1a1e18, 0.45))
 
-  const sphereShell = new THREE.Mesh(
-    new THREE.SphereGeometry(R, 32, 16),
-    new THREE.MeshBasicMaterial({
-      color: 0x1c2316,
-      side: THREE.FrontSide,
-    }),
-  )
-  scene.add(sphereShell)
-
-  return { scene, camera, renderer, controls, sphereShell }
+  return { camera, renderer, controls }
 }
 
 // Resizes the shell mesh after `P.SPHERE_RADIUS` changes (rebuild).

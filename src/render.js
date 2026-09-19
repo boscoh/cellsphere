@@ -1,14 +1,20 @@
-import { CULL_COS } from './constants'
-import { renderBodies } from './bodyPool'
-import { warmTail } from './tail'
-import { updatePops } from './pops'
-import { cosFace } from './math'
+import { CULL_COS } from './constants.js'
+import { renderBodies } from './bodyPool.js'
+import { warmTail } from './tail.js'
+import { initPops, updatePops } from './pops.js'
+import { ensureFoodMesh, syncFood } from './foodRender.js'
+import { placeTail } from './tailPool.js'
+import { syncCells } from './renderSync.js'
+import { cosFace } from './math.js'
 
-function updateVisibility(sim) {
-  if (!sim.camera) return
-  const cam = sim.camera.position
-  const camDir = sim._camDir.set(cam.x, cam.y, cam.z).normalize()
-  for (const cell of sim.cells) {
+// Render passes. All view resources (scene, pools, meshes, scratch) live on the
+// View; cell/food/pop data lives on `view.sim`.
+
+function updateVisibility(view) {
+  if (!view.camera) return
+  const cam = view.camera.position
+  const camDir = view._camDir.set(cam.x, cam.y, cam.z).normalize()
+  for (const cell of view.sim.cells) {
     // Hide a cell's TAIL once its surface stops facing the camera (far side):
     // its body is behind the opaque shell anyway, but the tail would poke past
     // the silhouette and read as an orphan "tail with no body". Bodies are never
@@ -18,35 +24,62 @@ function updateVisibility(sim) {
   }
 }
 
-export function renderView(sim, tailScale, dt) {
-  sim.tailScale = tailScale
+export function renderTails(view) {
+  const sim = view.sim
+  const dirty = view._tailDirty
+  dirty.clear()
+  // Ranges only ever describe this frame's writes, so drop any left over from
+  // advance-time clears (or from a frame where tails were hidden).
+  for (const chunk of view.tailChunks) {
+    for (const a of chunk.attrList) a.clearUpdateRanges()
+  }
+  if (view.tailsHidden) return
+  for (const cell of sim.cells) {
+    const chunk = placeTail(view, cell)
+    if (chunk) dirty.add(chunk)
+  }
+  // One needsUpdate per attribute per touched chunk instead of per cell.
+  for (const chunk of dirty) {
+    for (const a of chunk.attrList) a.needsUpdate = true
+  }
+}
+
+export function renderView(view, tailScale, dt) {
+  const sim = view.sim
+  // View resources are created lazily so a headless build stays render-free and
+  // a reset/rebuild re-creates them on the next frame.
+  ensureFoodMesh(view)
+  syncFood(view)
+  initPops(view)
+  syncCells(view)
+  view.tailScale = tailScale
   const hidden = tailScale < 0.5
   // The pose was frozen while hidden; re-aim the chain before it is drawn again.
-  if (sim.tailsHidden && !hidden) {
+  if (view.tailsHidden && !hidden) {
     for (const cell of sim.cells) warmTail(sim, cell)
   }
-  sim.tailsHidden = hidden
-  for (const chunk of sim.tailChunks) {
-    chunk.mesh.visible = !sim.tailsHidden && chunk.live > 0
+  view.tailsHidden = hidden
+  for (const chunk of view.tailChunks) {
+    chunk.mesh.visible = !view.tailsHidden && chunk.live > 0
   }
   sim.perf.begin('vis')
-  updateVisibility(sim)
+  updateVisibility(view)
   sim.perf.end('vis')
 
   sim.perf.begin('bodies')
-  renderBodies(sim)
+  renderBodies(view)
   sim.perf.end('bodies')
 
   sim.perf.begin('pops')
-  updatePops(sim, dt)
+  updatePops(view, dt)
   sim.perf.end('pops')
 
   sim.perf.begin('tails')
-  sim.renderTails()
+  renderTails(view)
   sim.perf.end('tails')
 
-  if (sim.controls) sim.controls.update()
+  if (view.controls) view.controls.update()
   sim.perf.begin('draw')
-  if (sim.renderer) sim.renderer.render(sim.scene, sim.camera)
+  if (view.renderer) view.renderer.render(view.scene, view.camera)
   sim.perf.end('draw')
 }

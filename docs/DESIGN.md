@@ -14,14 +14,19 @@ sense food, slow down, turn toward concentration, eat to grow, and eventually
 
 `src/App.vue` is a thin Vue shell (lifecycle, single-line top-left HUD, frame
 timing). The simulation is split into modules: `src/sim.js` (`Simulation`
-orchestrator: physics loop, render lifecycle), `src/collision.js` (capsule
+orchestrator: physics loop + cell/food data; the render lifecycle is delegated
+to `src/view.js`), `src/view.js` (`View`: scene/camera/renderer/controls, pooled
+meshes and render scratch), `src/renderSync.js` (render-side pool reconcile),
+`src/collision.js` (capsule
 distance, cell hash, collision solve), `src/grid.js` (spatial hash key packing
 and neighbourhood scan), `src/cells.js` (cell domain — create/grow/mitose),
 `src/bodyPool.js` (pooled body instances per length bucket), `src/tailPool.js`
 (tail instance pool, slot claims/transfers, segment placement), `src/tail.js`
 (tail physics — steering control and spring-chain pose), `src/food.js` (food
-grid, eating + sensing, clumps); tuning constants in `src/constants.js`;
-scene/lights in `src/sceneSetup.js`; shared geos/materials in
+grid, eating + sensing, clumps), `src/foodRender.js` (food mesh create/sync from
+`food.dirty`); tuning constants in `src/constants.js`;
+scene/lights in `src/sceneSetup.js` (`createSceneCore` + `attachGraphics`);
+shared geos/materials in
 `src/materials.js`; pure helpers in `src/math.js`; dependency-free script/test
 helpers (seeded `mulberry32`) in `src/util.js`.
 
@@ -58,7 +63,8 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   `tailMat` vertex shader builds the transform (`z = x × y`), uploading only the
   touched slots via `addUpdateRange` and batching one `needsUpdate` per chunk per
   frame. Tails hidden = skip `renderTails` (placement), hide the chunk meshes
-  (`tailsHidden`), and skip the cosmetic pose (`updateTailPose`); the physical
+  (`View.tailsHidden`), and skip the cosmetic pose in `advance` (sim-owned
+  `poseEnabled`); the physical
   control (`updateTailControl` → `tailBend`) always runs in `advance`, so
   steering is unaffected. `warmTail` re-aims the frozen chain on re-show.
 - **Linear motion**: `drive = slow × (1 − coast) × fatigue`; thrust
@@ -72,8 +78,17 @@ helpers (seeded `mulberry32`) in `src/util.js`.
 - **One consistent time loop**: `App.vue` banks real time in an accumulator
   and calls `sim.step(simDt×simRate)`; `step` subdivides into
   `clamp(ceil(simDt/FIXED_DT),1,MAX_STEPS)` substeps of `advance(dt)`. Render
-  is separate (`sim.render(tailScale)`). Headless physics: `buildWorld()` +
-  `step()` work without `attach()` (bare `THREE.Scene`, no WebGL).
+  is separate (`sim.render(tailScale, dt)` delegates to the `View`). Headless
+  physics: `buildWorld()` + `step()` work with no `View`/WebGL and allocate no
+  render resources at all.
+- **Sim/view split**: render resources — scene, camera, renderer, controls,
+  lights and shell, pooled body/tail meshes, food and death-burst meshes, and
+  render scratch — live on `src/view.js`'s `View`, created by `sim.attach()`.
+  `renderSync.syncCells(view)` reconciles pool slots from the cell list, food
+  matrices upload from `food.dirty`, and the cosmetic tail pose is gated by the
+  sim-owned `poseEnabled` (set from the HUD toggle). `advance()` touches no GPU
+  buffer and reads no render state. `npm run test:headless` guards that physics
+  modules never import a render module.
 - **Food**: one `InstancedMesh`; spatial hash (`GRID`) limits lookups;
   `eatAndRespawn` (per substep, tight scan) and `concentration`
   (every `SENSE_PERIOD`, wide scan) update `slow/foodAmt/foodPeak/foodDir`.

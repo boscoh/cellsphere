@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { SURFACE } from './constants'
+import { SURFACE } from './constants.js'
 
 export function randomUnitVector() {
   let v = new THREE.Vector3(

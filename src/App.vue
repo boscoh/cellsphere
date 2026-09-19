@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue'
-import { Simulation } from './sim'
+import { Simulation } from './sim.js'
 import {
   P,
   FIXED_DT,
@@ -8,7 +8,7 @@ import {
   POP_SAMPLES,
   resetParams,
   setParam,
-} from './constants'
+} from './constants.js'
 import Hud from './components/Hud.vue'
 import PerfPanel from './components/PerfPanel.vue'
 import Tuner from './components/Tuner.vue'
@@ -61,12 +61,16 @@ function onSpeed(v) {
 
 function onTails(active) {
   tailsActive.value = active
+  // The cosmetic tail pose is gated by a sim-owned flag so advance() never reads
+  // render state; tails are visual-only, so this cannot change motion.
+  if (sim) sim.poseEnabled = active
 }
 
 onMounted(() => {
   sim = new Simulation()
   sim.attach(canvasHolder.value)
   sim.buildWorld()
+  sim.poseEnabled = tailsActive.value
 
   const tick = () => {
     animationId = requestAnimationFrame(tick)

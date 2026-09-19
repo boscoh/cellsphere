@@ -6,22 +6,13 @@ import {
   ENERGY_MAX,
   FOOD_RADIUS_MIN,
   FOOD_RADIUS_MAX,
-} from './constants'
-import { randomUnitVector, randomSurfacePoint, randomTangent } from './math'
-import { gridKey, forEachNearby, scanRadius } from './grid'
-import { gainEnergy } from './cells'
+} from './constants.js'
+import { randomUnitVector, randomSurfacePoint, randomTangent } from './math.js'
+import { gridKey, forEachNearby, scanRadius } from './grid.js'
+import { gainEnergy } from './cells.js'
 
 // Scratch pseudo-food used by clump-attractor sensing (Tier-2 prototype).
 const _clumpFood = { pos: new THREE.Vector3(), r: 0 }
-
-export function placeFood(sim, food) {
-  const s = food.visible ? food.scale : 0.0001
-  sim._dummy.position.copy(food.pos)
-  sim._dummy.scale.set(s, s, s)
-  sim._dummy.rotation.set(0, 0, 0)
-  sim._dummy.updateMatrix()
-  sim.foodMesh.setMatrixAt(food.index, sim._dummy.matrix)
-}
 
 export function generateClumps(sim) {
   const n =
@@ -67,9 +58,9 @@ export function makeFood(sim) {
     visible: true,
     index: sim.foods.length,
     gridKey: null,
+    dirty: true,
   }
   sim.foods.push(food)
-  placeFood(sim, food)
   return food
 }
 
@@ -167,7 +158,6 @@ function respawnSpot(sim, food) {
 }
 
 export function eatAndRespawn(sim, simDt) {
-  let dirty = false
   for (let i = sim.respawning.length - 1; i >= 0; i--) {
     const foodIndex = sim.respawning[i]
     const food = sim.foods[foodIndex]
@@ -178,8 +168,7 @@ export function eatAndRespawn(sim, simDt) {
       food.pos = respawnSpot(sim, food)
       food.visible = true
       addFoodToGrid(sim, foodIndex)
-      placeFood(sim, food)
-      dirty = true
+      food.dirty = true
     }
   }
 
@@ -215,8 +204,7 @@ export function eatAndRespawn(sim, simDt) {
       food.visible = false
       removeFoodFromGrid(sim, foodIndex)
       sim.respawning.push(foodIndex)
-      placeFood(sim, food)
-      dirty = true
+      food.dirty = true
       if (d.absorbAcc >= P.ENERGY_PER_FOOD) {
         d.absorbAcc -= P.ENERGY_PER_FOOD
         // gainEnergy clamps to ENERGY_MAX and flips split, so a full cell can
@@ -225,8 +213,6 @@ export function eatAndRespawn(sim, simDt) {
       }
     }
   }
-
-  if (dirty) sim.foodMesh.instanceMatrix.needsUpdate = true
 }
 
 export function concentration(sim) {

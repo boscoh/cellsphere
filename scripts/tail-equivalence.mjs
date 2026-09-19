@@ -42,6 +42,7 @@ try {
   const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
   const tail = await server.ssrLoadModule('/src/tail.js')
   const tailPool = await server.ssrLoadModule('/src/tailPool.js')
+  const renderSync = await server.ssrLoadModule('/src/renderSync.js')
 
   const report = (label, problems, ok) => {
     if (problems.length) {
@@ -60,7 +61,10 @@ try {
     Math.random = mulberry32(SEED)
     try {
       const sim = new Simulation()
+      sim.attach()
       sim.buildWorld()
+      // Physics no longer allocates pool slots; the render sync pass does.
+      renderSync.syncCells(sim.view)
       return sim
     } finally {
       Math.random = originalRandom
@@ -202,7 +206,7 @@ try {
     try {
       const sim = new Simulation()
       sim.buildWorld()
-      sim.tailsHidden = tailsHidden
+      sim.poseEnabled = tailsHidden
       for (let i = 0; i < EQUIV_STEPS; i++) sim.advance(DT)
       return { sum: checksum(sim), n: sim.cells.length }
     } finally {
@@ -344,7 +348,7 @@ try {
     const chunk = parent.tailChunk
     const slot = parent.tailSlot
     const daughter = { color: parent.color }
-    tailPool.inheritTailSlot(sim, parent, daughter)
+    tailPool.inheritTailSlot(sim.view, parent, daughter)
     if (parent.tailChunk !== null || parent.tailSlot !== -1) {
       handoverProblems.push('parent kept its tail slot after handing it over')
     }
@@ -355,7 +359,7 @@ try {
       handoverProblems.push('front daughter is not the recorded slot owner')
     }
     const live = chunk.live
-    tailPool.releaseTail(sim, parent)
+    tailPool.releaseTail(sim.view, parent)
     if (chunk.live !== live) handoverProblems.push('releasing the slotless parent changed the pool')
   }
   report('tail slot handover', handoverProblems, 'front daughter inherits, parent goes slotless')
@@ -369,13 +373,13 @@ try {
     const sim = buildWorld()
     const kept = []
     for (let i = 0; i < sim.cells.length; i++) {
-      if (i % 3 === 0) tailPool.releaseTail(sim, sim.cells[i])
+      if (i % 3 === 0) tailPool.releaseTail(sim.view, sim.cells[i])
       else kept.push(sim.cells[i])
     }
     sim.cells = kept
     for (let i = 0; i < 5; i++) {
       const born = { color: new THREE.Color(1, 1, 1) }
-      tailPool.claimTailSlot(sim, born)
+      tailPool.claimTailSlot(sim.view, born)
       sim.cells.push(born)
     }
     const claimed = new Map()
@@ -388,7 +392,7 @@ try {
         if (!d.mitoParent) poolProblems.push(`cell ${i} has no tail slot`)
         continue
       }
-      const ci = sim.tailChunks.indexOf(d.tailChunk)
+      const ci = sim.view.tailChunks.indexOf(d.tailChunk)
       const key = `${ci}:${d.tailSlot}`
       if (claimed.has(key)) poolProblems.push(`slot ${key} claimed by two cells`)
       claimed.set(key, i)
@@ -400,8 +404,8 @@ try {
         poolProblems.push(`cell ${i} is not the owner of its slot`)
       }
     }
-    for (let ci = 0; ci < sim.tailChunks.length; ci++) {
-      const chunk = sim.tailChunks[ci]
+    for (let ci = 0; ci < sim.view.tailChunks.length; ci++) {
+      const chunk = sim.view.tailChunks[ci]
       const live = perChunk.get(ci) || 0
       if (chunk.live !== live) {
         poolProblems.push(`chunk ${ci} live=${chunk.live} but ${live} cells point at it`)
@@ -425,7 +429,7 @@ try {
   const renderProblems = []
   {
     const sim = buildWorld()
-    sim.tailsHidden = false
+    sim.view.tailsHidden = false
     try {
       for (let i = 0; i < 3; i++) sim.renderTails()
     } catch (err) {

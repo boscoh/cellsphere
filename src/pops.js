@@ -1,4 +1,4 @@
-import { makeGlowMesh, disposeGlowMesh } from './glow'
+import { makeGlowMesh, disposeGlowMesh } from './glow.js'
 
 const MAX_POPS = 96
 const POP_LIFE = 0.55
@@ -8,15 +8,17 @@ const POP_GROW = 0.55
 const LEN_K = 1.5
 const WIDTH_K = 1.5
 
-export function initPops(sim) {
-  if (sim.popGlow) return
-  sim.pops = []
-  sim.popGlow = makeGlowMesh(MAX_POPS, 5)
-  sim.scene.add(sim.popGlow.mesh)
+// Death bursts are data on the sim (`sim.pops`, filled by spawnPop in advance)
+// and a glow mesh on the view, which is created on demand here.
+export function initPops(view) {
+  if (view.popGlow) return
+  view.popGlow = makeGlowMesh(MAX_POPS, 5)
+  view.scene.add(view.popGlow.mesh)
 }
 
 export function spawnPop(sim, d) {
-  if (!sim.popGlow) return
+  // Cosmetic bursts accumulate as plain data even without a view; MAX_POPS caps
+  // the list. The mesh write happens later in updatePops.
   if (sim.pops.length >= MAX_POPS) sim.pops.shift()
   sim.pops.push({
     x: d.pos.x,
@@ -34,16 +36,16 @@ export function spawnPop(sim, d) {
   })
 }
 
-export function updatePops(sim, dt) {
-  const entry = sim.popGlow
+export function updatePops(view, dt) {
+  const entry = view.popGlow
   if (!entry) return
-  const pops = sim.pops
+  const pops = view.sim.pops
   for (let i = pops.length - 1; i >= 0; i--) {
     pops[i].age += dt
     if (pops[i].age >= POP_LIFE) pops.splice(i, 1)
   }
   const { mesh, halfLen, halfWidth, alpha, color, axis } = entry
-  const dummy = sim._dummy
+  const dummy = view._dummy
   let n = 0
   for (let i = 0; i < pops.length; i++) {
     const p = pops[i]
@@ -74,10 +76,9 @@ export function updatePops(sim, dt) {
   }
 }
 
-export function disposePops(sim) {
-  if (!sim.popGlow) return
-  sim.scene.remove(sim.popGlow.mesh)
-  disposeGlowMesh(sim.popGlow)
-  sim.popGlow = null
-  sim.pops = []
+export function disposePops(view) {
+  if (!view.popGlow) return
+  view.scene.remove(view.popGlow.mesh)
+  disposeGlowMesh(view.popGlow)
+  view.popGlow = null
 }

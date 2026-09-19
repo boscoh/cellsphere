@@ -1,6 +1,6 @@
 <script setup>
 import { reactive, computed, ref } from 'vue'
-import { GROUPS, P, PARAM_DEFS, setParam } from '../constants'
+import { GROUPS, P, PARAM_DEFS, setParam } from '../constants.js'
 
 const emit = defineEmits(['rebuild', 'default', 'param'])
 

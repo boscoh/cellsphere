@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "node scripts/gen-params-table.mjs --check && vite build",
     "preview": "vite preview",
-    "test:tail": "node scripts/tail-equivalence.mjs"
+    "test": "npm run test:tail && npm run test:headless",
+    "test:tail": "node scripts/tail-equivalence.mjs",
+    "test:headless": "node scripts/headless-sim.mjs"
   },
   "dependencies": {
     "three": "^0.185.1",
