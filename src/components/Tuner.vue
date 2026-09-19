@@ -1,20 +1,14 @@
 <script setup>
-import { reactive, computed, ref } from 'vue'
+import { reactive, computed } from 'vue'
 import { GROUPS, P, PARAM_DEFS, setParam } from '../constants.js'
 
 const emit = defineEmits(['rebuild', 'default', 'param'])
-
-const expanded = ref(false)
 
 function syncValues() {
   for (const r of rows) r.value = r.def
 }
 
-function collapse() {
-  expanded.value = false
-}
-
-defineExpose({ syncValues, collapse })
+defineExpose({ syncValues })
 
 const rows = reactive(
   PARAM_DEFS.map((p) => ({
@@ -62,32 +56,7 @@ function fillPct(value, min, max) {
 
 <template>
   <aside id="tuner-panel" class="panel">
-    <header class="head">
-      <button
-        type="button"
-        class="icon-btn"
-        :class="{ collapsed: !expanded }"
-        :aria-expanded="String(expanded)"
-        :title="expanded ? 'Collapse parameters' : 'Expand parameters'"
-        @click="expanded = !expanded"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      <span class="title">Parameters</span>
-    </header>
-    <div v-show="expanded" class="body">
+    <div class="body">
       <button
         type="button"
         class="secondary-btn"
@@ -138,13 +107,10 @@ function fillPct(value, min, max) {
 
 <style scoped>
 .panel {
-  position: fixed;
-  top: 64px;
-  left: 12px;
-  z-index: 3;
+  pointer-events: auto;
   width: max-content;
   max-width: calc(100vw - 24px);
-  max-height: calc(100vh - 153px);
+  max-height: 40vh;
   display: flex;
   flex-direction: column;
   background: rgba(10, 12, 16, 0.62);
@@ -155,56 +121,6 @@ function fillPct(value, min, max) {
   font-family: system-ui, sans-serif;
   color: #b7c2d4;
   overflow: hidden;
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 10px 14px;
-}
-
-.head .title {
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 10px;
-  color: #6b7484;
-  line-height: 1.2;
-}
-
-.icon-btn {
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  color: #b7c2d4;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-}
-
-.icon-btn:hover {
-  color: #eef2f8;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.icon-btn:focus-visible {
-  outline: 2px solid rgba(111, 168, 255, 0.7);
-  outline-offset: 2px;
-}
-
-.icon-btn svg {
-  transition: transform 0.15s ease;
-}
-
-.icon-btn.collapsed svg {
-  transform: rotate(180deg);
 }
 
 .secondary-btn {
@@ -241,9 +157,10 @@ function fillPct(value, min, max) {
 .body {
   width: 300px;
   box-sizing: border-box;
-  margin-left: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: 6px 14px 16px;
+  padding: 12px 14px 16px;
 }
 
 .group {

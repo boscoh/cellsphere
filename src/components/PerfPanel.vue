@@ -1,12 +1,8 @@
 <script setup>
-import { ref } from 'vue'
-
 defineProps({
   frameMs: { type: Number, default: 0 },
   perf: { type: Object, default: () => ({}) },
 })
-
-const expanded = ref(false)
 
 const PERF_LABELS = {
   grid: 'grid (spatial hash)',
@@ -28,31 +24,9 @@ const PERF_LABELS = {
 <template>
   <div class="perf-panel">
     <div class="perf-head">
-      <button
-        type="button"
-        class="perf-toggle"
-        :class="{ collapsed: !expanded }"
-        :aria-expanded="String(expanded)"
-        :title="expanded ? 'Collapse perf' : 'Expand perf'"
-        @click="expanded = !expanded"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
       <span class="ctl">Perf ms</span>
     </div>
-    <div v-show="expanded" class="perfs">
+    <div class="perfs">
       <span class="perf-name">frame</span>
       <span class="perf-val">{{ frameMs.toFixed(1) }}</span>
       <template v-for="(ms, name) in perf" :key="name">
@@ -84,35 +58,6 @@ const PERF_LABELS = {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.perf-toggle {
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 18px;
-  padding: 0;
-  color: #9aa6ba;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.perf-toggle:hover {
-  color: #eef2f8;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.perf-toggle svg {
-  transition: transform 0.15s ease;
-}
-
-.perf-toggle.collapsed svg {
-  transform: rotate(180deg);
 }
 
 .perfs {

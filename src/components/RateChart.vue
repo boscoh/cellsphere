@@ -7,7 +7,7 @@ import {
   drawYLabel,
   drawAxisMax,
 } from './chartCanvas.js'
-import { classifyRegime, autocorrelation, acfPeak } from './popChartMath.js'
+import { classifyRegime, createAcfTracker, broadMaximum } from './popChartMath.js'
 import { lvPeriod } from './rateModel.js'
 import { SAMPLE_DT } from '../constants.js'
 
@@ -18,7 +18,6 @@ const props = defineProps({
 })
 
 const canvasRef = ref(null)
-const expanded = ref(true)
 
 const acfColor = '#4fa3ff'
 
@@ -37,46 +36,61 @@ const guessLabel = computed(() =>
   textbook.value ? `textbook period: ${textbook.value.toFixed(0)} s` : '',
 )
 
-// The ACF cannot see a period longer than half its snapshot, so size the snapshot
-// to span ~4x the textbook period: the max lag is then ~2x the textbook period,
-// i.e. long enough for the expected peak to appear with margin. Clamped so a
-// missing or absurd textbook estimate still gives a usable window and bounds the
-// O(n^2) cost.
+// The window is sized to span ~4x the textbook period, so the max lag is ~2x the
+// textbook period: long enough for the expected peak to appear, since the ACF
+// cannot see a period longer than half its snapshot. Clamped so a missing or
+// absurd textbook estimate still gives a usable window.
 const ACF_MIN_S = 600
 const ACF_MAX_S = 1800
+// Quantised to whole samples of a 128-sample (~64 s) grid: resizing the tracker
+// rebuilds its lag sums, and a slider drag would otherwise trigger a ~O(n^2)
+// rebuild on every step.
+const ACF_STEP = 128
 const acfSamples = computed(() => {
   const wanted = textbook.value ? 4 * textbook.value : ACF_MIN_S
   const secs = Math.max(ACF_MIN_S, Math.min(ACF_MAX_S, wanted))
-  return Math.max(8, Math.round(secs / SAMPLE_DT))
+  return Math.max(8, Math.round(secs / SAMPLE_DT / ACF_STEP) * ACF_STEP)
 })
 
-// The autocorrelation is O(n^2), so it runs from a snapshot refreshed every
-// THROTTLE samples (~8 s of sim time) rather than on every sample; a period
-// estimate varies slowly, so this is not visible.
-const THROTTLE = 16
+// The detrended autocorrelation is maintained incrementally, so it is current on
+// every sample rather than refreshed every THROTTLE samples.
+const tracker = createAcfTracker(acfSamples.value)
+const acf = ref(null)
 const heavy = ref([])
-let lastHeavyLen = -1
-function refreshHeavy() {
-  lastHeavyLen = props.popSamples.length
-  heavy.value = props.popSamples.slice(-acfSamples.value)
+let consumed = 0
+
+function refreshAcf() {
+  const samples = props.popSamples
+  if (samples.length < consumed) {
+    tracker.reset()
+    consumed = 0
+  }
+  for (let i = consumed; i < samples.length; i++) tracker.push(samples[i].t, samples[i].blue)
+  consumed = samples.length
+  heavy.value = samples.slice(-acfSamples.value)
+  acf.value = tracker.series()
 }
-watch(
-  () => props.popSamples.length,
-  (n) => {
-    if (lastHeavyLen < 0 || n - lastHeavyLen >= THROTTLE || n < lastHeavyLen) refreshHeavy()
-  },
-  { immediate: true },
-)
-watch(acfSamples, () => refreshHeavy())
-const acf = computed(() => autocorrelation(heavy.value, 'blue'))
-const peak = computed(() => acfPeak(acf.value))
+
+// A window resize keeps only the last `acfSamples` of history, so restart the
+// tracker from that tail rather than replaying the whole run.
+function rebuildAcf() {
+  tracker.setSize(acfSamples.value)
+  tracker.reset()
+  consumed = Math.max(0, props.popSamples.length - acfSamples.value)
+  refreshAcf()
+}
+
+watch(() => props.popSamples.length, refreshAcf, { immediate: true })
+watch(acfSamples, rebuildAcf)
+// A ripple in the ACF is not a cycle, so require the dome to clear r = 0.2.
+const ACF_MIN_R = 0.2
+const peak = computed(() => broadMaximum(acf.value, 'r', { minValue: ACF_MIN_R }))
 const regime = computed(() => classifyRegime(heavy.value))
 const secondaryLines = computed(() => {
   const pk = peak.value
-  if (!pk) return ['no clear repeating period', 'autocorrelation stays low']
+  if (!pk) return ['no clear repeating period']
   return [
-    `repeats about every ${pk.lag.toFixed(0)} s`,
-    `correlation peak ${pk.r.toFixed(2)} (1 = perfect repeat)`,
+    `peak for period ${pk.lag.toFixed(0)} s at ${pk.value.toFixed(2)}`,
   ]
 })
 
@@ -158,13 +172,12 @@ function drawCycle(ctx, pad, w, h, series) {
     ctx.setLineDash([])
     ctx.fillStyle = acfColor
     ctx.beginPath()
-    ctx.arc(X(pk.lag), Y(pk.r), 2.4, 0, Math.PI * 2)
+    ctx.arc(X(pk.lag), Y(pk.value), 2.4, 0, Math.PI * 2)
     ctx.fill()
   }
 }
 
 function draw() {
-  if (!expanded.value) return
   const canvas = canvasRef.value
   if (!canvas) return
   const { ctx, w, h } = scaleCanvas(canvas)
@@ -183,7 +196,6 @@ watch(
   () => draw(),
   { flush: 'post' },
 )
-watch(expanded, () => draw(), { flush: 'post' })
 
 onMounted(() => {
   ro = new ResizeObserver(() => draw())
@@ -199,51 +211,21 @@ onBeforeUnmount(() => {
 <template>
   <div class="rate-panel">
     <div class="rate-head">
-      <button
-        type="button"
-        class="expand-btn"
-        :class="{ collapsed: !expanded }"
-        :aria-expanded="String(expanded)"
-        :title="expanded ? 'Collapse graph' : 'Expand graph'"
-        @click="expanded = !expanded"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
       <span class="ctl">Cycles</span>
     </div>
-    <canvas v-show="expanded" ref="canvasRef" class="rate-canvas"></canvas>
+    <canvas ref="canvasRef" class="rate-canvas"></canvas>
     <div
-      v-if="expanded"
       class="rate-foot"
       title="Regime from the population trajectory."
     >
       <span class="badge" :class="regime.tone">{{ regime.label }}</span>
     </div>
     <div
-      v-if="expanded && guessLabel"
-      class="rate-foot muted"
-      title="Textbook estimate (Lotka-Volterra 2π/√(αγ)) from the slider-implied rates — rough and uncalibrated, not measured from the run."
-    >
-      {{ guessLabel }}
-    </div>
-    <div
-      v-if="expanded"
-      class="rate-foot muted stack"
-      title="Autocorrelation peak of the prey series, linearly detrended: the lag at which the population most resembles itself."
+      class="rate-foot stack"
+      title="Textbook estimate (Lotka-Volterra 2π/√(αγ)) & Autocorrelation peak of the prey series, linearly detrended: the lag at which the population most resembles itself."
     >
       <span v-for="(line, i) in secondaryLines" :key="i" class="foot-line">{{ line }}</span>
+      {{ guessLabel }}
     </div>
   </div>
 </template>
@@ -268,34 +250,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.expand-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 18px;
-  padding: 0;
-  color: #9aa6ba;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.expand-btn:hover {
-  color: #eef2f8;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.expand-btn svg {
-  transition: transform 0.15s ease;
-}
-
-.expand-btn.collapsed svg {
-  transform: rotate(180deg);
 }
 
 .ctl {

@@ -10,6 +10,7 @@ import {
   setParam,
 } from './constants.js'
 import Hud from './components/Hud.vue'
+import PanelTabs from './components/PanelTabs.vue'
 import PerfPanel from './components/PerfPanel.vue'
 import Tuner from './components/Tuner.vue'
 import PopChart from './components/PopChart.vue'
@@ -18,6 +19,7 @@ import { computeRates } from './components/rateModel.js'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
+const activePanel = ref('population')
 const tunerRef = ref(null)
 const simRate = ref(P.SIM_SPEED)
 const frameMs = ref(0)
@@ -29,6 +31,13 @@ const latestRates = ref(null)
 const perf = ref({})
 const MAX_BACKLOG = MAX_SIM_RATE * FIXED_DT
 
+const PANEL_TABS = [
+  { key: 'tune', label: 'Tune' },
+  { key: 'population', label: 'Population' },
+  { key: 'cycles', label: 'Cycles' },
+  { key: 'perf', label: 'Perf' },
+]
+
 let sim
 let animationId
 let lastTime = performance.now()
@@ -38,7 +47,7 @@ let fpsTime = 0
 let nextSampleT = 0
 const handleResize = () => sim.onResize()
 const onKey = (e) => {
-  if (e.key === 'Escape') tunerRef.value?.collapse()
+  if (e.key === 'Escape') activePanel.value = ''
 }
 
 function onReset() {
@@ -161,16 +170,28 @@ onBeforeUnmount(() => {
     @update:tails-active="onTails"
     @restart="onRestart"
   />
-  <Tuner ref="tunerRef" @rebuild="onRestart" @default="onReset" @param="onParamChange" />
-  <div class="bottom-left">
-    <PerfPanel :frame-ms="frameMs" :perf="perf" />
+  <div v-if="activePanel" class="dock">
+    <Tuner
+      v-if="activePanel === 'tune'"
+      ref="tunerRef"
+      @rebuild="onRestart"
+      @default="onReset"
+      @param="onParamChange"
+    />
     <PopChart
+      v-else-if="activePanel === 'population'"
       :samples="popHistory"
       :rates="latestRates"
       :food-count="foodCount"
     />
-    <RateChart :rates="latestRates" :pop-samples="popHistory" />
+    <RateChart
+      v-else-if="activePanel === 'cycles'"
+      :rates="latestRates"
+      :pop-samples="popHistory"
+    />
+    <PerfPanel v-else-if="activePanel === 'perf'" :frame-ms="frameMs" :perf="perf" />
   </div>
+  <PanelTabs v-model:active="activePanel" :tabs="PANEL_TABS" class="tabs" />
   <div class="hint">drag to orbit · scroll to zoom</div>
 </template>
 
@@ -181,16 +202,23 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.bottom-left {
+.dock {
   position: fixed;
   left: 12px;
-  bottom: 9px;
-  z-index: 2;
+  bottom: 48px;
+  z-index: 3;
+  max-height: 40vh;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
   pointer-events: none;
+}
+
+.tabs {
+  position: fixed;
+  left: 12px;
+  bottom: 9px;
+  z-index: 4;
 }
 
 .hint {

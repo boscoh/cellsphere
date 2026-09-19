@@ -10,7 +10,6 @@ const props = defineProps({
 })
 
 const canvasRef = ref(null)
-const expanded = ref(true)
 const blueColor = '#' + computeCellColor(0).getHexString()
 const redColor = '#' + computeCellColor(1).getHexString()
 
@@ -60,7 +59,6 @@ function drawTime(ctx, pad, w, h, samples) {
 }
 
 function draw() {
-  if (!expanded.value) return
   const canvas = canvasRef.value
   if (!canvas) return
   const { ctx, w, h } = scaleCanvas(canvas)
@@ -76,7 +74,6 @@ watch(
   () => draw(),
   { flush: 'post' },
 )
-watch(expanded, () => draw(), { flush: 'post' })
 
 onMounted(() => {
   ro = new ResizeObserver(() => draw())
@@ -92,32 +89,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="pop-panel">
     <div class="pop-head">
-      <button
-        type="button"
-        class="expand-btn"
-        :class="{ collapsed: !expanded }"
-        :aria-expanded="String(expanded)"
-        :title="expanded ? 'Collapse population chart' : 'Expand population chart'"
-        @click="expanded = !expanded"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
       <span class="ctl">Population</span>
     </div>
-    <canvas v-show="expanded" ref="canvasRef" class="pop-canvas"></canvas>
-    <div v-if="expanded" class="pop-foot">
+    <canvas ref="canvasRef" class="pop-canvas"></canvas>
+    <div class="pop-foot">
       <span class="stat">food {{ foodCount }}</span>
       <span
         class="pop-hunt"
@@ -150,34 +125,6 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-}
-
-.expand-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 18px;
-  padding: 0;
-  color: #9aa6ba;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.expand-btn:hover {
-  color: #eef2f8;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.expand-btn svg {
-  transition: transform 0.15s ease;
-}
-
-.expand-btn.collapsed svg {
-  transform: rotate(180deg);
 }
 
 .ctl {
