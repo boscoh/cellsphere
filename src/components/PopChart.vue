@@ -6,6 +6,7 @@ import { scaleCanvas, fmtTime, drawAxes, drawYLabel, drawAxisMax } from './chart
 const props = defineProps({
   samples: { type: Array, default: () => [] },
   rates: { type: Object, default: null },
+  foodCount: { type: Number, default: 0 },
 })
 
 const canvasRef = ref(null)
@@ -116,12 +117,14 @@ onBeforeUnmount(() => {
       <span class="ctl">Population</span>
     </div>
     <canvas v-show="expanded" ref="canvasRef" class="pop-canvas"></canvas>
-    <div
-      v-if="expanded"
-      class="pop-hunt"
-      title="Ratio-dependent hunting strength: how hard each predator hunts at the current prey-per-predator ratio (PRED_RATIO)"
-    >
-      hunting effort {{ huntLabel }}
+    <div v-if="expanded" class="pop-foot">
+      <span class="stat">food {{ foodCount }}</span>
+      <span
+        class="pop-hunt"
+        title="Ratio-dependent hunting strength: how hard each predator hunts at the current prey-per-predator ratio (PRED_RATIO)"
+      >
+        hunting effort {{ huntLabel }}
+      </span>
     </div>
   </div>
 </template>
@@ -184,15 +187,27 @@ onBeforeUnmount(() => {
   color: #6b7484;
 }
 
+.pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: #9aa6ba;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .pop-canvas {
   display: block;
   width: 250px;
   height: 130px;
 }
-
 .pop-hunt {
-  font-size: 9px;
-  color: #556072;
   white-space: nowrap;
 }
 </style>

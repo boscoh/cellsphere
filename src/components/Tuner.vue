@@ -139,12 +139,12 @@ function fillPct(value, min, max) {
 <style scoped>
 .panel {
   position: fixed;
-  top: 74px;
-  left: 24px;
+  top: 64px;
+  left: 12px;
   z-index: 3;
   width: max-content;
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 172px);
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 153px);
   display: flex;
   flex-direction: column;
   background: rgba(10, 12, 16, 0.62);

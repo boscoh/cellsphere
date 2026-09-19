@@ -2,18 +2,17 @@
 import { computeCellColor } from '../cells.js'
 
 defineProps({
-  blueCount: { type: Number, default: 0 },
-  redCount: { type: Number, default: 0 },
-  foodCount: { type: Number, default: 0 },
   simRate: { type: Number, default: 1 },
   maxSimRate: { type: Number, default: 50 },
   tailsActive: { type: Boolean, default: true },
+  blueCount: { type: Number, default: 0 },
+  redCount: { type: Number, default: 0 },
 })
 
 const emit = defineEmits(['update:simRate', 'update:tailsActive', 'restart'])
 
-const dotBlue = '#' + computeCellColor(0).getHexString()
-const dotRed = '#' + computeCellColor(1).getHexString()
+const blueColor = '#' + computeCellColor(0).getHexString()
+const redColor = '#' + computeCellColor(1).getHexString()
 
 function onSpeed(event) {
   emit('update:simRate', Number(event.target.value))
@@ -27,35 +26,9 @@ function fillPct(value, min, max) {
 <template>
   <div class="hud">
     <span class="brand">CellSphere</span>
-    <span class="sep"></span>
     <div class="cell">
-      <span class="ctl">Cells</span>
-      <div class="row">
-        <span class="dot" :style="{ background: dotBlue }"></span><span class="num">{{ blueCount }}</span>
-        <span class="dot" :style="{ background: dotRed }"></span><span class="num">{{ redCount }}</span>
-      </div>
-    </div>
-    <div class="cell">
-      <span class="ctl">Food</span>
-      <div class="row"><span class="num">{{ foodCount }}</span></div>
-    </div>
-    <span class="sep"></span>
-    <div class="cell">
-      <label class="ctl" for="speed">Speed</label>
-      <div class="row">
-        <input
-          id="speed"
-          class="slider"
-          type="range"
-          min="1"
-          :max="maxSimRate"
-          step="1"
-          :value="simRate"
-          :style="{ '--fill': fillPct(simRate, 1, maxSimRate) + '%' }"
-          @input="onSpeed"
-        />
-        <span class="readout">{{ simRate }}×</span>
-      </div>
+      <span class="stat"><span class="dot" :style="{ background: blueColor }"></span>{{ blueCount }}</span>
+      <span class="stat"><span class="dot" :style="{ background: redColor }"></span>{{ redCount }}</span>
     </div>
     <div class="cell">
       <button
@@ -63,13 +36,23 @@ function fillPct(value, min, max) {
         class="toggle-btn"
         :class="{ active: tailsActive }"
         :aria-pressed="String(tailsActive)"
-        title="Toggle tails"
+        title="Toggle tail"
+        aria-label="Toggle tail"
         @click="emit('update:tailsActive', !tailsActive)"
       >
-        Tails
+        <svg
+          viewBox="0 0 24 24"
+          width="15"
+          height="15"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M12 4c-4.2 1.6-4.2 3.6 0 5.2s4.2 3.6 0 5.2-4.2 3.6 0 5.2" />
+        </svg>
       </button>
-    </div>
-    <div class="cell">
       <button
         type="button"
         class="reset-btn"
@@ -94,14 +77,31 @@ function fillPct(value, min, max) {
         </svg>
       </button>
     </div>
+    <div class="cell">
+      <div class="row">
+        <input
+          id="speed"
+          class="slider"
+          aria-label="Time"
+          type="range"
+          min="1"
+          :max="maxSimRate"
+          step="1"
+          :value="simRate"
+          :style="{ '--fill': fillPct(simRate, 1, maxSimRate) + '%' }"
+          @input="onSpeed"
+        />
+        <span class="readout">{{ simRate }}x</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .hud {
   position: fixed;
-  top: 20px;
-  left: 24px;
+  top: 10px;
+  left: 12px;
   z-index: 2;
   display: flex;
   align-items: stretch;
@@ -125,12 +125,6 @@ function fillPct(value, min, max) {
   letter-spacing: -0.3px;
 }
 
-.sep {
-  width: 1px;
-  align-self: stretch;
-  background: rgba(255, 255, 255, 0.12);
-}
-
 .cell {
   display: flex;
   flex-direction: row;
@@ -138,19 +132,20 @@ function fillPct(value, min, max) {
   gap: 6px;
 }
 
-.cell .num {
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: #b7c2d4;
-  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   display: inline-block;
-  margin: 0 2px 0 4px;
 }
 
 .row {
@@ -161,7 +156,7 @@ function fillPct(value, min, max) {
 }
 
 .slider {
-  width: 80px;
+  width: 60px;
   height: 20px;
   cursor: pointer;
   pointer-events: auto;
@@ -207,11 +202,9 @@ function fillPct(value, min, max) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
   height: 24px;
-  padding: 0 10px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  padding: 0;
   color: #6b7484;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);

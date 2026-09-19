@@ -152,12 +152,11 @@ onBeforeUnmount(() => {
 <template>
   <div ref="canvasHolder" class="canvas-holder"></div>
   <Hud
-    :blue-count="blueCount"
-    :red-count="redCount"
-    :food-count="foodCount"
     :sim-rate="simRate"
     :max-sim-rate="MAX_SIM_RATE"
     :tails-active="tailsActive"
+    :blue-count="blueCount"
+    :red-count="redCount"
     @update:sim-rate="onSpeed"
     @update:tails-active="onTails"
     @restart="onRestart"
@@ -165,7 +164,11 @@ onBeforeUnmount(() => {
   <Tuner ref="tunerRef" @rebuild="onRestart" @default="onReset" @param="onParamChange" />
   <div class="bottom-left">
     <PerfPanel :frame-ms="frameMs" :perf="perf" />
-    <PopChart :samples="popHistory" :rates="latestRates" />
+    <PopChart
+      :samples="popHistory"
+      :rates="latestRates"
+      :food-count="foodCount"
+    />
     <RateChart :rates="latestRates" :pop-samples="popHistory" />
   </div>
   <div class="hint">drag to orbit · scroll to zoom</div>
@@ -180,8 +183,8 @@ onBeforeUnmount(() => {
 
 .bottom-left {
   position: fixed;
-  left: 24px;
-  bottom: 18px;
+  left: 12px;
+  bottom: 9px;
   z-index: 2;
   display: flex;
   flex-direction: column;
@@ -192,7 +195,7 @@ onBeforeUnmount(() => {
 
 .hint {
   position: fixed;
-  bottom: 18px;
+  bottom: 9px;
   left: 0;
   right: 0;
   text-align: center;
