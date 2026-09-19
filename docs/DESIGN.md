@@ -282,7 +282,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `MITO_HOLD` | 0.2 | Fraction of mitosis before the parent starts fading. |
 | `MITO_FADE` | 0.4 | Fraction of mitosis over which the parent fades out. |
 | `MITO_NEAR` | 2.1 | Starting separation (x half child length) as daughters form. |
-| `MITO_SEP` | 2.8 | Final separation (x half child length) at division release. |
+| `MITO_SEP` | 2.275 | Final separation (x half child length) at division release. Kept close to MITO_NEAR so the daughters drift only a short way apart. |
 | `MITO_DETACH` | 0.8 | Seconds a feeding predator spends separating from its prey before it can divide. |
 | `MITO_REST` | 4 | Coast (no-drive) seconds for daughters right after division. |
 | `MITO_FORAGE` | 6 | Seconds after division during which a daughter ignores the grazing slowdown and turns hard toward sensed food, so it can leave the parent spot on its own heading (cell-x93). |

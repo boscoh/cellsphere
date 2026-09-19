@@ -19,6 +19,10 @@ import { randomSurfacePoint, randomTangent, smoothstep } from './math.js'
 const BREED_BLUE = 0
 const BREED_RED = 1
 
+// The mitosis daughters' drift-apart completes in 1/MITO_DRIFT_FOLD of its
+// previous share of the mitosis window, and travels 1/MITO_DRIFT_FOLD as far.
+const MITO_DRIFT_FOLD = 4
+
 export function computeCellColor(breed) {
   // Color is constant per breed — size already conveys growth.
   if (breed === BREED_RED) return new THREE.Color().setHSL(0.015, 0.78, 0.5)
@@ -272,8 +276,11 @@ export function updateMito(sim, d, simDt) {
   const fadeK = smoothstep(
     THREE.MathUtils.clamp((frac - P.MITO_HOLD) / P.MITO_FADE, 0, 1),
   )
+  // The drift-apart is MITO_DRIFT_FOLD x quicker than the fade-relative window
+  // it used to take; the matching shorter travel is in MITO_SEP (MITO_NEAR kept).
+  const sepSpan = (1 - fadeEnd) / MITO_DRIFT_FOLD
   const sep = smoothstep(
-    THREE.MathUtils.clamp((frac - fadeEnd) / (1 - fadeEnd), 0, 1),
+    THREE.MathUtils.clamp((frac - (1 - sepSpan)) / sepSpan, 0, 1),
   )
   const spread = P.MITO_NEAR + (P.MITO_SEP - P.MITO_NEAR) * sep
   const dist = m.half * spread

@@ -98,7 +98,7 @@ export const PARAM_DEFS = [
   { key: 'MITO_HOLD', group: 'mitosis', label: 'Mito hold', desc: 'Fraction of mitosis before the parent starts fading.', def: 0.2, min: 0, max: 1, step: 0.05 },
   { key: 'MITO_FADE', group: 'mitosis', label: 'Mito fade', desc: 'Fraction of mitosis over which the parent fades out.', def: 0.4, min: 0.05, max: 1, step: 0.05 },
   { key: 'MITO_NEAR', group: 'mitosis', label: 'Mito near', desc: 'Starting separation (x half child length) as daughters form.', def: 2.1, min: 0.5, max: 6, step: 0.1 },
-  { key: 'MITO_SEP', group: 'mitosis', label: 'Mito sep', desc: 'Final separation (x half child length) at division release.', def: 2.8, min: 0.5, max: 8, step: 0.1 },
+  { key: 'MITO_SEP', group: 'mitosis', label: 'Mito sep', desc: 'Final separation (x half child length) at division release. Kept close to MITO_NEAR so the daughters drift only a short way apart.', def: 2.275, min: 0.5, max: 8, step: 0.025 },
   { key: 'MITO_DETACH', group: 'mitosis', label: 'Mito detach', desc: 'Seconds a feeding predator spends separating from its prey before it can divide.', def: 0.8, min: 0, max: 10, step: 0.1 },
   { key: 'MITO_REST', group: 'mitosis', label: 'Mito rest', desc: 'Coast (no-drive) seconds for daughters right after division.', def: 4, min: 0, max: 20, step: 0.5 },
   { key: 'MITO_FORAGE', group: 'mitosis', label: 'Mito forage', desc: 'Seconds after division during which a daughter ignores the grazing slowdown and turns hard toward sensed food, so it can leave the parent spot on its own heading (cell-x93).', def: 6, min: 0, max: 20, step: 0.5 },
