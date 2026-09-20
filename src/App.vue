@@ -7,7 +7,6 @@ import {
   MAX_SIM_RATE,
   SAMPLE_DT,
   resetParams,
-  setParam,
 } from './constants.js'
 import Hud from './components/Hud.vue'
 import PanelTabs from './components/PanelTabs.vue'
@@ -62,19 +61,15 @@ function onReset() {
 }
 
 function onRestart() {
+  simRate.value = P.SIM_SPEED
   popHistory.value = []
   latestRates.value = null
   nextSampleT = 0
   sim.reset()
 }
 
-function onParamChange(key, value) {
-  if (key === 'SIM_SPEED') simRate.value = value
-}
-
 function onSpeed(v) {
   simRate.value = v
-  setParam('SIM_SPEED', v)
 }
 
 function onTails(active) {
@@ -177,7 +172,6 @@ onBeforeUnmount(() => {
       ref="tunerRef"
       @rebuild="onRestart"
       @default="onReset"
-      @param="onParamChange"
     />
     <PopChart
       v-else-if="activePanel === 'population'"

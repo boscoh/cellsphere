@@ -2,7 +2,7 @@
 import { reactive, computed, ref } from 'vue'
 import { GROUPS, P, PARAM_DEFS, setParam } from '../constants.js'
 
-const emit = defineEmits(['rebuild', 'default', 'param'])
+const emit = defineEmits(['rebuild', 'default'])
 
 function syncValues() {
   for (const r of rows) r.value = r.def
@@ -63,7 +63,6 @@ function onInput(row, event) {
   const v = Number(event.target.value)
   row.value = v
   setParam(row.key, v)
-  emit('param', row.key, v)
 }
 
 function onChange(row) {

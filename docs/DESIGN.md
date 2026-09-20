@@ -213,7 +213,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `SPHERE_RADIUS` | 5 | Radius of the sphere cells live on (rebuilds). Larger = more surface area, so a fixed-size cell looks smaller relative to the world. |
 | `PREY_COUNT` | 50 | Number of prey (green) cells spawned when the world is (re)built. |
 | `PRED_COUNT` | 15 | Number of predator (red) cells spawned when the world is (re)built. |
-| `SIM_SPEED` | 1 | Simulation speed applied on startup and when Default/Reset is pressed (1x = real time). |
+| `SIM_SPEED` | 10 | Simulation speed applied on startup and whenever the world is restarted or Default is pressed (1x = real time). The HUD time slider changes the live speed only; this startup speed is not touched by it. |
 | `FOOD_COUNT` | 3000 | Total food particles spawned when the world is (re)built. |
 | `FOOD_CLUMPS` | 12 | Number of food clusters (0 = none; rebuilds). |
 | `FOOD_SCATTER` | 0.15 | Share of food placed uniformly instead of in clumps (rebuilds). |
@@ -350,7 +350,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 
 Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (green/red) · Food
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`
-default **1×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
+default **10×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
 top-right, the population chart bottom-left, drag hint bottom-center. The chart
 shows prey and predator **counts vs time** (whole run, no window); its only
 footer line is `hunting effort` (the ratio-dependent attack `PRED_RATIO` applies
