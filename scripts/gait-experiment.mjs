@@ -1,6 +1,6 @@
 // Seeded headless A/B harness for the opt-in gait prototype (cell-d4z).
 //
-// Runs a fixed-seed world for a given sim time and reports ecology (blue/red
+// Runs a fixed-seed world for a given sim time and reports ecology (green/red
 // population range, curve crossings, extinction) plus locomotion stats (mean
 // drive/speed/|headingRate| and the gait phase / forward-mode mix). Pose is
 // disabled: it is visual-only and never writes body state, so turning it off is
@@ -59,7 +59,7 @@ export function run({ seed, duration, overrides }) {
       spin: 0,
       turn: 0,
       mode: [0, 0, 0],
-      blue: { drive: 0, speed: 0, spin: 0, turn: 0, n: 0, energy: 0 },
+      green: { drive: 0, speed: 0, spin: 0, turn: 0, n: 0, energy: 0 },
       red: { drive: 0, speed: 0, spin: 0, turn: 0, n: 0, energy: 0 },
     }
     let births = 0
@@ -71,14 +71,14 @@ export function run({ seed, duration, overrides }) {
     for (let i = 0; i < steps; i++) {
       sim.advance(DT)
       if (i % sampleEvery === 0) {
-        let blue = 0
+        let green = 0
         let red = 0
         for (const d of sim.cells) {
           if (d.dead) continue
-          if (d.breed === 0) blue++
+          if (d.breed === 0) green++
           else red++
         }
-        samples.push([blue, red])
+        samples.push([green, red])
       }
       if (sim.cells.length > prevCells) births += sim.cells.length - prevCells
       prevCells = sim.cells.length
@@ -92,7 +92,7 @@ export function run({ seed, duration, overrides }) {
         loco.spin += Math.abs(d.headingRate || 0)
         if (d.gait === 1) loco.turn++
         loco.mode[d.gaitMode || 0]++
-        const b = d.breed === 0 ? loco.blue : loco.red
+        const b = d.breed === 0 ? loco.green : loco.red
         b.n++
         b.drive += Math.abs(d.drive || 0)
         b.speed += Math.hypot(d.vel.x, d.vel.y, d.vel.z)
@@ -102,15 +102,15 @@ export function run({ seed, duration, overrides }) {
       }
     }
 
-    let blueMin = Infinity
-    let blueMax = 0
+    let greenMin = Infinity
+    let greenMax = 0
     let redMin = Infinity
     let redMax = 0
     let crossings = 0
     let prevSign = 0
     for (const [b, r] of samples) {
-      blueMin = Math.min(blueMin, b)
-      blueMax = Math.max(blueMax, b)
+      greenMin = Math.min(greenMin, b)
+      greenMax = Math.max(greenMax, b)
       redMin = Math.min(redMin, r)
       redMax = Math.max(redMax, r)
       const sign = b > r ? 1 : b < r ? -1 : 0
@@ -121,7 +121,7 @@ export function run({ seed, duration, overrides }) {
     return {
       seed,
       duration,
-      blue: [blueMin, blueMax, last[0]],
+      green: [greenMin, greenMax, last[0]],
       red: [redMin, redMax, last[1]],
       crossings,
       extinct: last[0] === 0 || last[1] === 0,
@@ -143,13 +143,13 @@ function report(tag, res) {
   const { loco } = res
   const pct = (x) => `${((100 * x) / Math.max(1, loco.n)).toFixed(1)}%`
   const mean = (v) => (v / Math.max(1, loco.n)).toFixed(3)
-  const bmean = (v) => (v / Math.max(1, loco.blue.n)).toFixed(3)
+  const bmean = (v) => (v / Math.max(1, loco.green.n)).toFixed(3)
   const rmean = (v) => (v / Math.max(1, loco.red.n)).toFixed(3)
   console.log(`\n${tag}  seed ${res.seed}, ${res.duration}s`)
-  console.log(`  blue ${fmtRange(res.blue)}   red ${fmtRange(res.red)}`)
+  console.log(`  green ${fmtRange(res.green)}   red ${fmtRange(res.red)}`)
   console.log(`  crossings ${res.crossings}   births ${res.births}   extinct ${res.extinct}`)
   console.log(`  all : drive ${mean(loco.drive)}  speed ${mean(loco.speed)}  spin ${mean(loco.spin)}  turn ${pct(loco.turn)}  mode g/d/e ${pct(loco.mode[0])}/${pct(loco.mode[1])}/${pct(loco.mode[2])}`)
-  console.log(`  blue: drive ${bmean(loco.blue.drive)}  speed ${bmean(loco.blue.speed)}  spin ${bmean(loco.blue.spin)}  turn ${((100 * loco.blue.turn) / Math.max(1, loco.blue.n)).toFixed(1)}%`)
+  console.log(`  green: drive ${bmean(loco.green.drive)}  speed ${bmean(loco.green.speed)}  spin ${bmean(loco.green.spin)}  turn ${((100 * loco.green.turn) / Math.max(1, loco.green.n)).toFixed(1)}%`)
   console.log(`  red : drive ${rmean(loco.red.drive)}  speed ${rmean(loco.red.speed)}  spin ${rmean(loco.red.spin)}  turn ${((100 * loco.red.turn) / Math.max(1, loco.red.n)).toFixed(1)}%`)
 }
 

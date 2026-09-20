@@ -19,7 +19,7 @@ function validPredator(d) {
 }
 
 // Holling Type III (sigmoid, exponent 2) in local prey density: the bite is near
-// zero for an isolated blue and near full inside a shoal. `half` is the prey
+// zero for an isolated green and near full inside a shoal. `half` is the prey
 // count at half rate; 0 disables (pure Type II, density-independent bite).
 function type3Factor(preyCount, half) {
   const c = Math.max(1, preyCount)
@@ -28,8 +28,8 @@ function type3Factor(preyCount, half) {
 
 // Smell the shoal: sum proximity-weighted unit vectors to every valid prey
 // within P.PRED_SENSE into a gradient direction (d.preyDir), mirroring how
-// food.concentration() gives blue a food gradient. A red then steers up this
-// gradient instead of chasing only the single nearest blue inside a hard cutoff.
+// food.concentration() gives green a food gradient. A red then steers up this
+// gradient instead of chasing only the single nearest green inside a hard cutoff.
 export function predatorSense(sim) {
   for (const cell of sim.cells) {
     cell.preyAmt = 0
@@ -173,7 +173,7 @@ export function predation(sim, simDt) {
       if (dist <= P.PRED_BITE) {
         // Clump feast (cell-3bz): optionally scale the bite with how many prey
         // are packed nearby, so a red in a shoal eats faster than on a lone
-        // blue while isolated prey survive as refuge. PRED_CROWD = 0 disables.
+        // green while isolated prey survive as refuge. PRED_CROWD = 0 disables.
         const nearby = red.preyCount || 1
         const crowd = 1 + P.PRED_CROWD * Math.max(0, nearby - 1)
         // Type III: smooth sigmoid in local prey density (rare-prey refuge).

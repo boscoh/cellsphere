@@ -10,7 +10,7 @@ const props = defineProps({
 })
 
 const canvasRef = ref(null)
-const blueColor = '#' + computeCellColor(0).getHexString()
+const greenColor = '#' + computeCellColor(0).getHexString()
 const redColor = '#' + computeCellColor(1).getHexString()
 
 const huntLabel = computed(() => (props.rates ? props.rates.attack.toFixed(2) : '—'))
@@ -26,7 +26,7 @@ function maxOf(samples, key) {
 function drawTime(ctx, pad, w, h, samples) {
   const t0 = samples[0].t
   const t1 = samples[samples.length - 1].t
-  const maxC = Math.max(maxOf(samples, 'blue'), maxOf(samples, 'red'))
+  const maxC = Math.max(maxOf(samples, 'green'), maxOf(samples, 'red'))
   const pw = w - pad.l - pad.r
   const ph = h - pad.t - pad.b
   const X = (t) => pad.l + ((t - t0) / (t1 - t0 || 1)) * pw
@@ -41,7 +41,7 @@ function drawTime(ctx, pad, w, h, samples) {
 
   const n = samples.length
   const step = Math.max(1, Math.floor(n / 1200))
-  for (const [key, color] of [['blue', blueColor], ['red', redColor]]) {
+  for (const [key, color] of [['green', greenColor], ['red', redColor]]) {
     ctx.strokeStyle = color
     ctx.lineWidth = 1.5
     ctx.beginPath()

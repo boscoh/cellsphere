@@ -151,7 +151,7 @@ export class Simulation {
 
   advance(dt) {
     this.simTime += dt
-    // Fresh spatial grid for this frame so camera-relevant queries (blue flee,
+    // Fresh spatial grid for this frame so camera-relevant queries (green flee,
     // red hunt) and predation never see stale/removed cell indices.
     this.perf.begin('grid')
     buildCellGrid(this)
@@ -205,7 +205,7 @@ export class Simulation {
             d.drive *= P.PRED_DRIVE
             // Ambush: burst when prey is within PRED_LUNGE, coast outside it.
             // A post-meal reorient window suppresses the coast so the red can
-            // close on a nearby blue (cell-erd).
+            // close on a nearby green (cell-erd).
             if (d.reorientT <= 0 && d.preyNear > P.PRED_LUNGE) {
               d.drive *= P.PRED_COAST
             }
@@ -217,7 +217,7 @@ export class Simulation {
               if (a != null) d.drive *= 1 - P.PRED_TURN_SLOW * (1 - Math.cos(a)) * 0.5
             }
             // While feeding on a latched prey, stop entirely so it holds the
-            // latch and drains the blue instead of swimming past/through.
+            // latch and drains the green instead of swimming past/through.
             if (d.target && d.target.paralysed) d.drive = 0
           }
         }
@@ -256,8 +256,8 @@ export class Simulation {
           }
         }
         // Red hunts by following the prey gradient built in predatorSense()
-        // (a weighted direction to nearby blues), so it tracks the shoal rather
-        // than only the single nearest blue inside a hard cutoff. Once it has a
+        // (a weighted direction to nearby greens), so it tracks the shoal rather
+        // than only the single nearest green inside a hard cutoff. Once it has a
         // latched prey it stops steering and holds the latch.
         if (d.breed === 1 && !d.detach && !(d.target && d.target.paralysed)) {
           if ((d.reorientT > 0 || d.huntT > 0) && d.preyNear < Infinity) {
@@ -289,7 +289,7 @@ export class Simulation {
           }
         }
         // Post-division forage: a fresh daughter turns hard toward its target so
-        // it re-aims off the inward birth heading instead of drifting. Blue aims
+        // it re-aims off the inward birth heading instead of drifting. Green aims
         // at food (cell-x93); red at the nearest prey, which otherwise drives off
         // and takes a long curve to come back (cell-zby).
         if (d.forageT > 0) {

@@ -9,9 +9,9 @@ import { P, ENERGY_MAX } from '../constants.js'
 //   gamma  predator per-capita death (METABOLISM + PRED_METABOLISM) / ENERGY_MAX
 //
 // `attack` is the ratio-dependent response PRED_RATIO applies to a hunt, built
-// from the live blue/red counts. PRED_RATIO = 0 disables it (attack = 1).
-export function computeRates(blue = 0, red = 0) {
-  const ratio = red > 0 ? blue / red : 0
+// from the live green/red counts. PRED_RATIO = 0 disables it (attack = 1).
+export function computeRates(green = 0, red = 0) {
+  const ratio = red > 0 ? green / red : 0
   const attack = P.PRED_RATIO > 0 ? ratio / (ratio + P.PRED_RATIO) : 1
   return {
     attack,

@@ -505,7 +505,7 @@ try {
   // and a series that ends at zero population is extinct.
   const regimeProblems = []
   {
-    const make = (amp, t) => ({ t, blue: Math.max(0, 50 + amp * Math.sin((2 * Math.PI * t) / 120)), red: 20 })
+    const make = (amp, t) => ({ t, green: Math.max(0, 50 + amp * Math.sin((2 * Math.PI * t) / 120)), red: 20 })
     const cyclic = []
     const damped = []
     for (let i = 0; i < 1200; i++) {
@@ -524,7 +524,7 @@ try {
     if (classifyRegime(extinct).label !== 'predators extinct') {
       regimeProblems.push(`red-zero series classified ${classifyRegime(extinct).label}`)
     }
-    if (classifyRegime([{ t: 0, blue: 1, red: 1 }]).label !== 'no data') {
+    if (classifyRegime([{ t: 0, green: 1, red: 1 }]).label !== 'no data') {
       regimeProblems.push('stub series not classified as no data')
     }
   }
@@ -538,9 +538,9 @@ try {
     const series = []
     for (let i = 0; i < 1200; i++) {
       const t = i * 0.5
-      series.push({ t, blue: 50 + 40 * Math.sin((2 * Math.PI * t) / T) })
+      series.push({ t, green: 50 + 40 * Math.sin((2 * Math.PI * t) / T) })
     }
-    const peak = broadMaximum(autocorrelation(series, 'blue'), 'r', { minValue: 0.2 })
+    const peak = broadMaximum(autocorrelation(series, 'green'), 'r', { minValue: 0.2 })
     if (!peak) acfProblems.push('clean sinusoid had no autocorrelation peak')
     else if (Math.abs(peak.lag - T) > 0.1 * T) {
       acfProblems.push(`sinusoid acf peak at ${peak.lag.toFixed(0)}s, expected ${T}`)
@@ -557,8 +557,8 @@ try {
       return seed / 0x7fffffff
     }
     const noise = []
-    for (let i = 0; i < 1200; i++) noise.push({ t: i * 0.5, blue: 50 + (rnd() - 0.5) * 20 })
-    if (broadMaximum(autocorrelation(noise, 'blue'), 'r', { minValue: 0.2 })) {
+    for (let i = 0; i < 1200; i++) noise.push({ t: i * 0.5, green: 50 + (rnd() - 0.5) * 20 })
+    if (broadMaximum(autocorrelation(noise, 'green'), 'r', { minValue: 0.2 })) {
       acfProblems.push('white noise reported a cycle')
     }
   }
@@ -576,12 +576,12 @@ try {
     }
     const sample = (i) => {
       const t = i * 0.5
-      return { t, blue: 50 + 30 * Math.sin((2 * Math.PI * t) / 90) + 4 * (t / 300) + 3 * (rnd() - 0.5) }
+      return { t, green: 50 + 30 * Math.sin((2 * Math.PI * t) / 90) + 4 * (t / 300) + 3 * (rnd() - 0.5) }
     }
     const series = []
     for (let i = 0; i < 700; i++) series.push(sample(i))
     const same = (label, tracker, tail) => {
-      const ref = autocorrelation(tail, 'blue')
+      const ref = autocorrelation(tail, 'green')
       const got = tracker.series()
       if (!ref || !got || ref.length !== got.length) {
         trackerProblems.push(`${label}: batch/tracker shape mismatch`)
@@ -593,9 +593,9 @@ try {
     }
     const cap = 120
     const tracker = createAcfTracker(cap)
-    for (let i = 0; i < 60; i++) tracker.push(series[i].t, series[i].blue)
+    for (let i = 0; i < 60; i++) tracker.push(series[i].t, series[i].green)
     same('filling', tracker, series.slice(0, 60))
-    for (let i = 60; i < 700; i++) tracker.push(series[i].t, series[i].blue)
+    for (let i = 60; i < 700; i++) tracker.push(series[i].t, series[i].green)
     same('sliding', tracker, series.slice(700 - cap))
     if (tracker.count !== cap || tracker.size !== cap) trackerProblems.push('tracker window not full after sliding')
     tracker.setSize(50)
@@ -603,13 +603,13 @@ try {
     if (tracker.count !== 50 || tracker.size !== 50) trackerProblems.push('tracker kept the wrong tail on shrink')
     for (let i = 700; i < 740; i++) {
       series.push(sample(i))
-      tracker.push(series[i].t, series[i].blue)
+      tracker.push(series[i].t, series[i].green)
     }
     same('slide after shrink', tracker, series.slice(740 - 50))
     tracker.setSize(200)
     same('grow', tracker, series.slice(740 - 50))
     const empty = createAcfTracker(32)
-    for (let i = 0; i < 3; i++) empty.push(series[i].t, series[i].blue)
+    for (let i = 0; i < 3; i++) empty.push(series[i].t, series[i].green)
     if (empty.series() !== null) trackerProblems.push('tracker produced an ACF below the sample floor')
   }
   report('incremental acf tracker', trackerProblems, 'matches batch through fill, slide and resize')
@@ -619,8 +619,8 @@ try {
   const componentProblems = []
   {
     const pop = [
-      { t: 0, blue: 50, red: 15 },
-      { t: 10, blue: 60, red: 14 },
+      { t: 0, green: 50, red: 15 },
+      { t: 10, green: 60, red: 14 },
     ]
     const rates = { alpha: 0.1, gamma: 0.0025, attack: 0.8 }
     for (const path of ['/src/components/PopChart.vue', '/src/components/RateChart.vue']) {

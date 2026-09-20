@@ -5,13 +5,13 @@ defineProps({
   simRate: { type: Number, default: 1 },
   maxSimRate: { type: Number, default: 50 },
   tailsActive: { type: Boolean, default: true },
-  blueCount: { type: Number, default: 0 },
+  greenCount: { type: Number, default: 0 },
   redCount: { type: Number, default: 0 },
 })
 
 const emit = defineEmits(['update:simRate', 'update:tailsActive', 'restart'])
 
-const blueColor = '#' + computeCellColor(0).getHexString()
+const greenColor = '#' + computeCellColor(0).getHexString()
 const redColor = '#' + computeCellColor(1).getHexString()
 
 function onSpeed(event) {
@@ -27,7 +27,7 @@ function fillPct(value, min, max) {
   <div class="hud">
     <span class="brand">CellSphere</span>
     <div class="cell">
-      <span class="stat"><span class="dot" :style="{ background: blueColor }"></span>{{ blueCount }}</span>
+      <span class="stat"><span class="dot" :style="{ background: greenColor }"></span>{{ greenCount }}</span>
       <span class="stat"><span class="dot" :style="{ background: redColor }"></span>{{ redCount }}</span>
     </div>
     <div class="cell">

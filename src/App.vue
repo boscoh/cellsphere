@@ -23,7 +23,7 @@ const activePanel = ref('population')
 const tunerRef = ref(null)
 const simRate = ref(P.SIM_SPEED)
 const frameMs = ref(0)
-const blueCount = ref(0)
+const greenCount = ref(0)
 const redCount = ref(0)
 const foodCount = ref(0)
 const popHistory = ref([])
@@ -112,17 +112,17 @@ onMounted(() => {
     // speed up to watch a cycle. The history therefore spans a fixed sim-time
     // window at any rate.
     if (sim.simTime >= nextSampleT) {
-      let blue = 0
+      let green = 0
       let red = 0
       for (const c of sim.cells) {
-        if (c.breed === 0) blue++
+        if (c.breed === 0) green++
         else red++
       }
-      blueCount.value = blue
+      greenCount.value = green
       redCount.value = red
       // The population chart keeps the whole run (no sliding window).
-      popHistory.value.push({ t: sim.simTime, blue, red })
-      latestRates.value = computeRates(blue, red)
+      popHistory.value.push({ t: sim.simTime, green, red })
+      latestRates.value = computeRates(green, red)
       nextSampleT = sim.simTime + SAMPLE_DT
     }
 
@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
     :sim-rate="simRate"
     :max-sim-rate="MAX_SIM_RATE"
     :tails-active="tailsActive"
-    :blue-count="blueCount"
+    :green-count="greenCount"
     :red-count="redCount"
     @update:sim-rate="onSpeed"
     @update:tails-active="onTails"

@@ -96,11 +96,11 @@ function analyzeCycle(samples, key, { window = 5, minRelativeRange = 0.02 } = {}
 export function classifyRegime(samples) {
   if (!samples || samples.length < 3) return { label: 'no data', tone: 'muted', cycles: 0 }
   const last = samples[samples.length - 1]
-  if (last.blue === 0 && last.red === 0) return { label: 'collapsed', tone: 'bad', cycles: 0 }
-  if (last.blue === 0) return { label: 'prey extinct', tone: 'bad', cycles: 0 }
+  if (last.green === 0 && last.red === 0) return { label: 'collapsed', tone: 'bad', cycles: 0 }
+  if (last.green === 0) return { label: 'prey extinct', tone: 'bad', cycles: 0 }
   if (last.red === 0) return { label: 'predators extinct', tone: 'bad', cycles: 0 }
 
-  const a = analyzeCycle(samples, 'blue')
+  const a = analyzeCycle(samples, 'green')
   if (!a || a.cycles < 2) return { label: 'transient', tone: 'muted', cycles: a ? a.cycles : 0 }
 
   const base = { cycles: a.cycles, period: a.period, periodCV: a.periodCV, ampTrend: a.ampTrend }

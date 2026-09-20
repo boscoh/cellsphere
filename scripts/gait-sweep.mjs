@@ -24,13 +24,13 @@ const overrides = JSON.parse(args.config)
 const results = args.seeds.map((seed) => run({ seed, duration: args.duration, overrides }))
 
 const mean = (xs) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length)
-const bMean = (r, k) => mean(r.map((x) => x.loco.blue[k] / Math.max(1, x.loco.blue.n)))
+const bMean = (r, k) => mean(r.map((x) => x.loco.green[k] / Math.max(1, x.loco.green.n)))
 const rMean = (r, k) => mean(r.map((x) => x.loco.red[k] / Math.max(1, x.loco.red.n)))
 const turnPct = mean(
   results.map((x) => (100 * x.loco.turn) / Math.max(1, x.loco.n)),
 )
-const blueTurnPct = mean(
-  results.map((x) => (100 * x.loco.blue.turn) / Math.max(1, x.loco.blue.n)),
+const greenTurnPct = mean(
+  results.map((x) => (100 * x.loco.green.turn) / Math.max(1, x.loco.green.n)),
 )
 const redTurnPct = mean(
   results.map((x) => (100 * x.loco.red.turn) / Math.max(1, x.loco.red.n)),
@@ -44,20 +44,20 @@ const out = {
   extinctions: results.filter((x) => x.extinct).length,
   nonfinite: results.reduce((a, x) => a + x.nonfinite, 0),
   crossingsTotal: results.reduce((a, x) => a + x.crossings, 0),
-  blueMin: Math.min(...results.map((x) => x.blue[0])),
-  blueMax: Math.max(...results.map((x) => x.blue[1])),
+  greenMin: Math.min(...results.map((x) => x.green[0])),
+  greenMax: Math.max(...results.map((x) => x.green[1])),
   redMin: Math.min(...results.map((x) => x.red[0])),
   redMax: Math.max(...results.map((x) => x.red[1])),
-  blueEnd: mean(results.map((x) => x.blue[2])).toFixed(1),
+  greenEnd: mean(results.map((x) => x.green[2])).toFixed(1),
   redEnd: mean(results.map((x) => x.red[2])).toFixed(1),
   birthsMean: mean(results.map((x) => x.births)).toFixed(0),
-  blueDrive: bMean(results, 'drive').toFixed(3),
-  blueSpeed: bMean(results, 'speed').toFixed(3),
-  blueEnergy: bMean(results, 'energy').toFixed(3),
+  greenDrive: bMean(results, 'drive').toFixed(3),
+  greenSpeed: bMean(results, 'speed').toFixed(3),
+  greenEnergy: bMean(results, 'energy').toFixed(3),
   redDrive: rMean(results, 'drive').toFixed(3),
   redSpeed: rMean(results, 'speed').toFixed(3),
   turnPct: turnPct.toFixed(1),
-  blueTurnPct: blueTurnPct.toFixed(1),
+  greenTurnPct: greenTurnPct.toFixed(1),
   redTurnPct: redTurnPct.toFixed(1),
 }
 

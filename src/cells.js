@@ -16,7 +16,7 @@ import { randomSurfacePoint, randomTangent, smoothstep } from './math.js'
 // Cell domain: creation, growth/energy and mitosis. The body and tail instance
 // pools live in bodyPool.js and tailPool.js, tail physics in tail.js.
 
-const BREED_BLUE = 0
+const BREED_GREEN = 0
 const BREED_RED = 1
 
 // The mitosis daughters' drift-apart completes in 1/MITO_DRIFT_FOLD of its
@@ -64,18 +64,18 @@ function makeTailChain(pos, heading, radius) {
 
 const sizeF = (breed) => (breed === BREED_RED ? P.RED_SIZE : 1)
 
-export function radiusFromEnergy(energy, breed = BREED_BLUE) {
+export function radiusFromEnergy(energy, breed = BREED_GREEN) {
   const f = THREE.MathUtils.clamp(energy, 0, ENERGY_MAX) / ENERGY_MAX
   return (MIN_RADIUS + f * (MAX_RADIUS - MIN_RADIUS)) * sizeF(breed)
 }
 
-function energyFromRadius(radius, breed = BREED_BLUE) {
+function energyFromRadius(radius, breed = BREED_GREEN) {
   const base = radius / sizeF(breed)
   const f = (base - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS)
   return THREE.MathUtils.clamp(f, 0, 1) * ENERGY_MAX
 }
 
-export function createCell(sim, pos, heading, length, breed = Math.random() < 0.5 ? BREED_BLUE : BREED_RED) {
+export function createCell(sim, pos, heading, length, breed = Math.random() < 0.5 ? BREED_GREEN : BREED_RED) {
   const chain = makeTailChain(pos, heading, length)
   const d = {
     radius: length,
@@ -149,7 +149,7 @@ export function createCell(sim, pos, heading, length, breed = Math.random() < 0.
 
 export function makeCell(sim, breed) {
   if (breed === undefined) {
-    breed = Math.random() < 0.5 ? BREED_BLUE : BREED_RED
+    breed = Math.random() < 0.5 ? BREED_GREEN : BREED_RED
   }
   const length = (START_RADIUS + Math.random() * 0.04) * sizeF(breed)
   const pos = randomSurfacePoint()

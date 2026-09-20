@@ -65,7 +65,7 @@ function refreshAcf() {
     tracker.reset()
     consumed = 0
   }
-  for (let i = consumed; i < samples.length; i++) tracker.push(samples[i].t, samples[i].blue)
+  for (let i = consumed; i < samples.length; i++) tracker.push(samples[i].t, samples[i].green)
   consumed = samples.length
   heavy.value = samples.slice(-acfSamples.value)
   acf.value = tracker.series()
