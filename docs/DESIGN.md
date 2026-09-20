@@ -237,7 +237,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 
 | Parameter | Default | Role |
 |---|---|---|
-| `GAIT_MODE` | 0 | 0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z). |
+| `GAIT_MODE` | 1 | 0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z). |
 | `GAIT_PREY` | 1 | Apply the alternating gait to prey (green) when GAIT_MODE = 1. |
 | `GAIT_PRED` | 1 | Apply the alternating gait to predators (red) when GAIT_MODE = 1. |
 | `GAIT_TURN_ON` | 0.45 | Steering demand |steer| at which a MOVE phase ends and a TURN phase begins. |

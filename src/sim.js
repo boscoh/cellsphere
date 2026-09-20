@@ -307,9 +307,9 @@ export class Simulation {
           const ang = signedAngleTo(this, d, d.preyNearestDir)
           if (ang != null) d.headingRate += ang * P.REORIENT_TURN * dt
         }
-        // Opt-in alternating gait (cell-d4z): may cut drive and boost steer for
-        // a TURN phase, or scale drive by the current forward mode. No-op while
-        // P.GAIT_MODE = 0, so the shipped locomotion is unchanged.
+        // Alternating gait (cell-d4z): may cut drive and boost steer for a TURN
+        // phase, or scale drive by the current forward mode. No-op while
+        // P.GAIT_MODE = 0.
         updateGait(this, d, dt)
         // The tail's steering bend imparts a heading rate (0 when the tail is
         // straight), then angular drag quickly damps it.

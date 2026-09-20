@@ -1,7 +1,7 @@
 import { P, ENERGY_MAX } from './constants.js'
 
-// Opt-in alternating locomotion (cell-d4z). Off when P.GAIT_MODE = 0, in which
-// case the caller's drive/steer are left untouched. When on, a cell alternates
+// Alternating locomotion (cell-d4z). Off when P.GAIT_MODE = 0, in which case
+// the caller's drive/steer are left untouched. When on, a cell alternates
 // a TURN phase (low forward drive, boosted steering -> a tight pivot) with a
 // MOVE phase whose forward speed is set by a forward mode:
 //   general - full drive, relaxed steer (go straight)

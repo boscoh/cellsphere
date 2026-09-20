@@ -118,10 +118,9 @@ const stepProblems = []
 }
 report('headless build + step', stepProblems, '600 steps, cells finite and on-surface')
 
-// --- 2b. Opt-in gait stays physical ----------------------------------------
-// GAIT_MODE is off by default; turning it on must not put a cell off the
-// surface or into NaN, and the controller must actually engage (a turn phase
-// and a non-general forward mode observed).
+// --- 2b. Gait stays physical -------------------------------------------------
+// The gait must not put a cell off the surface or into NaN, and the controller
+// must actually engage (a turn phase and a non-general forward mode observed).
 const gaitProblems = []
 {
   const savedGait = P.GAIT_MODE

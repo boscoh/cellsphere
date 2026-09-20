@@ -64,7 +64,7 @@ export const PARAM_DEFS = [
   { key: 'MITO_SLOW_FRAC', group: 'movement', label: 'Mito slow frac', desc: 'Energy fraction above which a cell begins coasting toward mitosis (keeps seeking food until just before dividing).', def: 0.9, min: 0.05, max: 0.99, step: 0.01 },
   { key: 'PEAK_MIN', group: 'movement', label: 'Steer peak min', desc: 'Minimum gradient sharpness required before chemotaxis steers.', def: 0.18, min: 0, max: 1, step: 0.01 },
 
-  { key: 'GAIT_MODE', group: 'gait', label: 'Gait mode', desc: '0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z).', def: 0, min: 0, max: 1, step: 1 },
+  { key: 'GAIT_MODE', group: 'gait', label: 'Gait mode', desc: '0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z).', def: 1, min: 0, max: 1, step: 1 },
   { key: 'GAIT_PREY', group: 'gait', label: 'Gait: prey', desc: 'Apply the alternating gait to prey (green) when GAIT_MODE = 1.', def: 1, min: 0, max: 1, step: 1 },
   { key: 'GAIT_PRED', group: 'gait', label: 'Gait: predators', desc: 'Apply the alternating gait to predators (red) when GAIT_MODE = 1.', def: 1, min: 0, max: 1, step: 1 },
   { key: 'GAIT_TURN_ON', group: 'gait', label: 'Turn on demand', desc: 'Steering demand |steer| at which a MOVE phase ends and a TURN phase begins.', def: 0.45, min: 0, max: 1, step: 0.01 },

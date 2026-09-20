@@ -784,9 +784,9 @@ headless-test).
 
 ## 5. Alternating turn/move gait
 
-> **Status:** prototype shipped (`cell-d4z`, 2026-09), **default off**
-> (`GAIT_MODE = 0`). Full 1800s x 5-seed sweep done (`cell-aj9`): all configs
-> bounded, no extinction, no NaN; kept off by default. Run-and-tumble added
+> **Status:** prototype shipped (`cell-d4z`, 2026-09), **default on**
+> (`GAIT_MODE = 1`; flipped from 0 by request). Full 1800s x 5-seed sweep done
+> (`cell-aj9`): all configs bounded, no extinction, no NaN. Run-and-tumble added
 > (`cell-mml`, default off). Harnesses: `scripts/gait-experiment.mjs`,
 > `scripts/gait-sweep.sh`.
 
@@ -869,7 +869,7 @@ keeps the milder `MOVE_TIME 1.2`.
   (green 293 / red 179) with 29 crossings: a lively, bounded cycle. `DRIFT_FRAC 1`
   vs default is within noise, so "drift hurts reds" is not confirmed at this
   sample size.
-- **Decision: keep `GAIT_MODE = 0` default.** No config dominates baseline on
+- **Decision at the time (`cell-aj9`): keep `GAIT_MODE = 0` default.** No config dominates baseline on
   every criterion, and five seeds is too few to flip a shipped default. If a
   stronger cycle is wanted, start from `GAIT_TURN_DRIVE = 0.5` (prey-only if
   productivity matters), then re-run the sweep with more seeds.
