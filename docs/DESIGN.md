@@ -75,7 +75,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   below `STARVE_SLOW`) a starving cell slows. `slow` likewise ramps to ~0 near
   food (graze). Reds additionally **ambush**: `drive` is scaled by `PRED_COAST`
   while no prey is within `PRED_LUNGE`, so a red cruises slowly and bursts when
-  a blue comes close. Steering stays active regardless of `drive`. An **opt-in
+  a green comes close. Steering stays active regardless of `drive`. An **opt-in
   alternating gait** (`GAIT_MODE`, `src/gait.js`, `cell-d4z`) can instead cut
   `drive` and boost `steer` in a TURN phase and scale them by a forward mode
   (general / drift / eat) in a MOVE phase; it edits only `drive`/`steer`, so with
@@ -97,7 +97,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
 - **Food**: one `InstancedMesh`; spatial hash (`GRID`) limits lookups;
   `eatAndRespawn` (per substep, tight scan) and `concentration`
   (every `SENSE_PERIOD`, wide scan) update `slow/foodAmt/foodPeak/foodDir`.
-- **Predation**: a red latches one blue within `PRED_RANGE` and drains it at a
+- **Predation**: a red latches one green within `PRED_RANGE` and drains it at a
   fixed `PRED_DRAIN`/s (gaining `PRED_EFF` of that). Holding only one prey at a
   time means a red's eating rate levels off when prey are common — the classic
   recipe for a predator boom-and-bust. So the bite is scaled by how much prey
@@ -107,7 +107,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   cost and die, so they cannot finish off the last prey. See `NOTES §1.5`,
   `§1.6`.
 - **Net effect**: these rules give a **bounded predator–prey cycle**, not a steady
-  state — reds follow blues with roughly a quarter-cycle lag and both persist.
+  state — reds follow greens with roughly a quarter-cycle lag and both persist.
   Four things keep it from tipping into overshoot-and-collapse: predators share
   scarce prey (`PRED_RATIO`), rare prey get a refuge (the stop-hunting gate),
   unfed reds starve quickly, and prey have their own regrowing food. See
@@ -211,7 +211,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | Parameter | Default | Role |
 |---|---|---|
 | `SPHERE_RADIUS` | 5 | Radius of the sphere cells live on (rebuilds). Larger = more surface area, so a fixed-size cell looks smaller relative to the world. |
-| `PREY_COUNT` | 50 | Number of prey (blue) cells spawned when the world is (re)built. |
+| `PREY_COUNT` | 50 | Number of prey (green) cells spawned when the world is (re)built. |
 | `PRED_COUNT` | 15 | Number of predator (red) cells spawned when the world is (re)built. |
 | `SIM_SPEED` | 1 | Simulation speed applied on startup and when Default/Reset is pressed (1x = real time). |
 | `FOOD_COUNT` | 3000 | Total food particles spawned when the world is (re)built. |
@@ -238,7 +238,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | Parameter | Default | Role |
 |---|---|---|
 | `GAIT_MODE` | 0 | 0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z). |
-| `GAIT_PREY` | 1 | Apply the alternating gait to prey (blue) when GAIT_MODE = 1. |
+| `GAIT_PREY` | 1 | Apply the alternating gait to prey (green) when GAIT_MODE = 1. |
 | `GAIT_PRED` | 1 | Apply the alternating gait to predators (red) when GAIT_MODE = 1. |
 | `GAIT_TURN_ON` | 0.45 | Steering demand |steer| at which a MOVE phase ends and a TURN phase begins. |
 | `GAIT_TURN_OFF` | 0.15 | Steering demand at or below which a TURN phase ends and MOVE resumes. |
@@ -327,11 +327,11 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 
 | Parameter | Default | Role |
 |---|---|---|
-| `PRED_RANGE` | 0.18 | Latch distance to a blue (capsule gap). |
-| `PRED_SENSE` | 1.5 | Distance over which a red smells prey; nearby blues are weighted into a gradient direction. |
+| `PRED_RANGE` | 0.18 | Latch distance to a green (capsule gap). |
+| `PRED_SENSE` | 1.5 | Distance over which a red smells prey; nearby greens are weighted into a gradient direction. |
 | `PRED_BITE` | 0.18 | Distance at which draining proceeds (>= range so a latched prey is bitten). |
 | `PRED_OVERLAP` | 0.03 | How far a feeding predator sinks into its latched prey (contact distance minus this). |
-| `PRED_DRAIN` | 0.02 | Blue energy drained per second. Raised from 0.012 so a red eats faster and the red curve briefly overshoots the blue curve (NOTES 1.5C). |
+| `PRED_DRAIN` | 0.02 | Green energy drained per second. Raised from 0.012 so a red eats faster and the red curve briefly overshoots the green curve (NOTES 1.5C). |
 | `PRED_EFF` | 1 | Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide. |
 | `PRED_METABOLISM` | 0.001 | Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly. |
 | `PRED_DRIVE` | 0.9 | Red speed multiplier (<1 = slower). |
@@ -340,15 +340,15 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `PRED_FOCUS` | 1 | Exponent on the prey-proximity weight (1 = linear; higher focuses the gradient on the nearest prey). |
 | `PRED_REORIENT` | 1.5 | Seconds after finishing a meal that a red steers at the nearest prey and ignores both the ambush coast and the energy coast (0 = off). |
 | `REORIENT_TURN` | 20 | Extra heading-rate gain toward the nearest prey during the post-meal reorient window (cell-700). |
-| `PRED_HUNT` | 1 | Seconds after a red newly smells prey that it turns hard at the nearest blue. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby). |
+| `PRED_HUNT` | 1 | Seconds after a red newly smells prey that it turns hard at the nearest green. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby). |
 | `PRED_TURN_SLOW` | 0 | How much a red throttles back while its heading is off the nearest prey: drive *= 1 - PRED_TURN_SLOW*(1-cos(error))/2. Higher = tighter pivot turns but slower hunting (cell-1eo). |
-| `PRED_RATIO` | 0.75 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); lower = weaker suppression so reds can overshoot blue before starving; 0 = off (overshoot then collapse). Lowered 1 to 0.75 so a transient red > blue overshoot appears while 1800 s runs still survive. |
+| `PRED_RATIO` | 0.75 | Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); lower = weaker suppression so reds can overshoot green before starving; 0 = off (overshoot then collapse). Lowered 1 to 0.75 so a transient red > green overshoot appears while 1800 s runs still survive. |
 | `PRED_CROWD` | 0 | Extra drain per additional prey packed within PRED_SENSE: rate *= 1 + PRED_CROWD*(nearby-1). 0 = a clump is not a feast; higher = a shoal feeds a red faster (cell-3bz). |
-| `PRED_T3_HALF` | 0 | Prey visible within PRED_SENSE at which a red bites at half its full rate. The bite scales as a smooth sigmoid (Hill, exponent 2) in local prey count, so one lone blue is hard to catch while a shoal is easy: a continuous rare-prey refuge that can stand in for the hard stop-hunting gate. 0 = off (Type II, density-independent bite). |
-| `RED_SIZE` | 0.5 | Red body size as a fraction of blue (0.5 = half size). |
+| `PRED_T3_HALF` | 0 | Prey visible within PRED_SENSE at which a red bites at half its full rate. The bite scales as a smooth sigmoid (Hill, exponent 2) in local prey count, so one lone green is hard to catch while a shoal is easy: a continuous rare-prey refuge that can stand in for the hard stop-hunting gate. 0 = off (Type II, density-independent bite). |
+| `RED_SIZE` | 0.5 | Red body size as a fraction of green (0.5 = half size). |
 <!-- END GENERATED: tuning constants -->
 
-Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (blue/red) · Food
+Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (green/red) · Food
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`
 default **1×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
 top-right, the population chart bottom-left, drag hint bottom-center. The chart
@@ -396,7 +396,7 @@ also tints its background in the regime colour.
 
 - Shell/bg/fog: dark green family (bg `0x0e110b`, shell `0x1c2316`).
 - Food material is olive/greenish (`0x56613c` + emissive `0x343d26`).
-- Bacteria colors: two **breeds** with a **constant** per-breed HSL — blue
+- Bacteria colors: two **breeds** with a **constant** per-breed HSL — green
   (`0.37/0.5/0.5`) and red (`0.015/0.78/0.5`). Size conveys growth (color no
   longer varies with length). A death spawns a short additive **glow burst**
   (`src/glow.js` + `src/pops.js`): a camera-facing quad whose local X axis is
@@ -467,9 +467,9 @@ also tints its background in the regime colour.
 
 ## In progress / next steps
 
-- **Predator–prey** is implemented (red hunts/immobilises/eats blue), tuned to a
+- **Predator–prey** is implemented (red hunts/immobilises/eats green), tuned to a
   bounded cycle with `PRED_RATIO = 0.75` + `FOOD_COUNT 3000`. Weakened from 1
-  (2026-09) so a transient red > blue overshoot appears; going lower (≤0.5) risks
+  (2026-09) so a transient red > green overshoot appears; going lower (≤0.5) risks
   a prey wipeout on some seeds, so 0.75 is the mildest weakening that stayed
   bounded over 1800 s on three seeds.
 - **Tail** is a damped spring chain (restored), with a switchable O(S)

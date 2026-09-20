@@ -27,12 +27,12 @@ References are by symbol rather than line number, which drifts.
 ### Executive summary
 
 The ecology is a **predator–prey cycle**, and the goal state is a *bounded
-oscillation* — blue and red numbers rise and fall indefinitely without either
+oscillation* — green and red numbers rise and fall indefinitely without either
 species dying out. Each breed follows a simple strategy, and four design choices
 keep the cycle from tipping into a boom-and-bust. The rest of §1 is the detail
 behind this paragraph.
 
-**Prey (blue): graze food, grow, divide, avoid being eaten.**
+**Prey (green): graze food, grow, divide, avoid being eaten.**
 
 - Sense the food gradient, steer up it, and slow to graze once food is close.
 - Energy drives size; full energy triggers division, zero energy is instant death.
@@ -41,7 +41,7 @@ behind this paragraph.
 **Predator (red): find prey, latch one, drain it, then divide or starve.**
 
 - Follow the local prey gradient; short "hunt" and "reorient" windows turn hard
-  at the nearest blue, and it ambushes (cruises at range, bursts when close).
+  at the nearest green, and it ambushes (cruises at range, bursts when close).
 - Holds **one** prey at a time and drains it — its only energy source.
 - Energy drives division, but an unfed red burns extra energy and dies quickly.
 
@@ -56,43 +56,43 @@ behind this paragraph.
 
 **The resulting cycle.** Predators lag prey by roughly a quarter-cycle: prey rise
 on food, predators follow and over-hunt a little, prey dip, predators starve and
-dip, prey recover. Counts stay bounded (order 10–80 blue, 5–45 red at defaults)
+dip, prey recover. Counts stay bounded (order 10–80 green, 5–45 red at defaults)
 and both survive on every seed tested — a bounded oscillation, not a fixed point
 or a collapse. This is the classic predator–prey picture; §1.6 names the models
 it matches.
 
 **What breaks it.** `PRED_EFF > 1` (predators gaining free energy), or weakening
 the ratio response / refuge, tips the cycle into **overshoot**: predators pass
-blue, wipe out prey, then starve. Measured with the ratio response off: reds
+green, wipe out prey, then starve. Measured with the ratio response off: reds
 overshoot by +34 cells, then both go extinct. §1.6 maps these roles to classic
 ecology.
 
 ### 1.1 Model
 
-- **Breeds.** Blue (breed `0`) grazes food and divides as usual. Red (breed `1`)
-  hunts blue. Reds are skipped by `eatAndRespawn`/`concentration`, so a red's
-  only energy is a blue it drains.
-- **Latch.** A red scans the cell grid for the nearest valid blue within
+- **Breeds.** Green (breed `0`) grazes food and divides as usual. Red (breed `1`)
+  hunts green. Reds are skipped by `eatAndRespawn`/`concentration`, so a red's
+  only energy is a green it drains.
+- **Latch.** A red scans the cell grid for the nearest valid green within
   `PRED_RANGE` (capsule gap), stores it as `red.target`, and re-latches while
   within `PRED_RANGE × 1.6`. One target per red; multiple reds may drain the
-  same blue. `buildCellGrid` is rebuilt fresh at the top of `advance`.
-- **Immobilise.** Within `PRED_RANGE` the blue is `paralysed`: `sim.advance`
+  same green. `buildCellGrid` is rebuilt fresh at the top of `advance`.
+- **Immobilise.** Within `PRED_RANGE` the green is `paralysed`: `sim.advance`
   forces `drive = 0`, zeros `headingRate`, hard-decays velocity, and skips
   chemotaxis. A latched prey glows purple (`instanceParalysed`). While it has a
   paralysed target a red's own drive is 0, so the latch holds.
 - **Drain / gain.** Within `PRED_BITE` (≥ `PRED_RANGE`, so a latch is bitten),
-  `drainEnergy(blue, PRED_DRAIN·dt)` and
-  `gainEnergy(red, PRED_DRAIN·dt·PRED_EFF)`. The blue shrinks because size is
+  `drainEnergy(green, PRED_DRAIN·dt)` and
+  `gainEnergy(red, PRED_DRAIN·dt·PRED_EFF)`. The green shrinks because size is
   linear in energy and dies at `energy <= 0` (`killedByPred`). `gainEnergy`
   caps at `ENERGY_MAX`, so a well-fed red divides.
 - **Sensing.** `predatorSense()` sums proximity-weighted directions to every
-  valid blue within `PRED_SENSE` into `preyDir`/`preyAmt`; reds steer up that
+  valid green within `PRED_SENSE` into `preyDir`/`preyAmt`; reds steer up that
   gradient. It also records `preyNear` (nearest capsule gap) for the ambush.
 - **Ambush.** While no prey is within `PRED_LUNGE`, red `drive` is scaled by
   `PRED_COAST`; inside the lunge it bursts at full drive. Steering is unaffected,
   so a coasting red still turns onto prey.
 - **Re-acquisition.** After a meal the shoal gradient can point ~40° off the
-  nearest blue, so a red swims past close prey. `PRED_REORIENT` (default 0.3s)
+  nearest green, so a red swims past close prey. `PRED_REORIENT` (default 0.3s)
   steers at the nearest prey and suppresses the ambush coast for that window;
   `PRED_FOCUS` steepens the proximity weight (default 1 = linear).
 - **Ratio-dependent predation.** `PRED_RATIO` (`0` = off) implements an
@@ -105,8 +105,8 @@ ecology.
 **A. Reds starved before they could reproduce (`cell-v9d`).** An unfed red burned
 `METABOLISM + PRED_METABOLISM + MOVE_COST·drive ≈ 0.007/s` but gained only
 `PRED_DRAIN × PRED_EFF = 0.008/s` while biting, and `PRED_DRIVE = 0.7` made reds
-slower than fleeing blues. Seeded 180s run: 15 reds → 1, 0 births, blue 50 → 82.
-Fix (600s × 3 seeds → blue 50→213/236/256, red 15→73/66/53, 48–68 births,
+slower than fleeing greens. Seeded 180s run: 15 reds → 1, 0 births, green 50 → 82.
+Fix (600s × 3 seeds → green 50→213/236/256, red 15→73/66/53, 48–68 births,
 110–140 kills, no NaN):
 
 | key | old | new |
@@ -122,8 +122,8 @@ energy/second. A density-scaled drain or multiple simultaneous targets would
 change this (not implemented).
 
 **C. Long runs still went extinct.** With the §1.2 defaults, a 1800s run showed
-blue 50→223→0 (~860s), then red 15→179→0 (~1160s): reds boom, overhunt the last
-blues, then starve. Structural cause is the saturating (Type II) one-target
+green 50→223→0 (~860s), then red 15→179→0 (~1160s): reds boom, overhunt the last
+greens, then starve. Structural cause is the saturating (Type II) one-target
 intake — once prey are common the total kill rate scales with *predator* count
 (the paradox of enrichment).
 
@@ -132,23 +132,23 @@ dependence makes per-capita kill fall as predators outnumber prey; lowering
 `FOOD_COUNT` 7000 → 3000 gives prey a carrying capacity to cycle against.
 Together they produce a sustained bounded cycle:
 
-| run (3600s) | seed | blue | red |
+| run (3600s) | seed | green | red |
 |---|---|---|---|
 | `FOOD_COUNT 3000`, `PRED_RATIO 1` | 1 | 20..91 | 7..48 |
 | " | 2 | 28..200 | 7..113 |
 | + `PRED_HANDLE 20` (test only) | 1 | 19..93 | 8..56 |
 | + `PRED_HANDLE 20` (test only) | 2 | 22..175 | 6..97 |
 
-Reds lag blues by a quarter-cycle: as prey drop, predators starve and drop; as
+Reds lag greens by a quarter-cycle: as prey drop, predators starve and drop; as
 prey recover, predators follow. Shipped defaults: `FOOD_COUNT = 3000`,
 `PRED_RATIO = 1` (later lowered to 0.75; see §1.6). `PRED_EFF > 1` (energy
 creation) is the single most destabilising knob — it always ends in prey wipeout.
 
 **E. Re-acquisition A/B (`cell-erd`).** Seeded A/B (relatch within 2s): baseline
-14/15%, `PRED_FOCUS=2` 24/19%, `PRED_REORIENT=0.3` 23/20%; mean nearest-blue
+14/15%, `PRED_FOCUS=2` 24/19%, `PRED_REORIENT=0.3` 23/20%; mean nearest-green
 distance at meal end 1.52 → 1.36 with `PRED_REORIENT=0.3`. **Adopted
 `PRED_REORIENT = 0.3`**; `PRED_FOCUS` stays 1. Disabling the ambush
-(`PRED_COAST=1`) crashes blue (64→27), so the ambush is load-bearing.
+(`PRED_COAST=1`) crashes green (64→27), so the ambush is load-bearing.
 
 ### 1.3 Rejected stabilisers
 
@@ -169,7 +169,7 @@ only ratio-dependent predation survived.
 - Clumps are still not a feast (fixed single-target intake); see §1.5 for the
   measured eating-speed options and the division-orientation bug.
 - Reds cannot graze food at all; grazing would give a survival floor.
-- Early dip: reds fall 15 → ~6–11 around t=90–150s before blue builds.
+- Early dip: reds fall 15 → ~6–11 around t=90–150s before green builds.
 - Ambush refinement (`cell-fgh`: `PRED_SIGHT`/`PRED_LUNGE`, pivoting while
   resting) — not addressed here.
 - `FOOD_COUNT 3000` changes the non-predator base feel; revert if undesired.
@@ -190,7 +190,7 @@ at `startPos + headBack·(-half·MITO_NEAR)` with heading `headBack` (backward) 
 mirrors `front`, which is exactly what keeps the two tails outside — correct.
 
 The real problem is what happens next: a freshly divided cell is bad at finding
-the food right beside it, so a blue that divides on a clump often leaves it.
+the food right beside it, so a green that divides on a clump often leaves it.
 
 - `concentration()` and `eatAndRespawn()` skip cells while `d.mito || d.splitting`,
   so daughters are **food-blind for the whole `MITO_TIME` (5 s)**.
@@ -217,12 +217,12 @@ gradient at release, or raise steering authority for the re-aim window.
 latched ~40–50 % of their lives, mean kill gap ~65–71 s, mean re-latch ~30 s, and
 only ~40–50 % of meals are followed by a fresh latch within 2 s. Causes, in order:
 
-1. **Single-target, fixed-rate intake.** `PRED_DRAIN` on one latched blue; a
+1. **Single-target, fixed-rate intake.** `PRED_DRAIN` on one latched green; a
    clump only shortens search dead-time (§1.2.B). This caps throughput hardest.
 2. **Short re-orient window.** `PRED_REORIENT` is 0.3 s; after it the red reverts
    to the shoal gradient (`preyDir`), a proximity-weighted average that can point
-   off the nearest blue, and re-enables the ambush coast (`PRED_COAST`) so it
-   closes on the next blue at 0.35 drive while beyond `PRED_LUNGE`.
+   off the nearest green, and re-enables the ambush coast (`PRED_COAST`) so it
+   closes on the next green at 0.35 drive while beyond `PRED_LUNGE`.
 3. **Energy coast band.** Above `MITO_SLOW_FRAC = 0.9` drive ramps to 0, so the
    best-fed red — the one that just ate — is the least inclined to chase again.
 4. **Ratio gate.** `PRED_RATIO = 1` stops hunting entirely once `prey/pred < 1`.
@@ -230,36 +230,36 @@ only ~40–50 % of meals are followed by a fresh latch within 2 s. Causes, in or
 
 Multi-red competition and the shared ratio throttle amplify all four.
 
-**C. Eating faster with a transient red > blue, without a prey wipeout.** Keeping
+**C. Eating faster with a transient red > green, without a prey wipeout.** Keeping
 `PRED_EFF = 1`, `PRED_COAST`, `PRED_LUNGE`, `PRED_METABOLISM` and `PRED_RATIO`
-unchanged, raise `PRED_DRAIN` alone. 3600 s, seeds 1/2/3 (`red>blue` = max
-red−blue; `×` = red/blue curve crossings):
+unchanged, raise `PRED_DRAIN` alone. 3600 s, seeds 1/2/3 (`red>green` = max
+red−green; `×` = red/green curve crossings):
 
-| `PRED_DRAIN` | blue min..max | red min..max | red>blue | crossings | extinct? |
+| `PRED_DRAIN` | green min..max | red min..max | red>green | crossings | extinct? |
 |---|---|---|---|---|---|
 | 0.02 | 15/15/12..158/76/141 | 5/6/2..84/39/79 | 7/3/2 | 4/4/10 | no |
 | 0.025 | 19/24/21..59/62/85 | 7/5/7..30/34/53 | 1/3/2 | 2/6/2 | no |
 | 0.03 | 18/9/22..72/70/126 | 6/1/6..43/32/71 | 2/1/3 | 4/4/10 | no |
 
-Baseline `PRED_DRAIN = 0.012` (1800 s, seeds 1–2) never crosses: blue 26..92,
-red 9..55, `red>blue = 0`, 0 crossings. So the crossover comes entirely from a
+Baseline `PRED_DRAIN = 0.012` (1800 s, seeds 1–2) never crosses: green 26..92,
+red 9..55, `red>green = 0`, 0 crossings. So the crossover comes entirely from a
 faster bite.
 
 **Rejected in the same sweep.** `PRED_EFF = 0.5` (drain 0.03): reds convert too
 little, prey bloom to 191–300, crossover becomes seed-dependent (4/0) — reject.
 `PRED_RATIO = 2–3`: suppresses the crossover entirely and lets prey bloom to 343.
-`PRED_METABOLISM = 0.002` (drain 0.03): seed 2 starved all reds (blue 500,
+`PRED_METABOLISM = 0.002` (drain 0.03): seed 2 starved all reds (green 500,
 red 0) — reject. Raising `PRED_REORIENT` to 2 s gave a small kill-gap gain
 (60–63 s vs 65–71 s) but nothing else, because intake is intake-limited.
 
 **Recommendation.** `PRED_DRAIN` 0.012 → **0.02** (1.67×): shortest change that
-shortens time-on-prey, produces repeated transient red > blue overshoots (up to
+shortens time-on-prey, produces repeated transient red > green overshoots (up to
 +7 cells), and kept both populations alive in all six long runs. `0.025` is the
 conservative alternative; `0.03` also survived these seeds but seed 2 dropped to
 a single red, so treat it as riskier. If a stronger, more visible boom is wanted,
 the structural move is the §1.4 **clump feast** — scale drain with local prey
 density (`rate *= 1 + c·(nearby−1)`) or allow N simultaneous latches — so a red
-eats fast inside a clump while isolated blues survive as refuge; that needs its
+eats fast inside a clump while isolated greens survive as refuge; that needs its
 own A/B.
 
 **D. Outcome (2026-09): targeted fixes shipped.**
@@ -287,14 +287,14 @@ own A/B.
   window alone did **not** help (re-latch unchanged) — the bottleneck is turn
   authority, so the assist is the effective part. 1800 s, seeds 1–2: re-latch
   within 2 s ~30% → ~42%, mean kill gap ~82 s → ~68 s. 3600 s × 3 seeds stayed
-  bounded with no extinction (blue 19..94, red 6..51, red>blue 4–6).
+  bounded with no extinction (green 19..94, red 6..51, red>green 4–6).
 - **Clump feast (`cell-3bz`, opt-in prototype).** New `PRED_CROWD` scales the
   bite with prey packed within `PRED_SENSE`
   (`rate *= 1 + PRED_CROWD·(nearby−1)`), so a shoal feeds a red faster than a lone
-  blue. Default **0** keeps “a clump is not a feast”. 1800 s, seeds 1–2:
+  green. Default **0** keeps “a clump is not a feast”. 1800 s, seeds 1–2:
   `PRED_CROWD` 0.5–2 lowers mean kill gap 69–92 s → 59–67 s but also suppresses
-  prey (blue max 62–67 → 50–62) and does not improve re-latch; 3600 s × 3 seeds
-  at 1.0 stayed bounded (blue min 10–16, no extinction). Left off by default as a
+  prey (green max 62–67 → 50–62) and does not improve re-latch; 3600 s × 3 seeds
+  at 1.0 stayed bounded (green min 10–16, no extinction). Left off by default as a
   Tuner knob — the effect is real but modest, and it trades prey abundance for
   bite speed.
 - **Predator re-aim (`cell-zby`).** The visible “red takes a long curve” is
@@ -305,7 +305,7 @@ own A/B.
   94–96%); (2) new `PRED_HUNT` (1 s) opens the same hard-turn assist the moment a
   red *newly* smells prey, so adults re-aim onto a new shoal instead of arcing.
   Making reds *permanently* agile was rejected: an unconditional turn assist
-  halves populations (blue max 62–67 → 50, reds crash) and high gain goes
+  halves populations (green max 62–67 → 50, reds crash) and high gain goes
   extinct, so the assist stays event/window-limited. 3600 s ×3 at `PRED_HUNT=1`
   stayed bounded, no extinction.
 - **Slow-drive turn mode (`cell-1eo`, rejected).** `headingRate` comes only from
@@ -330,7 +330,7 @@ breed while prey are plentiful, keep eating after prey start to fall, drive prey
 to near zero, then starve themselves. Predators passing the level the prey can
 sustain is **overshoot**; the wipeout-and-crash that follows is what we want to
 avoid. With our stabilisers switched off the sim does exactly this — reds
-overshoot blues by ~34 cells, then both die out.
+overshoot greens by ~34 cells, then both die out.
 
 **How fast a predator eats is the key knob.** The rule for "eating rate vs how
 common prey are" is called the **functional response**. There are three standard
@@ -340,7 +340,7 @@ shapes:
   *Type I*; used by the original textbook model.)
 - **Rises, then levels off** — a predator eats faster as prey appear but tops
   out, because chasing and handling each meal takes time. This is what our reds
-  do: one latched blue at a time, at a fixed bite rate. (Called *Type II*.) On
+  do: one latched green at a time, at a fixed bite rate. (Called *Type II*.) On
   its own it is the classic cause of overshoot — when prey are common every
   predator is full, so predator numbers grow until the prey run out. The
   boom-and-bust has a famous name, the **paradox of enrichment**: making life
@@ -540,7 +540,7 @@ Scope: `src/food.js`, `src/grid.js`, `src/constants.js`, `src/sim.js`,
 
 ### 3.2 Cost
 
-Per blue cell, `concentration` is `O(buckets)` `Map.get` + `O(candidates)`
+Per green cell, `concentration` is `O(buckets)` `Map.get` + `O(candidates)`
 `foodDist`. At `FOOD_COUNT = 3000` on area ~322, occupancy is ~1 visible
 food/bucket, so the `r = 2` cube visits 125 buckets and ~10² candidates, skewed
 by clumping (85% in ~12 clumps). `SENSE_PERIOD = 0.05` is ~3 substeps ≈ 20
@@ -569,7 +569,7 @@ Prototyped behind `SENSE_MODE = 1` (sense each clump centre, weight
 `1 − dist/reach`, `reach = sense + theta·SURFACE`). The `sense` bucket is **4×
 cheaper** (0.125 → 0.030 ms at ~50–65 cells), but chemotaxis collapses: mean
 cosine between `foodDir` and the direction to the nearest visible food falls from
-**0.64 to −0.10**, and blues over-graze (seeded 90s: blue 46 → 64). A clump
+**0.64 to −0.10**, and greens over-graze (seeded 90s: green 46 → 64). A clump
 centre is a poor stand-in for the local spec field, especially inside a clump.
 **Keep the per-spec scan; do not default clump sensing.** `SENSE_MODE` stays 0.
 
@@ -830,12 +830,12 @@ right.
 
 ### 5.2 Full sweep (`scripts/gait-sweep.sh`, 1800s, seeds 1-5)
 
-One process per config, five seeds each; `cross` = total red-blue curve
+One process per config, five seeds each; `cross` = total red-green curve
 crossings over the five runs; `turn%` = mean cell-time in `TURN`; `bDrive` /
 `rDrive` / `rSpeed` are per-cell means. No run had a NaN; `ex` is the number of
 seeds with an extinction.
 
-| config | ex | cross | blue | red | births | bDrive | rDrive | rSpeed | turn% b/r |
+| config | ex | cross | green | red | births | bDrive | rDrive | rSpeed | turn% b/r |
 |---|---|---|---|---|---|---|---|---|---|
 | baseline | 0 | 6 | 18..193 | 4..125 | 583 | .053 | .115 | .189 | 0 / 0 |
 | gait (default) | 0 | 13 | 8..91 | 5..51 | 360 | .037 | .084 | .152 | 19 / 28 |
@@ -849,7 +849,7 @@ seeds with an extinction.
 
 An earlier 1200s seeds-1-2 pass plus 2400s seeds-1-3 runs showed the same
 picture, and caught the one fragile corner: `MOVE_TIME 1.5` with weak move
-steering (`STEER 0.25`) nearly crashed seed 1 (blue 6..50). The shipped script
+steering (`STEER 0.25`) nearly crashed seed 1 (green 6..50). The shipped script
 keeps the milder `MOVE_TIME 1.2`.
 
 ### 5.3 Reading and decision (`cell-aj9`)
@@ -859,14 +859,14 @@ keeps the milder `MOVE_TIME 1.2`.
 - **The gait amplifies the cycle.** Baseline already oscillates (6 crossings);
   the pivot/demand gate roughly doubles-to-quintuples that (default 13, prey-only
   17, `TURN_DRIVE 0.5` 29). This is the intended direction — a more pronounced
-  but still bounded red-blue cycle, not a collapse.
+  but still bounded red-green cycle, not a collapse.
 - **Most configs cost prey productivity.** Default gait and pred-only cut births
   to ~360-370 (prey `drive` down), while `TURN_DRIVE 0.5` and prey-only keep or
   raise births (746 / 635) because they pivot without throttling prey as much.
 - **Predator-only is the mildest change** (4 crossings, like baseline): pivoting
   reds alone does little; the added cycle comes from the prey gait / interaction.
 - **`TURN_DRIVE 0.5` is the standout knob** — highest births and amplitude
-  (blue 293 / red 179) with 29 crossings: a lively, bounded cycle. `DRIFT_FRAC 1`
+  (green 293 / red 179) with 29 crossings: a lively, bounded cycle. `DRIFT_FRAC 1`
   vs default is within noise, so "drift hurts reds" is not confirmed at this
   sample size.
 - **Decision: keep `GAIT_MODE = 0` default.** No config dominates baseline on
@@ -945,7 +945,7 @@ Balance/exploration harnesses used Vite `ssrLoadModule('/src/sim.js')`, seeded
 no WebGL. Parameters were overridden via `setParam` after `resetParams()`. A
 discarded warm-up run preceded each sweep so lazy geometry/pool PRNG draws
 wouldn't skew the first set. Candidates were scored on: no extinction over
-≥1800s, bounded amplitude, red lagging blue, and no NaN. Temporary scripts were
+≥1800s, bounded amplitude, red lagging green, and no NaN. Temporary scripts were
 removed after each pass; `scripts/tail-equivalence.mjs` shows the reproducible
 seeded-run pattern. The gait harnesses (`scripts/gait-experiment.mjs` and
 `scripts/gait-sweep.sh`/`gait-sweep.mjs`, §5) are kept as plain-Node variants of

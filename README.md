@@ -3,7 +3,7 @@
 **[Live demo](https://boscoh.github.io/cellsphere/)** ·
 **[Source](https://github.com/boscoh/cellsphere)**
 
-A real-time predator–prey simulation on the surface of a sphere. Blue bacteria
+A real-time predator–prey simulation on the surface of a sphere. Green bacteria
 graze on scattered food and grow fat enough to divide; red predators hunt them
 down and drain their energy. Every cell is an autonomous agent — it senses its
 surroundings, steers with an undulating flagellum, and lives or starves on the

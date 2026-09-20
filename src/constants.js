@@ -48,7 +48,7 @@ export const GROUPS = [
 
 export const PARAM_DEFS = [
   { key: 'SPHERE_RADIUS', group: 'world', label: 'Sphere radius', desc: 'Radius of the sphere cells live on (rebuilds). Larger = more surface area, so a fixed-size cell looks smaller relative to the world.', def: 5, min: 3, max: 12, step: 0.5, rebuild: true },
-  { key: 'PREY_COUNT', group: 'world', label: 'Prey (start)', desc: 'Number of prey (blue) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
+  { key: 'PREY_COUNT', group: 'world', label: 'Prey (start)', desc: 'Number of prey (green) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
   { key: 'PRED_COUNT', group: 'world', label: 'Predators (start)', desc: 'Number of predator (red) cells spawned when the world is (re)built.', def: 15, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
   { key: 'SIM_SPEED', group: 'world', label: 'Default speed', desc: 'Simulation speed applied on startup and when Default/Reset is pressed (1x = real time).', def: 1, min: 1, max: MAX_SIM_RATE, step: 1 },
   { key: 'FOOD_COUNT', group: 'world', label: 'Initial food', desc: 'Total food particles spawned when the world is (re)built.', def: 3000, min: 500, max: 40000, step: 500, rebuild: true },
@@ -65,7 +65,7 @@ export const PARAM_DEFS = [
   { key: 'PEAK_MIN', group: 'movement', label: 'Steer peak min', desc: 'Minimum gradient sharpness required before chemotaxis steers.', def: 0.18, min: 0, max: 1, step: 0.01 },
 
   { key: 'GAIT_MODE', group: 'gait', label: 'Gait mode', desc: '0 = continuous steering+thrust (current behaviour); 1 = alternate a TURN phase with a MOVE phase (cell-d4z).', def: 0, min: 0, max: 1, step: 1 },
-  { key: 'GAIT_PREY', group: 'gait', label: 'Gait: prey', desc: 'Apply the alternating gait to prey (blue) when GAIT_MODE = 1.', def: 1, min: 0, max: 1, step: 1 },
+  { key: 'GAIT_PREY', group: 'gait', label: 'Gait: prey', desc: 'Apply the alternating gait to prey (green) when GAIT_MODE = 1.', def: 1, min: 0, max: 1, step: 1 },
   { key: 'GAIT_PRED', group: 'gait', label: 'Gait: predators', desc: 'Apply the alternating gait to predators (red) when GAIT_MODE = 1.', def: 1, min: 0, max: 1, step: 1 },
   { key: 'GAIT_TURN_ON', group: 'gait', label: 'Turn on demand', desc: 'Steering demand |steer| at which a MOVE phase ends and a TURN phase begins.', def: 0.45, min: 0, max: 1, step: 0.01 },
   { key: 'GAIT_TURN_OFF', group: 'gait', label: 'Turn off demand', desc: 'Steering demand at or below which a TURN phase ends and MOVE resumes.', def: 0.15, min: 0, max: 1, step: 0.01 },
@@ -131,11 +131,11 @@ export const PARAM_DEFS = [
   { key: 'TAIL_MODE', group: 'tail', label: 'Kinematic mode', desc: '0 = spring-chain tail, 1 = force-rotated rigid root + kinematic follow.', def: 0, min: 0, max: 1, step: 1 },
   { key: 'TAIL_FOLLOW_RATE', group: 'tail', label: 'Kinematic follow', desc: 'Kinematic mode: rate each free joint aligns to the segment ahead (higher = stiffer/rod-like).', def: 15, min: 2, max: 80, step: 1 },
 
-  { key: 'PRED_RANGE', group: 'predator', label: 'Predator range', desc: 'Latch distance to a blue (capsule gap).', def: 0.18, min: 0, max: 1, step: 0.01 },
-  { key: 'PRED_SENSE', group: 'predator', label: 'Predator sense', desc: 'Distance over which a red smells prey; nearby blues are weighted into a gradient direction.', def: 1.5, min: 0, max: 5, step: 0.1 },
+  { key: 'PRED_RANGE', group: 'predator', label: 'Predator range', desc: 'Latch distance to a green (capsule gap).', def: 0.18, min: 0, max: 1, step: 0.01 },
+  { key: 'PRED_SENSE', group: 'predator', label: 'Predator sense', desc: 'Distance over which a red smells prey; nearby greens are weighted into a gradient direction.', def: 1.5, min: 0, max: 5, step: 0.1 },
   { key: 'PRED_BITE', group: 'predator', label: 'Predator bite', desc: 'Distance at which draining proceeds (>= range so a latched prey is bitten).', def: 0.18, min: 0, max: 0.5, step: 0.01 },
   { key: 'PRED_OVERLAP', group: 'predator', label: 'Predator overlap', desc: 'How far a feeding predator sinks into its latched prey (contact distance minus this).', def: 0.03, min: 0, max: 0.12, step: 0.005 },
-  { key: 'PRED_DRAIN', group: 'predator', label: 'Predator drain', desc: 'Blue energy drained per second. Raised from 0.012 so a red eats faster and the red curve briefly overshoots the blue curve (NOTES 1.5C).', def: 0.02, min: 0, max: 1, step: 0.001 },
+  { key: 'PRED_DRAIN', group: 'predator', label: 'Predator drain', desc: 'Green energy drained per second. Raised from 0.012 so a red eats faster and the red curve briefly overshoots the green curve (NOTES 1.5C).', def: 0.02, min: 0, max: 1, step: 0.001 },
   { key: 'PRED_EFF', group: 'predator', label: 'Predator growth', desc: 'Energy red gains per second as a multiple of the drain (1 = matches the drain); also sets how fast reds divide.', def: 1, min: 0, max: 4, step: 0.1 },
   { key: 'PRED_METABOLISM', group: 'predator', label: 'Predator metabolism', desc: 'Extra energy per second a red burns while it has no prey latched, so unfed predators die quickly.', def: 0.001, min: 0, max: 0.3, step: 0.001 },
   { key: 'PRED_DRIVE', group: 'predator', label: 'Predator drive', desc: 'Red speed multiplier (<1 = slower).', def: 0.9, min: 0, max: 1, step: 0.05 },
@@ -144,12 +144,12 @@ export const PARAM_DEFS = [
   { key: 'PRED_FOCUS', group: 'predator', label: 'Prey focus', desc: 'Exponent on the prey-proximity weight (1 = linear; higher focuses the gradient on the nearest prey).', def: 1, min: 0.5, max: 4, step: 0.5 },
   { key: 'PRED_REORIENT', group: 'predator', label: 'Reorient time', desc: 'Seconds after finishing a meal that a red steers at the nearest prey and ignores both the ambush coast and the energy coast (0 = off).', def: 1.5, min: 0, max: 2, step: 0.05 },
   { key: 'REORIENT_TURN', group: 'predator', label: 'Reorient turn', desc: 'Extra heading-rate gain toward the nearest prey during the post-meal reorient window (cell-700).', def: 20, min: 0, max: 60, step: 1 },
-  { key: 'PRED_HUNT', group: 'predator', label: 'Hunt window', desc: 'Seconds after a red newly smells prey that it turns hard at the nearest blue. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby).', def: 1, min: 0, max: 5, step: 0.1 },
+  { key: 'PRED_HUNT', group: 'predator', label: 'Hunt window', desc: 'Seconds after a red newly smells prey that it turns hard at the nearest green. Event-limited like the post-meal window, so it re-aims instead of arcing without making reds permanently agile (cell-zby).', def: 1, min: 0, max: 5, step: 0.1 },
   { key: 'PRED_TURN_SLOW', group: 'predator', label: 'Turn-phase throttle', desc: 'How much a red throttles back while its heading is off the nearest prey: drive *= 1 - PRED_TURN_SLOW*(1-cos(error))/2. Higher = tighter pivot turns but slower hunting (cell-1eo).', def: 0, min: 0, max: 1, step: 0.05 },
-  { key: 'PRED_RATIO', group: 'predator', label: 'Ratio half-saturation', desc: 'Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); lower = weaker suppression so reds can overshoot blue before starving; 0 = off (overshoot then collapse). Lowered 1 to 0.75 so a transient red > blue overshoot appears while 1800 s runs still survive.', def: 0.75, min: 0, max: 20, step: 0.25 },
+  { key: 'PRED_RATIO', group: 'predator', label: 'Ratio half-saturation', desc: 'Prey-per-predator ratio at which a red hunts at half strength (ratio-dependent response); lower = weaker suppression so reds can overshoot green before starving; 0 = off (overshoot then collapse). Lowered 1 to 0.75 so a transient red > green overshoot appears while 1800 s runs still survive.', def: 0.75, min: 0, max: 20, step: 0.25 },
   { key: 'PRED_CROWD', group: 'predator', label: 'Clump feast', desc: 'Extra drain per additional prey packed within PRED_SENSE: rate *= 1 + PRED_CROWD*(nearby-1). 0 = a clump is not a feast; higher = a shoal feeds a red faster (cell-3bz).', def: 0, min: 0, max: 3, step: 0.1 },
-  { key: 'PRED_T3_HALF', group: 'predator', label: 'Type III half-density', desc: 'Prey visible within PRED_SENSE at which a red bites at half its full rate. The bite scales as a smooth sigmoid (Hill, exponent 2) in local prey count, so one lone blue is hard to catch while a shoal is easy: a continuous rare-prey refuge that can stand in for the hard stop-hunting gate. 0 = off (Type II, density-independent bite).', def: 0, min: 0, max: 20, step: 0.5 },
-  { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of blue (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.01 },
+  { key: 'PRED_T3_HALF', group: 'predator', label: 'Type III half-density', desc: 'Prey visible within PRED_SENSE at which a red bites at half its full rate. The bite scales as a smooth sigmoid (Hill, exponent 2) in local prey count, so one lone green is hard to catch while a shoal is easy: a continuous rare-prey refuge that can stand in for the hard stop-hunting gate. 0 = off (Type II, density-independent bite).', def: 0, min: 0, max: 20, step: 0.5 },
+  { key: 'RED_SIZE', group: 'predator', label: 'Red size', desc: 'Red body size as a fraction of green (0.5 = half size).', def: 0.5, min: 0.2, max: 1, step: 0.01 },
 ]
 
 // Every parameter value lives in this one mutable record. There is deliberately

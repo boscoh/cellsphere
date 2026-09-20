@@ -1,7 +1,7 @@
 # AGENTS.md — Development Guide
 
 CellSphere is a Vue 3 + Vite + Three.js real-time **predator–prey simulation on
-the surface of a solid sphere**. Blue prey graze food; red predators hunt them.
+the surface of a solid sphere**. Green prey graze food; red predators hunt them.
 There is no boundary — the surface is a closed periodic domain.
 
 `docs/DESIGN.md` is the authoritative architecture + tuning + gotchas reference;
