@@ -446,6 +446,26 @@ try {
         renderProblems.push(`cell ${ci} non-finite after renderTails`)
       }
     }
+    // The tail carries the same rim marker as the body: a latched cell reads 1, a
+    // draining assembly member reads its aura, an untouched cell reads 0.
+    {
+      const d = sim.cells[0]
+      const chunk = d.tailChunk
+      if (!chunk) renderProblems.push('a rendered cell has no tail chunk')
+      else if (!chunk.mesh.geometry.getAttribute('aAura')) renderProblems.push('the tail geometry has no aAura attribute')
+      else {
+        const base = d.tailSlot * TAIL_SEGMENTS
+        const arr = chunk.attrs.aura.array
+        d.paralysed = true
+        sim.renderTails()
+        if (arr[base] !== 1) renderProblems.push(`a latched cell's tail aura read ${arr[base]}, want 1`)
+        d.paralysed = false
+        d.aura = 0.5
+        sim.renderTails()
+        if (Math.abs(arr[base] - 0.5) > 1e-6) renderProblems.push(`a draining cell's tail aura read ${arr[base]}, want 0.5`)
+        d.aura = 0
+      }
+    }
   }
   report('headless render smoke', renderProblems, 'renderTails/placeTail finite, pose untouched')
 
