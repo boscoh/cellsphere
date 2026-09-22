@@ -308,6 +308,12 @@ function finalizeMito(d, m) {
   m.front.rest = P.MITO_REST
   m.back.forageT = P.MITO_FORAGE
   m.front.forageT = P.MITO_FORAGE
+  // The sisters are born facing each other (each tail streams outward, so the
+  // heading must point inward), so while they coast through MITO_REST they turn
+  // away from each other rather than driving head-on the moment drive resumes
+  // (cell-jyg). Cleared when they part, and read only while `rest > 0`.
+  m.back.sibling = m.front
+  m.front.sibling = m.back
   m.parent.dead = true
 }
 

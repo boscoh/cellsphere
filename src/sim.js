@@ -179,6 +179,11 @@ export class Simulation {
         if (d.rest > 0) {
           d.rest -= dt
           d.drive = 0
+          // The sibling reference is only read while `rest > 0`; drop it once the
+          // away-turn window closes so a dead sister is not kept reachable for as
+          // long as this cell lives (guarded, so cells without one keep their
+          // shape).
+          if (d.rest <= 0 && d.sibling) d.sibling = null
         } else {
           const frac = THREE.MathUtils.clamp(d.energy / ENERGY_MAX, 0, 1)
           // Bands are mostly exclusive by energy: coast to a stop as the cell
@@ -292,7 +297,9 @@ export class Simulation {
         // it re-aims off the inward birth heading instead of drifting. Green aims
         // at food (cell-x93); red at the nearest prey, which otherwise drives off
         // and takes a long curve to come back (cell-zby).
-        if (d.forageT > 0) {
+        // The away-turn owns the rest window, so the forage re-aim waits for it
+        // (cell-jyg): two assists pulling opposite ways only jitter the daughter.
+        if (d.forageT > 0 && d.rest <= 0) {
           if (d.breed === 0 && d.foodAmt > 0.01) {
             const ang = signedAngleTo(this, d, d.foodDir)
             if (ang != null) d.headingRate += ang * P.FORAGE_TURN * dt
@@ -307,6 +314,20 @@ export class Simulation {
           const ang = signedAngleTo(this, d, d.preyNearestDir)
           if (ang != null) d.headingRate += ang * P.REORIENT_TURN * dt
         }
+        // Sisters are born facing each other (each tail streams outward, so the
+        // heading must point inward), so the no-drive rest window is spent
+        // pivoting away from the sibling instead of aiming at food: the pair
+        // turns apart before either can thrust head-on, and only then does the
+        // forage window take over the re-aim (cell-jyg). It steers the heading
+        // directly and leaves `steer` alone, so the tail (whose bend follows the
+        // steering command) stays as calm as any other cell's. 0 = off.
+        if (P.MITO_AWAY_TURN > 0 && d.rest > 0 && d.sibling && !d.sibling.dead) {
+          const away = this._v7.subVectors(d.pos, d.sibling.pos)
+          if (away.lengthSq() > 1e-9) {
+            const ang = signedAngleTo(this, d, away.normalize())
+            if (ang != null) d.headingRate += ang * P.MITO_AWAY_TURN * dt
+          }
+        }
         // Alternating gait (cell-d4z): may cut drive and boost steer for a TURN
         // phase, or scale drive by the current forward mode. No-op while
         // P.GAIT_MODE = 0.
@@ -316,6 +337,13 @@ export class Simulation {
         d.headingRate += P.TAIL_TURN * (d.tailBend || 0) * dt
         d.headingRate *= Math.exp(-P.ANG_DRAG * dt)
         d.headingRate = THREE.MathUtils.clamp(d.headingRate, -P.MAX_SPIN, P.MAX_SPIN)
+        // A fresh daughter pivots gently for the whole post-division exit window
+        // (REST + FORAGE): at full authority the re-aim and any collision kick
+        // hold her at MAX_SPIN, which is the visible thrash and whips the tail
+        // (cell-jyg).
+        if (d.forageT > 0) {
+          d.headingRate = THREE.MathUtils.clamp(d.headingRate, -P.MITO_TURN_CAP, P.MITO_TURN_CAP)
+        }
         this._q.setFromAxisAngle(normal, d.headingRate * dt)
         d.heading
           .applyQuaternion(this._q)

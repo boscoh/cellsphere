@@ -151,7 +151,12 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   **shrinks to nothing** (its `fade` scales the body down via the instance
   matrix), then its mesh is dropped but it **keeps
   colliding** until the daughters finish separating; `finalizeMito` marks it dead
-  and releases the daughters (with a `MITO_REST` coast). Because metabolism keeps
+  and releases the daughters (with a `MITO_REST` coast). The exit window
+  (`MITO_REST` + `MITO_FORAGE`) is a deliberate pivot: each daughter steers away
+  from her sibling (`MITO_AWAY_TURN`) while the forage re-aim waits, and
+  `MITO_TURN_CAP` caps the heading rate — otherwise the re-aim and any collision
+  kick hold her at `MAX_SPIN`, which reads as thrashing and whips the tail (see
+  `NOTES.md` §1.8). Because metabolism keeps
   draining, a full cell that can't split (cap pressure) shrinks and resumes
   moving instead of parking at max and starving.
 - **Tail model (spring chain)**: `sim.advance` splits the tail into an O(1)
@@ -294,6 +299,8 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `MITO_DETACH` | 0.8 | Seconds a feeding predator spends separating from its prey before it can divide. |
 | `MITO_REST` | 4 | Coast (no-drive) seconds for daughters right after division. |
 | `MITO_FORAGE` | 6 | Seconds after division during which a daughter ignores the grazing slowdown and turns hard toward sensed food, so it can leave the parent spot on its own heading (cell-x93). |
+| `MITO_AWAY_TURN` | 20 | Heading-rate gain for turning away from the sibling while a daughter coasts through MITO_REST. Daughters are born facing each other (their tails stream outward), so without it both drive straight into each other the moment drive resumes (cell-jyg). 0 = old behaviour. |
+| `MITO_TURN_CAP` | 0.5 | Heading-rate ceiling (rad/s) for a daughter through her post-division exit window (MITO_REST + MITO_FORAGE). The post-division re-aim and any collision kick otherwise pin her at MAX_SPIN, which reads as thrashing and whips the tail through tailBend; a gentler cap turns the exit into a smooth pivot (cell-jyg). 0 = no turn at all. |
 
 **Survival**
 

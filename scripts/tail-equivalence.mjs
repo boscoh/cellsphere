@@ -726,6 +726,60 @@ try {
   }
   report('scan radius phase coverage', scanProblems, 'targets inside the threshold found at every bucket phase')
 
+  // Divided sisters are born facing each other (their tails must stream
+  // outward), so they have to turn apart during MITO_REST instead of driving
+  // head-on the moment drive resumes (cell-jyg). One isolated division, no food,
+  // run well past the release.
+  const sisterProblems = []
+  {
+    const { gainEnergy } = await server.ssrLoadModule('/src/cells.js')
+    const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
+    const { buildFoodGrid } = await server.ssrLoadModule('/src/food.js')
+    const { P, ENERGY_MAX, resetParams } = constants
+    const sim = new Simulation()
+    sim.buildWorld()
+    const green = sim.cells.find((c) => c.breed === 0)
+    gainEnergy(sim, green, ENERGY_MAX)
+    sim.cells = [green]
+    sim.foods = []
+    sim.clumps = []
+    buildFoodGrid(sim)
+
+    let m = null
+    for (let i = 0; i < 30000 && !m; i++) {
+      sim.step(1 / 60)
+      for (const d of sim.cells) if (d.mito) m = d.mito
+    }
+    if (!m) {
+      sisterProblems.push('a lone max-energy cell never divided')
+    } else {
+      // The release is the end of the MITO_TIME window: the daughters are held
+      // kinematic and collision-excluded until then (finalizeMito sets `rest`).
+      for (let i = 0; i < 30000 && !(m.back.rest > 0); i++) sim.step(1 / 60)
+      let minGap = Infinity
+      for (let i = 0; i < 8 * 60; i++) {
+        sim.step(1 / 60)
+        capsuleDist(sim, m.back, m.front)
+        minGap = Math.min(minGap, sim._col.dist - (m.back.width + m.front.width))
+      }
+      // The sisters must not overlap, must end up further apart than they were
+      // released, and must not be heading at each other.
+      if (minGap < -0.01) sisterProblems.push(`sisters overlapped after division (min gap ${minGap.toFixed(3)})`)
+      capsuleDist(sim, m.back, m.front)
+      const finalGap = sim._col.dist - (m.back.width + m.front.width)
+      if (finalGap < 0.1) sisterProblems.push(`sisters did not part (gap ${finalGap.toFixed(3)} after 8 s)`)
+      const n = new THREE.Vector3().copy(m.front.pos).normalize()
+      const axis = new THREE.Vector3().subVectors(m.front.pos, m.back.pos).normalize()
+      for (const [side, dir] of [[m.front, 1], [m.back, -1]]) {
+        const fwd = side.heading.clone().addScaledVector(n, -side.heading.dot(n)).normalize()
+        const along = fwd.dot(axis) * dir
+        if (along < 0) sisterProblems.push(`a released daughter still heads at its sister (cos ${along.toFixed(2)})`)
+      }
+    }
+    resetParams()
+  }
+  report('division separation', sisterProblems, 'released sisters turn apart, never overlap, and part')
+
   // Component smoke: the chart SFCs must render to a string without touching the
   // DOM (scaleCanvas/draw only run on mount, which SSR skips).
   const componentProblems = []

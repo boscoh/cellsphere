@@ -453,6 +453,83 @@ on one axis, sweeping the sensor's bucket phase over 11 values):
 
 ---
 
+### 1.8 Division release: sisters drive head-on and thrash (`cell-jyg`, 2026-09)
+
+> **Status:** fixed structurally (`MITO_AWAY_TURN = 20`); `MITO_REST` default kept at 4.
+
+The two daughters are born facing each other — deliberately, since each tail must
+stream outward (§1.5A) — and are held 0.015–0.04 apart kinematic by
+`placeMitoChild` for the whole `MITO_TIME`, collision-excluded, carrying an
+inherited `vel = heading·0.3` pointed inward that `advance()` never damps (it
+skips `mito || splitting` cells). `finalizeMito` then makes them collidable for
+the first time and gives them `rest = MITO_REST` with `drive = 0`: they coast
+~13 mm closer, end nose to nose (gap ~0.02, `headingRate ≈ 0`), and then, the
+instant `rest` expires, thrust straight at each other. Overlap reaches 0.117 and
+the response is the soft spring plus the heading kick
+`deflectHeading(overlap·8)`: sustained contact at a **mean `headingRate` of
+1.70 rad/s** (4.33 summed peak), and since `tailBend ← headingRate` that is the
+visible thrash.
+
+Separation is *not* the lever: nearly doubling `MITO_SEP` left the sibling
+overlap rate at 38 % (vs 42 % at defaults) and made deep overlaps **more**
+common — a longer run-up is a harder hit — and in isolation a bigger `MITO_SEP`
+only delays first contact (4.08 → 4.22 → 4.40 s for `MITO_SEP` 2.275/3/4) at an
+identical contact count. Zeroing the inherited velocity at release changes
+nothing (DRAG 22 damps it within ~0.15 s): thrust causes the collision, not
+momentum.
+
+**Fix.** The exit is inherently a ~π turn — the pair is born facing each other
+and has to end up aimed apart — so the lever that matters is the *rate*, not the
+turning itself: at full authority (`MAX_SPIN`) the re-aim, and any collision
+kick, hold the daughters at ~2 rad/s (≈115 °/s), which is the visible thrash and
+whips the tail through `tailBend`. Three changes, all in the same window:
+
+1. `finalizeMito` hands each daughter a `sibling` reference, and while `rest > 0`
+   `advance()` steers her away from it (a direct `headingRate` term scaled by
+   `MITO_AWAY_TURN`, so the pair turns apart before either can thrust head-on).
+   It steers the heading *only*: overriding `steer` as well inflates `tailBend`
+   (0.54 → 0.92 measured), because the tail's bend follows the steering command.
+2. The `MITO_FORAGE` re-aim waits for the rest window to end
+   (`forageT > 0 && rest <= 0`): two assists pulling different ways only jitter
+   the daughter. (The gate is only sound together with (1) — with the away-turn
+   off, gating the forage re-aim leaves the daughters with *no* re-aim during
+   rest and they meet head-on: 29/30 overlap, 18 deep.)
+3. `MITO_TURN_CAP` (rad/s) caps the daughter's heading rate for the whole exit
+   window (`rest + forage`), which is what turns the exit into a smooth pivot.
+
+Measured before/after — whole-run seeded, 600 s, each division tracked 8 s
+post-release, baseline built from `aaeb609` (pre-fix) so the comparison is code
+against code:
+
+| | seed | sibling overlap | deep (self-caused) | contact substeps | daughter mean rate | daughter peak rate | substeps > 0.5 rad/s | daughter mean bend | turn in 8 s | daughters e+8 s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | 1 | 37/66 (56 %) | 18 (11) | 51 | 0.389 | 1.93 | 126/480 | 0.561 | 6.23 rad | 0.450 |
+| baseline | 3 | 19/29 (66 %) | 13 (9) | 103 | 0.380 | 1.88 | 123/480 | 0.539 | 6.08 rad | 0.392 |
+| **fixed** | 1 | **9/61 (15 %)** | **0 (0)** | **2** | 0.389 | **0.73** | **63/480** | 0.632 | 6.23 rad | 0.448 |
+| **fixed** | 3 | **6/35 (17 %)** | **0 (0)** | **2** | 0.369 | **0.62** | **23/480** | 0.676 | 5.91 rad | 0.396 |
+
+- Peak exit spin cut ~3× (1.9 → 0.6–0.7 rad/s) and the time spent above 0.5 rad/s
+  by ~5×; deep self-caused clashes and near-continuous sibling contact are gone
+  (9–11 → 0, 51–103 → 2 contact substeps), and the daughters feed exactly as
+  before (0.448/0.396 vs 0.450/0.392).
+- `MITO_TURN_CAP` sweep, seed 3: 0.7 → peak 0.76 / 302 hot substeps; 0.5 →
+  0.59 / 20 (shipped); 0.35 → 0.50 / 8 with the lowest mean (0.275) and turn
+  (4.41 rad) but one self-caused deep clash. 0 (no turn at all) returns the
+  head-on case.
+- Dead end, recorded so it is not retried: the *collision* kick is not the
+  visible cause — scaling it 1 → 0.15 moved the daughter spin only
+  0.380 → 0.366 rad/s while `tailBend` was unchanged, so it was dropped rather
+  than shipped as a knob.
+- Still open, smaller: mean tail-bend is a little above baseline (0.63–0.68 vs
+  0.54–0.56) because the same turn is now spread over the whole window instead
+  of spent in one fast spin; and a light crowd-induced brush between sisters
+  remains in ~15 % of divisions (a third cell touching).
+- Guarded by `npm run test:tail` — *division separation*: one isolated division
+  must not overlap, must part, and neither sister may end up heading at the
+  other.
+
+---
+
 ## 2. Cell–cell collision
 
 > **Status:** exploration (`cell-dy6`, `cell-b0t`). **No Tier-1 change was
