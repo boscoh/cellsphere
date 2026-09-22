@@ -24,85 +24,98 @@ function fillPct(value, min, max) {
 </script>
 
 <template>
-  <div class="hud">
-    <span class="brand">CellSphere</span>
-    <div class="cell">
-      <span class="stat"><span class="dot" :style="{ background: greenColor }"></span>{{ greenCount }}</span>
-      <span class="stat"><span class="dot" :style="{ background: redColor }"></span>{{ redCount }}</span>
-    </div>
-    <div class="cell">
-      <button
-        type="button"
-        class="toggle-btn"
-        :class="{ active: tailsActive }"
-        :aria-pressed="String(tailsActive)"
-        title="Toggle tail"
-        aria-label="Toggle tail"
-        @click="emit('update:tailsActive', !tailsActive)"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="15"
-          height="15"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          aria-hidden="true"
+  <div class="hud-root">
+    <div class="hud">
+      <span class="brand">CellSphere</span>
+      <div class="cell">
+        <span class="stat"><span class="dot" :style="{ background: greenColor }"></span>{{ greenCount }}</span>
+        <span class="stat"><span class="dot" :style="{ background: redColor }"></span>{{ redCount }}</span>
+      </div>
+      <div class="cell">
+        <button
+          type="button"
+          class="toggle-btn"
+          :class="{ active: tailsActive }"
+          :aria-pressed="String(tailsActive)"
+          title="Toggle tail"
+          aria-label="Toggle tail"
+          @click="emit('update:tailsActive', !tailsActive)"
         >
-          <path d="M12 4c-4.2 1.6-4.2 3.6 0 5.2s4.2 3.6 0 5.2-4.2 3.6 0 5.2" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="reset-btn"
-        aria-label="Restart"
-        title="Restart"
-        @click="emit('restart')"
-      >
-        <svg
-          class="icon"
-          viewBox="0 0 24 24"
-          width="15"
-          height="15"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
+          <svg
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 4c-4.2 1.6-4.2 3.6 0 5.2s4.2 3.6 0 5.2-4.2 3.6 0 5.2" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="reset-btn"
+          aria-label="Restart"
+          title="Restart"
+          @click="emit('restart')"
         >
-          <path d="M21 12a9 9 0 1 1-3-6.7" />
-          <polyline points="21 3 21 9 15 9" />
-        </svg>
-      </button>
-    </div>
-    <div class="cell">
-      <div class="row">
-        <input
-          id="speed"
-          class="slider"
-          aria-label="Time"
-          type="range"
-          min="1"
-          :max="maxSimRate"
-          step="1"
-          :value="simRate"
-          :style="{ '--fill': fillPct(simRate, 1, maxSimRate) + '%' }"
-          @input="onSpeed"
-        />
-        <span class="readout">{{ simRate }}x</span>
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 12a9 9 0 1 1-3-6.7" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+        </button>
+      </div>
+      <div class="cell">
+        <div class="row">
+          <input
+            id="speed"
+            class="slider"
+            aria-label="Time"
+            type="range"
+            min="1"
+            :max="maxSimRate"
+            step="1"
+            :value="simRate"
+            :style="{ '--fill': fillPct(simRate, 1, maxSimRate) + '%' }"
+            @input="onSpeed"
+          />
+          <span class="readout">{{ simRate }}x</span>
+        </div>
       </div>
     </div>
+    <p class="tagline">Predator&ndash;prey bacteria on a sphere of food clumps</p>
   </div>
 </template>
 
 <style scoped>
-.hud {
+.hud-root {
   position: fixed;
   top: 10px;
   left: 12px;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  pointer-events: none;
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+
+.hud {
   display: flex;
   align-items: stretch;
   gap: 14px;
@@ -123,6 +136,15 @@ function fillPct(value, min, max) {
   font-weight: 600;
   color: #eef2f8;
   letter-spacing: -0.3px;
+}
+
+.tagline {
+  margin: 0 0 0 3px;
+  font-size: 11px;
+  line-height: 1.3;
+  letter-spacing: 0.2px;
+  color: rgba(160, 172, 192, 0.8);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.65);
 }
 
 .cell {
