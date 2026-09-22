@@ -26,5 +26,9 @@ dist-ssr
 # Local agent tooling / session state (not project artifacts)
 .pi/
 
+# Throwaway probe scripts (e.g. probe-sensing.tmp.mjs)
+*.tmp.*
+*.tmp
+
 # Beads runtime lock (created at repo root by bd)
 *.gate.lock*
