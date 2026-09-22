@@ -649,6 +649,83 @@ try {
   }
   report('incremental acf tracker', trackerProblems, 'matches batch through fill, slide and resize')
 
+  // A target just inside a scan's Euclidean threshold has to be found whatever
+  // bucket phase the sensor's centre sits at: the radius must cover both capsule
+  // half-lengths on top of the threshold, or the scan silently clips reach
+  // (cell-kkl). Sweep the phase for every threshold-derived scan.
+  const scanProblems = []
+  {
+    const { createCell } = await server.ssrLoadModule('/src/cells.js')
+    const { buildCellGrid } = await server.ssrLoadModule('/src/collision.js')
+    const { predatorSense, predation } = await server.ssrLoadModule('/src/predator.js')
+    const { concentration, makeFood, buildFoodGrid } = await server.ssrLoadModule('/src/food.js')
+    const { P, GRID, CELL_GRID, MAX_RADIUS, resetParams } = constants
+    const PHASES = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
+    const FWD = new THREE.Vector3(0, 0, 1)
+    const BACK = new THREE.Vector3(0, 0, -1)
+    const at = (z) => new THREE.Vector3(0, 0, z)
+    const half = (d) => Math.max(d.radius - d.width, 0)
+    const fresh = () => {
+      const sim = new Simulation()
+      sim.buildWorld()
+      return sim
+    }
+    // Axis-aligned worst case for a per-axis scan: both capsules on one axis,
+    // the sensor's centre swept through its bucket by `f`.
+    const foodFound = (boost, f) => {
+      P.SENSE_BOOST = boost
+      const sim = fresh()
+      const d = createCell(sim, at(f * GRID), FWD.clone(), MAX_RADIUS, 0)
+      sim.cells = [d]
+      const sense = d.width + boost
+      const spec = makeFood(sim)
+      spec.pos.copy(d.pos).addScaledVector(FWD, half(d) + sense - 0.01)
+      sim.foods = [spec]
+      buildFoodGrid(sim)
+      concentration(sim)
+      return d.foodAmt > 0
+    }
+    const preyFound = (sense, f) => {
+      P.PRED_SENSE = sense
+      const sim = fresh()
+      const red = createCell(sim, at(f * CELL_GRID), FWD.clone(), MAX_RADIUS * P.RED_SIZE, 1)
+      const green = createCell(sim, at(0), BACK.clone(), MAX_RADIUS, 0)
+      green.pos.copy(red.pos).addScaledVector(FWD, sense - 0.02 + half(red) + half(green))
+      sim.cells = [red, green]
+      buildCellGrid(sim)
+      predatorSense(sim)
+      return red.preyAmt > 0
+    }
+    const latchFound = (range, f) => {
+      P.PRED_RANGE = range
+      P.PRED_BITE = range
+      P.PRED_SENSE = 0
+      P.PRED_RATIO = 0
+      const sim = fresh()
+      const red = createCell(sim, at(f * CELL_GRID), FWD.clone(), MAX_RADIUS * P.RED_SIZE, 1)
+      const green = createCell(sim, at(0), BACK.clone(), MAX_RADIUS, 0)
+      green.pos.copy(red.pos).addScaledVector(FWD, range * 0.95 + half(red) + half(green))
+      sim.cells = [red, green]
+      buildCellGrid(sim)
+      predation(sim, 1 / 60)
+      return red.target !== null
+    }
+    const check = (site, knob, found, values) => {
+      for (const v of values) {
+        const n = PHASES.filter((f) => !found(v, f)).length
+        if (n) scanProblems.push(`${site}: ${knob}=${v} missed ${n}/${PHASES.length} phases`)
+      }
+    }
+    check('concentration', 'SENSE_BOOST', foodFound, [0.25, 0.5, 0.75, 1.0, 1.5, 2.0])
+    for (const redSize of [0.5, 1]) {
+      P.RED_SIZE = redSize
+      check(`predatorSense (RED_SIZE ${redSize})`, 'PRED_SENSE', preyFound, [0.5, 1.0, 1.5, 1.9, 2.0, 2.5, 3.9, 5.0])
+      check(`predation latch (RED_SIZE ${redSize})`, 'PRED_RANGE', latchFound, [0.18, 0.5, 0.8, 0.9, 1.0])
+    }
+    resetParams()
+  }
+  report('scan radius phase coverage', scanProblems, 'targets inside the threshold found at every bucket phase')
+
   // Component smoke: the chart SFCs must render to a string without touching the
   // DOM (scaleCanvas/draw only run on mount, which SSR skips).
   const componentProblems = []

@@ -97,6 +97,12 @@ helpers (seeded `mulberry32`) in `src/util.js`.
 - **Food**: one `InstancedMesh`; spatial hash (`GRID`) limits lookups;
   `eatAndRespawn` (per substep, tight scan) and `concentration`
   (every `SENSE_PERIOD`, wide scan) update `slow/foodAmt/foodPeak/foodDir`.
+- **Scan radii** are derived, never hardcoded: `grid.scanRadius(threshold +
+  halfLenA + halfLenB, period)` in `concentration`, `predatorSense` and the
+  predation latch. The threshold is a capsule *gap* while `forEachNearby` walks
+  buckets around the sensor's *centre*, so both capsule half-lengths have to be
+  added or reach is silently clipped (cell-qjo.1, cell-kkl). `eatAndRespawn`
+  keeps `r = 1`: `foodDist` is point-to-capsule, so no half-length applies.
 - **Predation**: a red latches one green within `PRED_RANGE` and drains it at a
   fixed `PRED_DRAIN`/s (gaining `PRED_EFF` of that). Holding only one prey at a
   time means a red's eating rate levels off when prey are common — the classic

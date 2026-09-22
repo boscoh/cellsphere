@@ -413,6 +413,46 @@ DeAngelis et al. 1975; Roy & Chattopadhyay 2007 (*J. Biosci.* 32).
 
 ---
 
+### 1.7 Scan reach: half-lengths were missing from the predator scans (`cell-kkl`, 2026-09)
+
+`predatorSense` derived its radius from the threshold alone
+(`r = ceil(PRED_SENSE / CELL_GRID)`) and the latch scan used a literal `1`. The
+threshold is a capsule *gap* while `forEachNearby` walks buckets around the
+sensor's *centre*, so both capsule half-lengths (up to `MAX_PREY_HALF =
+MAX_RADIUS - WIDTH` for a full-energy green) were missing: prey inside the
+threshold could fall outside the scanned cube. Fixed with `preyScanRadius()` in
+`predator.js` — `scanRadius(threshold + halfLen(red) + MAX_PREY_HALF,
+CELL_GRID)` — at both sites. `concentration` already did this (`cell-qjo.1`,
+§3.2) and `eatAndRespawn` needs no half-length at all (`foodDist` is
+point-to-capsule).
+
+Measured (axis-aligned worst case for a per-axis scan: max-size sensor and prey
+on one axis, sweeping the sensor's bucket phase over 11 values):
+
+- `predatorSense` missed 4/11 phases at `PRED_SENSE` 1.0, 3/11 at 1.9, 4/11 at
+  2.0, 3/11 at 3.9, 4/11 at 5.0 (worst at the top third of each unit interval).
+  The default 1.5 was safe, but sat exactly on `r = 2`, so any raise crossed in.
+- The latch missed 1/11 at `PRED_RANGE` 0.8, 2/11 at 0.9, 3/11 at 1.0, because
+  `r` stayed 1 while the parameter tunes to 1.0. A missed latch only costs
+  acquisition jitter (a red re-scans every substep and keeps its target).
+- **At the shipped defaults nothing moves**: `r` is unchanged for `PRED_SENSE`
+  1.5 and `PRED_RANGE` 0.18, and an 1800-step seeded run is bit-identical
+  (checksum 1695095663, 62 cells: 47 green / 15 red) before and after. At
+  `PRED_SENSE` 1.0 the trajectory does change (checksum 929812844 ->
+  1890065205), which is the fix widening a scan that was clipping.
+- Cost is bucket volume only, and only away from the defaults: x1.00 at
+  `PRED_SENSE` 1.5 and `PRED_RANGE` 0.18, x4.63 at `PRED_SENSE` 1.0 and
+  `PRED_RANGE` 0.8-1.0, x2.74 at 2.0, x1.65 at 5.0. Measured sense cost stays
+  under 0.4 ms per pass at `PRED_SENSE` 5 (vs 0.24 ms before), and the sense
+  passes run on `SENSE_PERIOD`, not per substep. Widening `r` at high
+  `PRED_SENSE` is what §3.5's shell/diagonal-pruning ideas would offset.
+- Guarded by `npm run test:tail` — *scan radius phase coverage* sweeps the phase
+  for `concentration`, `predatorSense` and the latch at `RED_SIZE` 0.5 and 1 and
+  fails if any target inside its threshold is missed (it failed on all the
+  phases above before the fix).
+
+---
+
 ## 2. Cell–cell collision
 
 > **Status:** exploration (`cell-dy6`, `cell-b0t`). **No Tier-1 change was

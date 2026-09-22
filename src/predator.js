@@ -2,13 +2,26 @@ import {
   P,
   SURFACE,
   CELL_GRID,
+  MAX_RADIUS,
+  WIDTH,
 } from './constants.js'
-import { forEachNearby } from './grid.js'
+import { forEachNearby, scanRadius } from './grid.js'
 import { drainEnergy, gainEnergy } from './cells.js'
 import { capsuleDist } from './collision.js'
 
 // How fast a feeding predator closes the last gap to sink into its prey.
 const LATCH_CLOSE_RATE = 0.5
+
+// Longest core-segment half-length a prey capsule can have (a full-energy
+// green). The scan threshold is a capsule *gap*, while the scan walks buckets
+// around the sensor's centre, so the radius has to cover this plus the sensor's
+// own half-length or prey inside the threshold fall outside the scanned cube.
+const MAX_PREY_HALF = MAX_RADIUS - WIDTH
+
+function preyScanRadius(threshold, sensor) {
+  const halfLen = Math.max(sensor.radius - sensor.width, 0)
+  return scanRadius(threshold + halfLen + MAX_PREY_HALF, CELL_GRID)
+}
 
 function validPrey(d) {
   return d.breed === 0 && !d.mito && !d.splitting && !d.dead
@@ -39,12 +52,14 @@ export function predatorSense(sim) {
 
   const sense = P.PRED_SENSE
   if (sense <= 0) return
-  const r = Math.ceil(sense / CELL_GRID)
 
   for (const cell of sim.cells) {
     const red = cell
     if (!validPredator(red)) continue
 
+    // Derive the scan radius from the threshold and both capsule half-lengths,
+    // so prey inside PRED_SENSE are not clipped by the bucket scan (cell-kkl).
+    const r = preyScanRadius(sense, red)
     const cx = Math.floor(red.pos.x / CELL_GRID)
     const cy = Math.floor(red.pos.y / CELL_GRID)
     const cz = Math.floor(red.pos.z / CELL_GRID)
@@ -132,9 +147,13 @@ export function predation(sim, simDt) {
     const cy = Math.floor(red.pos.y / CELL_GRID)
     const cz = Math.floor(red.pos.z / CELL_GRID)
 
+    // Same derivation as predatorSense: the latch threshold is a capsule gap
+    // and PRED_RANGE tunes up to a full bucket, so a literal radius clips the
+    // top of the slider (cell-kkl).
+    const r = preyScanRadius(P.PRED_RANGE, red)
     let prey = null
     let best = P.PRED_RANGE
-    forEachNearby(sim.cellGrid, cx, cy, cz, 1, (index) => {
+    forEachNearby(sim.cellGrid, cx, cy, cz, r, (index) => {
       const d = sim.cells[index]
       if (!validPrey(d)) return
       capsuleDist(sim, red, d)
