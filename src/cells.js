@@ -23,6 +23,12 @@ const BREED_RED = 1
 // previous share of the mitosis window, and travels 1/MITO_DRIFT_FOLD as far.
 const MITO_DRIFT_FOLD = 4
 
+// The assembly aura: ramps in over AURA_RAMP seconds while a bite is applied,
+// holds for AURA_HOLD after the last bite, then ramps out. Driven by sim time
+// (`sim.simTime`), so the value is independent of frame rate and substep order.
+const AURA_RAMP = 0.5
+const AURA_HOLD = 0.3
+
 export function computeCellColor(breed) {
   // Color is constant per breed — size already conveys growth.
   if (breed === BREED_RED) return new THREE.Color().setHSL(0.015, 0.78, 0.5)
@@ -124,6 +130,7 @@ export function createCell(sim, pos, heading, length, breed = Math.random() < 0.
     splitPending: false,
     asm: null,
     mitoExposed: false,
+    aura: 0,
     dead: false,
     sideHidden: false,
     tailGrow: 1,
@@ -274,6 +281,8 @@ export function mitose(sim, parent) {
     aura: 0,
     state: 'dividing',
     consumed: false,
+    aura: 0,
+    bittenT: -Infinity,
   }
   back.asm = asm
   front.asm = asm
@@ -317,6 +326,20 @@ export function updateAssemblies(sim, simDt) {
 
     m.h = fadeK
     m.parent.mitoExposed = m.t / m.dur >= P.MITO_VULN_FRAC
+    // The aura ramps in while a predator is biting the unit and out once the
+    // bites stop; every member carries the unit's value, because the read is
+    // "the whole assembly is being eaten". Cleared at release.
+    const sinceBite = m.t - m.bittenT
+    const auraTarget = sinceBite < AURA_HOLD ? 1 : 0
+    const auraStep = simDt / AURA_RAMP
+    m.aura =
+      auraTarget > m.aura
+        ? Math.min(auraTarget, m.aura + auraStep)
+        : Math.max(auraTarget, m.aura - auraStep)
+    const aura = P.MITO_AURA > 0 ? m.aura : 0
+    m.parent.aura = aura
+    m.back.aura = aura
+    m.front.aura = aura
     m.back.tailGrow = fadeK
     m.back.drive = 0
     m.front.drive = 0
@@ -333,6 +356,9 @@ export function updateAssemblies(sim, simDt) {
 
 function assemblyRelease(m) {
   m.state = 'released'
+  m.parent.aura = 0
+  m.back.aura = 0
+  m.front.aura = 0
   // The daughters drop the pointer at release so it cannot keep them in the
   // mitosis window (food-blind, metabolism-exempt) for life. The mother keeps
   // hers: she is dead and spliced out in the same substep, and the dead sweep

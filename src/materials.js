@@ -19,21 +19,21 @@ export const bodyMat = new THREE.MeshStandardMaterial({
 
 bodyMat.onBeforeCompile = (shader) => {
   shader.vertexShader =
-    'attribute highp float instanceParalysed;\nvarying highp float vInstanceParalysed;\n' +
+    'attribute highp float aAura;\nvarying highp float vAura;\n' +
     shader.vertexShader
   shader.vertexShader = shader.vertexShader.replace(
     '#include <project_vertex>',
-    '#include <project_vertex>\n\tvInstanceParalysed = instanceParalysed;'
+    '#include <project_vertex>\n\tvAura = aAura;'
   )
   shader.fragmentShader =
-    'varying highp float vInstanceParalysed;\n' +
+    'varying highp float vAura;\n' +
     shader.fragmentShader
   // Predator-latched ("immobile") prey tints dark red at the rim. Mixing the
   // surface colour (rather than adding emissive) keeps the edge dark instead of
   // washing the green body out toward white.
   shader.fragmentShader = shader.fragmentShader.replace(
     '#include <emissivemap_fragment>',
-    '#include <emissivemap_fragment>\n\t{\n\t\tfloat ndv = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);\n\t\tfloat rim = smoothstep(0.95, 0.5, ndv);\n\t\tdiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.89, 0.18, 0.11), vInstanceParalysed * rim);\n\t}'
+    '#include <emissivemap_fragment>\n\t{\n\t\tfloat ndv = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);\n\t\tfloat rim = smoothstep(0.95, 0.5, ndv);\n\t\tdiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.89, 0.18, 0.11), vAura * rim);\n\t}'
   )
 }
 

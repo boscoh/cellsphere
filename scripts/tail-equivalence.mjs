@@ -962,6 +962,101 @@ try {
   }
   report('mitosis vulnerability gate', vulnProblems, 'mother edible only when exposed, daughters invisible, gain follows the drain and the eater room')
 
+  // Assembly aura channel (cell-08r.2): physics ramps one float on the unit and
+  // broadcasts it to all three members; render only reads max(aura, paralysed).
+  // Sim-time driven, so the ramp is the same at any substep size.
+  const auraProblems = []
+  {
+    const { P, MAX_RADIUS, ENERGY_MAX, resetParams } = constants
+    const { createCell, gainEnergy, mitose, updateAssemblies } = await server.ssrLoadModule('/src/cells.js')
+    const BACK = new THREE.Vector3(0, 0, -1)
+    const at = (z) => new THREE.Vector3(0, 0, z)
+    const DT = 1 / 60
+
+    const build = () => {
+      const sim = new Simulation()
+      const green = createCell(sim, at(0), BACK.clone(), MAX_RADIUS, 0)
+      gainEnergy(sim, green, ENERGY_MAX)
+      sim.cells = [green]
+      sim.foods = []
+      sim.clumps = []
+      mitose(sim, green)
+      return { sim, asm: sim.assemblies[0] }
+    }
+
+    // No predator: the aura stays 0 on every member.
+    {
+      const { sim, asm } = build()
+      for (let i = 0; i < 60; i++) updateAssemblies(sim, DT)
+      if (asm.parent.aura !== 0 || asm.back.aura !== 0 || asm.front.aura !== 0) {
+        auraProblems.push('a unit with no predator has a non-zero aura')
+      }
+    }
+
+    // Bites ramp it in within ~0.5 s and every member carries the unit value.
+    {
+      const { sim, asm } = build()
+      let reached = -1
+      for (let i = 0; i < 60; i++) {
+        asm.bittenT = asm.t
+        updateAssemblies(sim, DT)
+        if (reached < 0 && asm.aura >= 1 - 1e-9) reached = (i + 1) * DT
+        if (asm.parent.aura !== asm.aura || asm.back.aura !== asm.aura || asm.front.aura !== asm.aura) {
+          auraProblems.push('a member did not carry the unit aura')
+          break
+        }
+      }
+      if (reached < 0 || reached > 0.6) auraProblems.push(`the aura did not ramp in within 0.5 s (${reached})`)
+    }
+
+    // The ramp is sim-time driven: the same 0.5 s reaches 1 at a 5x smaller
+    // substep, and ramps back out once the bites stop.
+    {
+      const soak = (dt) => {
+        const { sim, asm } = build()
+        const n = Math.round(0.5 / dt)
+        for (let i = 0; i < n; i++) {
+          asm.bittenT = asm.t
+          updateAssemblies(sim, dt)
+        }
+        return { sim, asm }
+      }
+      const a = soak(DT)
+      const b = soak(DT / 5)
+      if (Math.abs(a.asm.aura - 1) > 1e-9 || Math.abs(b.asm.aura - 1) > 1e-9) {
+        auraProblems.push(`the aura did not reach 1 by 0.5 s (${a.asm.aura}, ${b.asm.aura})`)
+      }
+      for (let i = 0; i < 60; i++) updateAssemblies(a.sim, DT)
+      if (a.asm.aura > 1e-9) auraProblems.push(`the aura did not ramp out after the bites stopped (${a.asm.aura})`)
+    }
+
+    // MITO_AURA = 0 forces the channel off.
+    {
+      const { sim, asm } = build()
+      P.MITO_AURA = 0
+      for (let i = 0; i < 30; i++) {
+        asm.bittenT = asm.t
+        updateAssemblies(sim, DT)
+      }
+      if (asm.parent.aura !== 0 || asm.back.aura !== 0 || asm.front.aura !== 0) {
+        auraProblems.push('MITO_AURA = 0 did not force the aura off')
+      }
+    }
+
+    // The latched-prey rim regression: a paralysed non-dividing cell still reads
+    // 1 through the render expression max(aura, paralysed).
+    {
+      const sim = new Simulation()
+      const green = createCell(sim, at(0), BACK.clone(), MAX_RADIUS, 0)
+      green.paralysed = true
+      if (Math.max(green.aura || 0, green.paralysed ? 1 : 0) !== 1) auraProblems.push('a latched green no longer reads the rim')
+      green.paralysed = false
+      if (Math.max(green.aura || 0, green.paralysed ? 1 : 0) !== 0) auraProblems.push('an unlatched green reads a rim')
+    }
+    resetParams()
+  }
+  report('assembly aura channel', auraProblems, 'ramps in while bitten and out once the bites stop, broadcast to all members, rim regression intact')
+
   // Component smoke: the chart SFCs must render to a string without touching the
   // DOM (scaleCanvas/draw only run on mount, which SSR skips).
   const componentProblems = []

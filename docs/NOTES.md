@@ -538,8 +538,9 @@ against code:
 > landed the exposed-mother gate (`MITO_VULNERABLE`, `MITO_VULN_FRAC`,
 > `MITO_DRAIN_SCALE`, `assemblyDrain`, and the retention re-check). With the gate
 > off the run is bit-identical (1800-step seed-1 checksum `1695095663`, unchanged
-> across a mid-run `reset()`). The aura (`.2`), the handover ledger (`.4`), the
-> envelope (`.5`) and the sweep (`.6`) are still open; the prototype lives on the
+> across a mid-run `reset()`). `cell-08r.2` landed the aura channel (`MITO_AURA`,
+> the `aAura` attribute, `max(aura, paralysed)` in render). The handover ledger
+> (`.4`), the envelope (`.5`) and the sweep (`.6`) are still open; the prototype lives on the
 > local branch `experiment/mito-vulnerable`
 > (`5a27f86`, reverted by `6a7493c`) — `main` was reset to `11f17e3`. §A and §B
 > restore that prototype's measurements, which the reset dropped; §C–§I are the

@@ -66,7 +66,7 @@ function detachChunk(view, chunk) {
 }
 
 function createBodyChunk(view, entry) {
-  // Each chunk owns a geometry clone. instanceParalysed is a per-instance
+  // Each chunk owns a geometry clone. aAura is a per-instance
   // attribute, so a shared geometry would let the last-created chunk's
   // attributes win for every chunk in the bucket (cell-dj4).
   const geo = entry.template.clone()
@@ -77,18 +77,18 @@ function createBodyChunk(view, entry) {
   mesh.frustumCulled = false
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   mesh.instanceMatrix.needsUpdate = true
-  const paralysed = new THREE.InstancedBufferAttribute(
+  const aura = new THREE.InstancedBufferAttribute(
     new Float32Array(BODY_CHUNK_CELLS).fill(0),
     1,
   )
-  paralysed.setUsage(THREE.DynamicDrawUsage)
-  mesh.geometry.setAttribute('instanceParalysed', paralysed)
+  aura.setUsage(THREE.DynamicDrawUsage)
+  mesh.geometry.setAttribute('aAura', aura)
   const chunk = {
     mesh,
     free: [],
     live: 0,
     count: 0,
-    paralysed,
+    aura,
     attached: false,
   }
   view.scene.add(mesh)
@@ -133,7 +133,7 @@ export function addBody(view, d, length) {
   d.bodyBucket = entry.bucket
   d.bodyChunk = chunk
   d.bodySlot = slot
-  if (chunk.paralysed) chunk.paralysed.setX(slot, 0)
+  if (chunk.aura) chunk.aura.setX(slot, 0)
   setBodyColor(view, d, d.color)
   chunk.mesh.instanceMatrix.needsUpdate = true
 }
@@ -195,9 +195,12 @@ export function renderBodies(view) {
     mesh.setMatrixAt(d.bodySlot, view._m)
     mesh.instanceMatrix.needsUpdate = true
     // Predator-latched prey glows purple at the rim so it's obvious it's held.
-    if (chunk.paralysed) {
-      chunk.paralysed.setX(d.bodySlot, d.paralysed ? 1 : 0)
-      chunk.paralysed.needsUpdate = true
+    // The rim marker: the assembly's ramping aura, or the latched-prey flag
+    // (a latched green still glows exactly as before). Physics owns `aura`;
+    // render only picks the maximum.
+    if (chunk.aura) {
+      chunk.aura.setX(d.bodySlot, Math.max(d.aura || 0, d.paralysed ? 1 : 0))
+      chunk.aura.needsUpdate = true
     }
   }
 }

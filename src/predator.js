@@ -207,6 +207,7 @@ export function predation(sim, simDt) {
         // Type III: smooth sigmoid in local prey density (rare-prey refuge).
         const t3 = P.PRED_T3_HALF > 0 ? type3Factor(red.preyCount, P.PRED_T3_HALF) : 1
         const unit = latch.asm
+        if (unit) unit.bittenT = unit.t
         const rate = P.PRED_DRAIN * simDt * ratioAttack * crowd * t3 * (unit ? P.MITO_DRAIN_SCALE : 1)
         if (unit) {
           // A bite on a dividing unit removes from the mother's budget and is

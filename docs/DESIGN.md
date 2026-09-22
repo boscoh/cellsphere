@@ -47,7 +47,8 @@ helpers (seeded `mulberry32`) in `src/util.js`.
 - **Bodies** render via **pooled `InstancedMesh`es** keyed by length bucket
   (`bodyGeoCache` + `bodyPools`): `addBody/removeBody/rehomeBody` manage a free
   list per bucket chunk; per-instance color (`setBodyColor`) plus a custom
-  `instanceParalysed` attribute drive color and the latched-prey rim.
+  `aAura` attribute drive color and the rim marker — a latched prey at full
+  brightness, an eaten dividing unit at its ramping aura.
   `renderBodies` composes each cell's matrix from `pos/quat`, scaling it by
   `fade` for the mitosis shrink. Each bucket grows on demand in
   `BODY_CHUNK_CELLS` chunks rather than reserving `MAX_CELLS` up-front; each
@@ -162,7 +163,9 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   The division is one `asm` record (on `sim.assemblies`), advanced by
   `updateAssemblies` and ended by `assemblyRelease`; `d.asm` is set on all three
   members, so `d.asm !== null` is the in-window predicate and the ledger (`L0`,
-  `h`) conserves the length handed from the mother to her daughters.
+  `h`) conserves the length handed from the mother to her daughters. A unit an
+  eater is draining broadcasts a ramping `d.aura` to all three members behind
+  `MITO_AURA`; render reads `max(d.aura, d.paralysed)`.
 - **Tail model (spring chain)**: `sim.advance` splits the tail into an O(1)
   **control** pass (`updateTailControl`, every cell every step) and an
   O(S²·substeps) **pose** pass (`updateTailPose`, only while tails are visible).
@@ -309,6 +312,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `MITO_VULNERABLE` | 0 | Master gate (0 = off and bit-identical): an exposed dividing mother becomes valid prey, so a red can latch and drain her for the rest of the window. The daughters stay invisible — they are not in the cell grid — so only the mother is reachable. |
 | `MITO_VULN_FRAC` | 0.2 | Fraction of the mitosis window after which the mother is exposed. Default MITO_HOLD: the handover curve retires her body by MITO_HOLD + MITO_FADE = 0.6, so a later gate would expose an already-invisible parent. |
 | `MITO_DRAIN_SCALE` | 0.5 | Bite-rate multiplier while the target is a dividing unit. It multiplies with the MITO_VULN_FRAC gate, so only one of the two narrowings may be spent — see the bite-budget table in docs/NOTES.md 1.9 G before re-tightening both. |
+| `MITO_AURA` | 1 | Cosmetic gate on the assembly aura channel: 1 ramps the rim marker in while a dividing unit is being eaten and out when the bites stop, 0 forces it off. The predator-latched rim glow is unaffected. |
 
 **Survival**
 
