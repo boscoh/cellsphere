@@ -55,7 +55,7 @@ export const tailMat = new THREE.MeshLambertMaterial({
 // vertex shader builds the transform. Z is derived from X x Y.
 tailMat.onBeforeCompile = (shader) => {
   shader.vertexShader =
-    'attribute vec3 aSegPos;\nattribute vec3 aSegX;\nattribute vec3 aSegY;\nattribute vec2 aSegScale;\nattribute float aAura;\nvarying float vAura;\n' +
+    'attribute vec3 aSegPos;\nattribute vec3 aSegX;\nattribute vec3 aSegY;\nattribute vec2 aSegScale;\n' +
     shader.vertexShader
 
   // Normals are in the segment's local (cylinder) frame; apply the inverse
@@ -90,7 +90,6 @@ tailMat.onBeforeCompile = (shader) => {
     `vec4 mvPosition = vec4( transformed, 1.0 );
 	mvPosition.xyz = ${transform};
 	mvPosition = modelViewMatrix * mvPosition;
-	vAura = aAura;
 	gl_Position = projectionMatrix * mvPosition;`,
   )
 
@@ -101,16 +100,6 @@ tailMat.onBeforeCompile = (shader) => {
 	worldPosition.xyz = ${transform};
 	worldPosition = modelMatrix * worldPosition;
 #endif`,
-  )
-
-  // A held or being-eaten cell tints head to tail, matching the body's rim: the
-  // same max(aura, paralysed) the body writes, carried through a varying.
-  shader.fragmentShader =
-    'varying float vAura;\n' +
-    shader.fragmentShader
-  shader.fragmentShader = shader.fragmentShader.replace(
-    '#include <color_fragment>',
-    '#include <color_fragment>\n\tdiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.89, 0.18, 0.11), vAura);',
   )
 }
 

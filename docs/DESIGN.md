@@ -165,7 +165,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   members, so `d.asm !== null` is the in-window predicate and the ledger (`L0`,
   `h`) conserves the length handed from the mother to her daughters. A unit an
   eater is draining broadcasts a ramping `d.aura` to all three members behind
-  `MITO_AURA`; render reads `max(d.aura, d.paralysed)` on the body and the tail.
+  `MITO_AURA`; render reads `max(d.aura, d.paralysed)`.
   Behind `MITO_VULNERABLE` (on by default) an exposed mother becomes prey; the
   gate and its two narrowings (`MITO_VULN_FRAC`, `MITO_DRAIN_SCALE`) are a large,
   seed-dependent lever - see the sweep in `NOTES.md` §1.9 J before enabling it.

@@ -26,12 +26,8 @@ function makeTailAttrs() {
     new Float32Array(TAIL_CHUNK_SIZE * 2),
     2,
   )
-  const aura = new THREE.InstancedBufferAttribute(
-    new Float32Array(TAIL_CHUNK_SIZE),
-    1,
-  )
-  for (const a of [pos, x, y, scale, aura]) a.setUsage(THREE.DynamicDrawUsage)
-  return { pos, x, y, scale, aura }
+  for (const a of [pos, x, y, scale]) a.setUsage(THREE.DynamicDrawUsage)
+  return { pos, x, y, scale }
 }
 
 export function createTailChunk(view) {
@@ -43,7 +39,6 @@ export function createTailChunk(view) {
   geo.setAttribute('aSegX', attrs.x)
   geo.setAttribute('aSegY', attrs.y)
   geo.setAttribute('aSegScale', attrs.scale)
-  geo.setAttribute('aAura', attrs.aura)
   const mesh = new THREE.InstancedMesh(geo, tailMat, TAIL_CHUNK_SIZE)
   // Tail segments are spread across the whole sphere; the cached bounding
   // sphere is wrong/stale, so a zoom-in would cull visible segments.
@@ -57,7 +52,7 @@ export function createTailChunk(view) {
     live: 0,
     owners: new Array(TAIL_CHUNK_CELLS).fill(null),
     attrs,
-    attrList: [attrs.pos, attrs.x, attrs.y, attrs.scale, attrs.aura],
+    attrList: [attrs.pos, attrs.x, attrs.y, attrs.scale],
   }
   view.tailChunks.push(chunk)
   return chunk
@@ -172,15 +167,11 @@ export function placeTail(view, d) {
   const pitch = ((P.TAIL_BODY * 2 * d.radius) / TAIL_SEGMENTS) * d.tailGrow
   const draw = pitch * P.TAIL_LINK_FILL
   const ts = view.tailScale
-  const { pos, x: ax, y: ay, scale, aura } = chunk.attrs
+  const { pos, x: ax, y: ay, scale } = chunk.attrs
   const posArr = pos.array
   const xArr = ax.array
   const yArr = ay.array
   const sArr = scale.array
-  const auraArr = aura.array
-  // The rim marker on the tail: the assembly's ramping aura, or the latched-prey
-  // flag — the same value the body writes, so a held cell glows head to tail.
-  const cellAura = Math.max(d.aura || 0, d.paralysed ? 1 : 0)
   const a = view._v1
     .copy(d.pos)
     .addScaledVector(d.heading, -(d.radius - d.width * P.TAIL_HINGE))
@@ -208,7 +199,6 @@ export function placeTail(view, d) {
     yArr[p + 2] = y.z
     sArr[k * 2] = draw
     sArr[k * 2 + 1] = ts
-    auraArr[k] = cellAura
     a.copy(b)
   }
   markTailRange(view, chunk, base)
