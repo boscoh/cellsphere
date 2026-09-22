@@ -3,7 +3,7 @@ import { createServer } from 'vite'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { mulberry32 } from '../src/util.js'
-import { classifyRegime, autocorrelation, createAcfTracker, broadMaximum } from '../src/components/popChartMath.js'
+import { classifyRegime, autocorrelation, createAcfTracker, broadMaximum, halveSamples } from '../src/components/popChartMath.js'
 import { computeRates, lvPeriod } from '../src/components/rateModel.js'
 
 const SEED = 1
@@ -529,6 +529,41 @@ try {
     }
   }
   report('regime classifier', regimeProblems, 'cyclic/damped/extinct distinguished')
+
+  // The population history is capped by halving its resolution: the chart has to
+  // keep spanning the whole run, so both endpoints and the ordering must survive.
+  const historyProblems = []
+  {
+    const src = []
+    for (let i = 0; i < 9; i++) src.push({ t: i * 0.5, green: 10 + i, red: 5 })
+    for (const n of [3, 7, 8, 9]) {
+      const s = src.slice(0, n)
+      const h = halveSamples(s)
+      const tag = `n=${n}`
+      if (h.length !== Math.ceil(n / 2)) historyProblems.push(`${tag}: kept ${h.length} of ${n}`)
+      if (h[0] !== s[0]) historyProblems.push(`${tag}: oldest sample dropped`)
+      if (h[h.length - 1] !== s[n - 1]) historyProblems.push(`${tag}: newest sample dropped`)
+      for (let i = 1; i < h.length; i++) {
+        if (h[i].t <= h[i - 1].t) historyProblems.push(`${tag}: time went backwards`)
+        if (s.indexOf(h[i]) <= s.indexOf(h[i - 1])) historyProblems.push(`${tag}: sample repeated`)
+      }
+      for (const x of h) if (!s.includes(x)) historyProblems.push(`${tag}: sample not from the input`)
+    }
+    // Only the leading edge can survive a one-slot output: a stale newest sample
+    // is the one thing the chart cannot show.
+    const two = halveSamples(src.slice(0, 2))
+    if (two.length !== 1 || two[0] !== src[1]) historyProblems.push('n=2: newest sample dropped')
+    // Repeated halving is how a long run stays bounded: while more than one
+    // sample survives, it must keep the endpoints it started with, and the last
+    // step down to a single sample must keep the newest.
+    let h = src
+    for (let i = 0; i < 3; i++) h = halveSamples(h)
+    if (h.length !== 2 || h[0] !== src[0] || h[1] !== src[8]) {
+      historyProblems.push('repeated halving lost an endpoint')
+    }
+    if (halveSamples(h)[0] !== src[8]) historyProblems.push('final halving lost the newest sample')
+  }
+  report('history decimation', historyProblems, 'halving keeps endpoints, order and every other sample')
 
   // Autocorrelation is the robust cycle test: a clean sinusoid peaks at its
   // period, white noise does not.

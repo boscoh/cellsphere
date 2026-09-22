@@ -180,6 +180,7 @@ _Fixed constants (not tunable at runtime)._
 
 | Parameter | Default | Role |
 |---|---|---|
+| `ACF_TAIL_CAP` | 4096 | raw samples kept for the autocorrelation panel, above its largest window (`ACF_MAX_S / SAMPLE_DT`) |
 | `BODY_CHUNK_CELLS` | 64 | cells per body instance chunk |
 | `CELL_GRID` | 1 | cell spatial-hash cell size |
 | `CULL_COS` | 0 | cos(normal, cam) at or below which a tail is culled |
@@ -193,6 +194,7 @@ _Fixed constants (not tunable at runtime)._
 | `MAX_SIM_RATE` | 50 | speed slider cap, and the `SIM_SPEED` parameter maximum |
 | `MAX_STEPS` | 200 | per-frame substep ceiling |
 | `MIN_RADIUS` | 0.1 | radius at zero energy |
+| `POP_HISTORY_CAP` | 4096 | population-chart samples kept; past it the history halves its resolution, so the whole run stays bounded |
 | `SAMPLE_DT` | 0.5 | sim-time spacing between population-history samples; fixed so sample spacing stays constant at any speed |
 | `SHELL_GAP` | 0.06 | gap between the collision surface and the sphere shell mesh |
 | `START_RADIUS` | 0.13 | spawn radius |
@@ -354,7 +356,14 @@ default **10×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
 top-right, the population chart bottom-left, drag hint bottom-center. The chart
 shows prey and predator **counts vs time** (whole run, no window); its only
 footer line is `hunting effort` (the ratio-dependent attack `PRED_RATIO` applies
-at the current prey-per-predator ratio).
+at the current prey-per-predator ratio). The history is bounded by *decimation*,
+not by a sliding window: at `POP_HISTORY_CAP` samples it keeps every second one
+(spread evenly, so both endpoints and the newest sample survive), which coarsens
+the x spacing as the run lengthens while memory and the per-draw scan stay fixed.
+Samples are `markRaw` plain data and the chart reads them raw (`toRaw`), so no
+proxy is ever built per sample; the autocorrelation panel needs full resolution
+over its window, so it is fed a separate raw tail (`ACF_TAIL_CAP`) of the most
+recent samples rather than the decimated history.
 
 A separate **autocorrelation panel**
 (`RateChart.vue`) plots the linearly-detrended **autocorrelation** of the prey

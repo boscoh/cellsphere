@@ -1,6 +1,22 @@
-// Pure helpers for the charts: empirical regime classification from the prey
-// counts, and the autocorrelation cycle test. Kept out of the SFCs so they are
-// testable without a DOM.
+// Pure helpers for the charts: the bounded sample history, empirical regime
+// classification from the prey counts, and the autocorrelation cycle test. Kept
+// out of the SFCs so they are testable without a DOM.
+
+// Halves a sample series for the history cap. The chart spans the whole run, so
+// the kept samples are spread evenly enough to preserve both endpoints (and the
+// newest sample with them), which keeps the x axis honest and the leading edge
+// current as the run goes on.
+export function halveSamples(samples) {
+  const n = samples.length
+  const m = Math.ceil(n / 2)
+  const out = new Array(m)
+  if (m < 2) {
+    out[0] = samples[n - 1]
+    return out
+  }
+  for (let i = 0; i < m; i++) out[i] = samples[Math.round((i * (n - 1)) / (m - 1))]
+  return out
+}
 
 function smooth(values, window) {
   if (window <= 1) return values.slice()

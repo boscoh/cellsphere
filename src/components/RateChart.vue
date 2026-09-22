@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import {
   scaleCanvas,
   fmtTime,
@@ -53,34 +53,45 @@ const acfSamples = computed(() => {
 })
 
 // The detrended autocorrelation is maintained incrementally, so it is current on
-// every sample rather than refreshed every THROTTLE samples.
+// every sample rather than refreshed every THROTTLE samples. The series and the
+// window slice hold plain data, so they are shallow: nothing reads them as
+// reactive, and a deep ref would proxy every element on every sample.
 const tracker = createAcfTracker(acfSamples.value)
-const acf = ref(null)
-const heavy = ref([])
-let consumed = 0
+const acf = shallowRef(null)
+const heavy = shallowRef([])
+// Samples arrive as a trimmed tail rather than an append-only log, and a restart
+// resets the sim clock, so what has been fed to the tracker is tracked by
+// timestamp: an index would go stale the moment the tail slides.
+let consumedT = -Infinity
 
 function refreshAcf() {
-  const samples = props.popSamples
-  if (samples.length < consumed) {
+  const samples = toRaw(props.popSamples)
+  const newest = samples[samples.length - 1]
+  // A missing or older newest sample means the run restarted; the tail is
+  // trimmed from the front only, so time cannot otherwise go backwards.
+  if (!newest || newest.t < consumedT) {
     tracker.reset()
-    consumed = 0
+    consumedT = -Infinity
   }
-  for (let i = consumed; i < samples.length; i++) tracker.push(samples[i].t, samples[i].green)
-  consumed = samples.length
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i]
+    if (s.t <= consumedT) continue
+    tracker.push(s.t, s.green)
+    consumedT = s.t
+  }
   heavy.value = samples.slice(-acfSamples.value)
   acf.value = tracker.series()
 }
 
-// A window resize keeps only the last `acfSamples` of history, so restart the
-// tracker from that tail rather than replaying the whole run.
+// The window only ever spans the tail already fed to the tracker, so resizing
+// keeps that tail rather than replaying the run.
 function rebuildAcf() {
   tracker.setSize(acfSamples.value)
-  tracker.reset()
-  consumed = Math.max(0, props.popSamples.length - acfSamples.value)
-  refreshAcf()
+  heavy.value = toRaw(props.popSamples).slice(-acfSamples.value)
+  acf.value = tracker.series()
 }
 
-watch(() => props.popSamples.length, refreshAcf, { immediate: true })
+watch(() => props.popSamples[props.popSamples.length - 1], refreshAcf, { immediate: true })
 watch(acfSamples, rebuildAcf)
 // A ripple in the ACF is not a cycle, so require the dome to clear r = 0.2.
 const ACF_MIN_R = 0.2

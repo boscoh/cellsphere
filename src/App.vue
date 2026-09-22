@@ -1,11 +1,13 @@
 <script setup>
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { markRaw, onMounted, onBeforeUnmount, ref, toRaw } from 'vue'
 import { Simulation } from './sim.js'
 import {
   P,
   FIXED_DT,
   MAX_SIM_RATE,
   SAMPLE_DT,
+  POP_HISTORY_CAP,
+  ACF_TAIL_CAP,
   resetParams,
 } from './constants.js'
 import Hud from './components/Hud.vue'
@@ -15,6 +17,7 @@ import Tuner from './components/Tuner.vue'
 import PopChart from './components/PopChart.vue'
 import RateChart from './components/RateChart.vue'
 import { computeRates } from './components/rateModel.js'
+import { halveSamples } from './components/popChartMath.js'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
@@ -26,6 +29,10 @@ const greenCount = ref(0)
 const redCount = ref(0)
 const foodCount = ref(0)
 const popHistory = ref([])
+// The autocorrelation panel needs full resolution over its whole window, which
+// a decimated history cannot give it, so it is fed a raw tail of its own. The
+// samples are plain data (`markRaw`) so neither array ever proxies them.
+const acfTail = ref([])
 const latestRates = ref(null)
 const perf = ref({})
 const MAX_BACKLOG = MAX_SIM_RATE * FIXED_DT
@@ -55,6 +62,7 @@ function onReset() {
   tunerRef.value?.syncValues()
   simRate.value = P.SIM_SPEED
   popHistory.value = []
+  acfTail.value = []
   latestRates.value = null
   nextSampleT = 0
   sim.reset()
@@ -63,9 +71,29 @@ function onReset() {
 function onRestart() {
   simRate.value = P.SIM_SPEED
   popHistory.value = []
+  acfTail.value = []
   latestRates.value = null
   nextSampleT = 0
   sim.reset()
+}
+
+// One sample per case, into both histories: the chart's whole run (halving its
+// resolution at the cap, so its memory and per-draw scan stay bounded) and the
+// autocorrelation panel's raw tail of the most recent samples.
+function pushSample(t, green, red) {
+  const sample = markRaw({ t, green, red })
+  if (popHistory.value.length >= POP_HISTORY_CAP) {
+    popHistory.value = halveSamples(toRaw(popHistory.value))
+  }
+  popHistory.value.push(sample)
+  acfTail.value.push(sample)
+  // Trimmed in bulk, not one sample per push: a splice through the reactive
+  // array costs milliseconds, a rare raw copy is amortised to nothing. The tail
+  // therefore breathes between ACF_TAIL_CAP and twice it, always above the
+  // window the panel can ask for.
+  if (acfTail.value.length > 2 * ACF_TAIL_CAP) {
+    acfTail.value = toRaw(acfTail.value).slice(-ACF_TAIL_CAP)
+  }
 }
 
 function onSpeed(v) {
@@ -115,8 +143,7 @@ onMounted(() => {
       }
       greenCount.value = green
       redCount.value = red
-      // The population chart keeps the whole run (no sliding window).
-      popHistory.value.push({ t: sim.simTime, green, red })
+      pushSample(sim.simTime, green, red)
       latestRates.value = computeRates(green, red)
       nextSampleT = sim.simTime + SAMPLE_DT
     }
@@ -182,7 +209,7 @@ onBeforeUnmount(() => {
     <RateChart
       v-else-if="activePanel === 'cycles'"
       :rates="latestRates"
-      :pop-samples="popHistory"
+      :pop-samples="acfTail"
     />
     <PerfPanel v-else-if="activePanel === 'perf'" :frame-ms="frameMs" :perf="perf" />
   </div>

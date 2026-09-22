@@ -23,6 +23,8 @@ const FIXED_ROLES = {
   MAX_STEPS: 'per-frame substep ceiling',
   MAX_SIM_RATE: 'speed slider cap, and the `SIM_SPEED` parameter maximum',
   SAMPLE_DT: 'sim-time spacing between population-history samples; fixed so sample spacing stays constant at any speed',
+  POP_HISTORY_CAP: 'population-chart samples kept; past it the history halves its resolution, so the whole run stays bounded',
+  ACF_TAIL_CAP: 'raw samples kept for the autocorrelation panel, above its largest window (`ACF_MAX_S / SAMPLE_DT`)',
   MIN_RADIUS: 'radius at zero energy',
   MAX_RADIUS: 'radius at full energy; chosen so a full cell exactly spans both daughters',
   START_RADIUS: 'spawn radius',

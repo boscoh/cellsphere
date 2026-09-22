@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { computeCellColor } from '../cells.js'
 import { scaleCanvas, fmtTime, drawAxes, drawYLabel, drawAxisMax } from './chartCanvas.js'
 
@@ -63,7 +63,10 @@ function draw() {
   if (!canvas) return
   const { ctx, w, h } = scaleCanvas(canvas)
   ctx.clearRect(0, 0, w, h)
-  const samples = props.samples
+  // The whole run is scanned for the axis maximum on every draw, so it is read
+  // raw: the samples are plain data, and going through the reactive array here
+  // would cost a proxy trap per sample per frame.
+  const samples = toRaw(props.samples)
   if (samples.length < 2) return
   const pad = { l: 30, r: 10, t: 12, b: 16 }
   drawTime(ctx, pad, w, h, samples)
