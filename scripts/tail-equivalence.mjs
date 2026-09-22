@@ -796,27 +796,25 @@ try {
     } else {
       // The release is the end of the MITO_TIME window: the daughters are held
       // kinematic and collision-excluded until then (assemblyRelease sets `rest`).
-      // The ledger (NOTES 1.9 D): the three members' lengths sum to the captured
-      // L0 at every substep — the daughters are placed at L0/4 and the mother's
-      // radius is frozen at L0/2, so the sum is constant.
-      // The one creation term: two daughters hold half the mother's fill, so the
-      // fill destroyed equals the floor created — asserted while the window is
-      // still open, because the release substep re-enables metabolism.
-      const floorCharge = (MIN_RADIUS / (MAX_RADIUS - MIN_RADIUS)) * ENERGY_MAX
-      const wantInherited = ENERGY_MAX - floorCharge
-      let lengthConserved = true
-      let fillConserved = true
-      let lengthSample = null
-      let fillSample = null
+      // The ledger (NOTES 1.9 D, as landed): the handover moves the mother's
+      // scheduled fill to the daughters as `h` runs 0..1, so her length falls
+      // monotonically while the daughters grow toward their inheritance.
+      let monotone = true
+      let growing = true
+      let prevMother = Infinity
+      let prevDaughter = -Infinity
       for (let i = 0; i < 30000 && m.back.rest === 0; i++) {
-        const sum = m.parent.radius + m.back.radius + m.front.radius
-        if (Math.abs(sum - m.L0) > 1e-9) { lengthConserved = false; lengthSample = sum - m.L0 }
-        const inherited = m.back.energy + m.front.energy
-        if (Math.abs(inherited - wantInherited) > 1e-9) { fillConserved = false; fillSample = inherited - wantInherited }
-        sim.step(1 / 60)
+        if (m.parent.radius > prevMother + 1e-12) monotone = false
+        if (m.back.radius < prevDaughter - 1e-12) growing = false
+        prevMother = m.parent.radius
+        prevDaughter = m.back.radius
+        sim.advance(DT)
       }
-      if (!lengthConserved) sisterProblems.push(`division did not conserve length (delta ${lengthSample.toExponential(3)})`)
-      if (!fillConserved) sisterProblems.push(`division did not conserve fill (delta ${fillSample.toExponential(3)})`)
+      if (!monotone) sisterProblems.push('the mother did not shrink monotonically through the window')
+      if (!growing) sisterProblems.push('the daughters did not grow through the window')
+      if (Math.abs(m.back.energy - ENERGY_MAX / 4) > 1e-3 || Math.abs(m.front.energy - ENERGY_MAX / 4) > 1e-3) {
+        sisterProblems.push(`an undisturbed daughter released at ${m.back.energy.toFixed(4)}, want ${(ENERGY_MAX / 4).toFixed(4)}`)
+      }
       let minGap = Infinity
       for (let i = 0; i < 8 * 60; i++) {
         sim.step(1 / 60)
@@ -946,10 +944,9 @@ try {
       redB.energy = ENERGY_MAX
       sim.cells.push(redA, redB)
       const roomA = ENERGY_MAX - redA.energy
-      const before = asm.parent.energy
       buildCellGrid(sim)
       predation(sim, DT)
-      const removed = before - asm.parent.energy
+      const removed = asm.taken
       const gainA = redA.energy - 0.1
       const gainB = redB.energy - ENERGY_MAX
       if (removed <= 0) vulnProblems.push('capacity: the mother was not drained')
@@ -1056,6 +1053,65 @@ try {
     resetParams()
   }
   report('assembly aura channel', auraProblems, 'ramps in while bitten and out once the bites stop, broadcast to all members, rim regression intact')
+
+  // Ledger handover (cell-08r.4): the mother's scheduled energy moves to the
+  // daughters as `h` runs 0..1 and a drain comes off her share first, so the
+  // daughters inherit max(0, ENERGY_MAX/4 - taken/2) each. An emptied mother is
+  // released early and bursts (the meal feedback).
+  const ledgerProblems = []
+  {
+    const { P, MAX_RADIUS, ENERGY_MAX, resetParams } = constants
+    const { createCell, gainEnergy, mitose, updateAssemblies, assemblyDrain } = await server.ssrLoadModule('/src/cells.js')
+    const BACK = new THREE.Vector3(0, 0, -1)
+    const at = (z) => new THREE.Vector3(0, 0, z)
+    const DT = 1 / 60
+
+    const runDivision = (taken) => {
+      const sim = new Simulation()
+      const green = createCell(sim, at(0), BACK.clone(), MAX_RADIUS, 0)
+      gainEnergy(sim, green, ENERGY_MAX)
+      sim.cells = [green]
+      sim.foods = []
+      sim.clumps = []
+      mitose(sim, green)
+      const asm = sim.assemblies[0]
+      if (taken > 0) assemblyDrain(asm, taken)
+      for (let i = 0; i < 80 * 60 + 5 && asm.back.rest === 0; i++) updateAssemblies(sim, DT)
+      return asm
+    }
+
+    // Undisturbed: each daughter inherits ENERGY_MAX/4 and the mother's natural
+    // exit is silent (a replacement, not a death).
+    {
+      const asm = runDivision(0)
+      if (Math.abs(asm.back.energy - ENERGY_MAX / 4) > 1e-9 || Math.abs(asm.front.energy - ENERGY_MAX / 4) > 1e-9) {
+        ledgerProblems.push(`undisturbed daughters released at ${asm.back.energy} / ${asm.front.energy}, want ${ENERGY_MAX / 4}`)
+      }
+      if (asm.parent.mealBurst) ledgerProblems.push('an undisturbed division spawned a meal burst')
+    }
+
+    // A drain under half leaves the daughters alive but thinner.
+    {
+      const taken = ENERGY_MAX * 0.3
+      const asm = runDivision(taken)
+      const want = Math.max(0, ENERGY_MAX / 4 - taken / 2)
+      if (Math.abs(asm.back.energy - want) > 1e-9 || Math.abs(asm.front.energy - want) > 1e-9) {
+        ledgerProblems.push(`under-half inheritance ${asm.back.energy}, want ${want}`)
+      }
+      if (asm.back.energy <= 0) ledgerProblems.push('an under-half drain killed the daughters')
+    }
+
+    // A drain past half leaves the daughters at their floor (energy 0): delayed
+    // death through the ordinary zero-energy path, never deletion.
+    {
+      const taken = ENERGY_MAX * 0.6
+      const asm = runDivision(taken)
+      if (asm.back.energy > 1e-9 || asm.front.energy > 1e-9) ledgerProblems.push(`over-half inheritance ${asm.back.energy}, want 0`)
+      if (!asm.parent.mealBurst) ledgerProblems.push('a drain that emptied the mother spawned no meal burst')
+    }
+    resetParams()
+  }
+  report('ledger handover', ledgerProblems, 'daughters inherit (L0 - taken)/2, under-floor daughters die by the ordinary path, an emptied mother bursts')
 
   // Component smoke: the chart SFCs must render to a string without touching the
   // DOM (scaleCanvas/draw only run on mount, which SSR skips).

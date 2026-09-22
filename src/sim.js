@@ -407,7 +407,7 @@ export class Simulation {
       const d = this.cells[i]
       if (d.dead) {
         // Mito parents are replaced by their daughters, not a real death.
-        if (!isAssemblyParent(d)) spawnPop(this, d)
+        if (!isAssemblyParent(d) || d.mealBurst) spawnPop(this, d)
         this.removeCell(d)
         this.cells.splice(i, 1)
       }

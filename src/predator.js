@@ -29,8 +29,8 @@ function validPrey(d) {
   if (d.asm === null) return true
   // A dividing mother is the assembly's only sensable body (the daughters are
   // not in the cell grid), and only once MITO_VULNERABLE is on and her phase has
-  // passed MITO_VULN_FRAC. A consumed husk is not prey.
-  return P.MITO_VULNERABLE > 0 && d.mitoExposed === true && isAssemblyParent(d) && !d.asm.consumed
+  // passed MITO_VULN_FRAC, and still has budget to give.
+  return P.MITO_VULNERABLE > 0 && d.mitoExposed === true && isAssemblyParent(d) && d.energy > 0
 }
 
 function validPredator(d) {
@@ -215,7 +215,7 @@ export function predation(sim, simDt) {
           // second red (or an emptied husk) cannot create energy from an empty
           // pool. The tank cap is what already ends a latch episode: gainEnergy
           // flips split and processSplits calls beginDetach in the same substep.
-          const taken = assemblyDrain(sim, unit, Math.min(rate, ENERGY_MAX - red.energy))
+          const taken = assemblyDrain(unit, Math.min(rate, ENERGY_MAX - red.energy))
           if (taken <= 0) red.target = null
           else gainEnergy(sim, red, taken * P.PRED_EFF)
         } else {

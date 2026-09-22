@@ -539,8 +539,10 @@ against code:
 > `MITO_DRAIN_SCALE`, `assemblyDrain`, and the retention re-check). With the gate
 > off the run is bit-identical (1800-step seed-1 checksum `1695095663`, unchanged
 > across a mid-run `reset()`). `cell-08r.2` landed the aura channel (`MITO_AURA`,
-> the `aAura` attribute, `max(aura, paralysed)` in render). The handover ledger
-> (`.4`), the envelope (`.5`) and the sweep (`.6`) are still open; the prototype lives on the
+> the `aAura` attribute, `max(aura, paralysed)` in render); `cell-08r.4` the
+> ledger handover (driven shrink, inheritance `max(0, ENERGY_MAX/4 - taken/2)`,
+> meal burst, `fade` retired). The envelope (`.5`) and the sweep (`.6`) are still
+> open; the prototype lives on the
 > local branch `experiment/mito-vulnerable`
 > (`5a27f86`, reverted by `6a7493c`) — `main` was reset to `11f17e3`. §A and §B
 > restore that prototype's measurements, which the reset dropped; §C–§I are the
@@ -1017,12 +1019,12 @@ whether a satiated red may hold the latch to burn the excess, are §I.4.
    release rule. This retires the old A/B/C choice, `MITO_ESCAPE` and the
    consumed-husk exemption, which are kept above only as the earlier draft's
    options.
-2. **The one behaviour change the ledger forces**: the daughters now grow
-   continuously through the window instead of being placed at their full child
-   length at `t = 0` with only their tails growing. Ship it, or keep today's
-   crossfade as a fallback (daughters placed immediately at `L0/2`, `fade`
-   carrying the mother)? The ledger's version is the consistent one; the fallback
-   preserves the shipped mitosis look and the measurements in §B are against it.
+2. **Settled and shipped in `cell-08r.4`**: the daughters grow continuously
+   through the window (born at their floor, energy 0 -> `MIN_RADIUS`) instead of
+   being placed at their full child length at `t = 0`, and the mother's `fade` is
+   retired — her length carries the shrink. The §B measurements were taken
+   against the old crossfade, so the prototype arm must be re-run (§H) before any
+   comparison.
 3. Do the daughters ever become edible — i.e. do we lift the shared
    `buildCellGrid` filter? Out of scope for the default cut (they are invisible
    to the latch scan today), and the measured answer to "what happens if we do"

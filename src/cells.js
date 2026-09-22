@@ -280,9 +280,9 @@ export function mitose(sim, parent) {
     half,
     aura: 0,
     state: 'dividing',
-    consumed: false,
     aura: 0,
     bittenT: -Infinity,
+    taken: 0,
   }
   back.asm = asm
   front.asm = asm
@@ -344,18 +344,28 @@ export function updateAssemblies(sim, simDt) {
     m.back.drive = 0
     m.front.drive = 0
 
-    const opac = 1 - fadeK
-    pd.fade = Math.max(opac, 0)
-
-    if (m.t >= m.dur) {
-      assemblyRelease(m)
+    // The ledger handover: the mother's scheduled energy leaves her for the
+    // daughters as `h` runs 0..1, and a predator's drain (`m.taken`) comes off
+    // her share first. Length, radius, mass and tail pitch all follow, so `fade`
+    // is retired — nothing writes a display scale. The daughters are born at
+    // their floor (energy 0 -> MIN_RADIUS) and grow to their inheritance.
+    const scheduled = ENERGY_MAX * (1 - m.h)
+    const motherEnergy = Math.max(0, scheduled - m.taken)
+    const emptied = m.taken > 0 && motherEnergy <= 0
+    setSize(sim, m.parent, motherEnergy, false)
+    const perDaughter = Math.max(0, ENERGY_MAX * 0.25 - 0.5 * m.taken) * (emptied ? 1 : m.h)
+    setSize(sim, m.back, perDaughter, false)
+    setSize(sim, m.front, perDaughter, false)
+    if (m.t >= m.dur || emptied) {
+      assemblyRelease(m, emptied)
       list.splice(i, 1)
     }
   }
 }
 
-function assemblyRelease(m) {
+function assemblyRelease(m, emptied) {
   m.state = 'released'
+  m.parent.mealBurst = emptied
   m.parent.aura = 0
   m.back.aura = 0
   m.front.aura = 0
@@ -378,23 +388,15 @@ function assemblyRelease(m) {
   m.parent.dead = true
 }
 
-// Remove up to `amount` of energy from the assembly's budget — the mother's
-// energy, which is the field `drainEnergy`/`setSize` already maintain — and
-// return what was actually removed. A predator's gain must follow this return
-// value, not the requested amount: a husk at zero, or a second red on the same
-// mother, would otherwise create energy from an empty pool (NOTES 1.2D). Once
-// the mother empties, the unit is `consumed`: the latch drops and she is
-// excluded from the ratio numerator.
-export function assemblyDrain(sim, asm, amount) {
-  if (amount <= 0 || asm.consumed) return 0
-  const before = asm.parent.energy
-  if (before <= 0) {
-    asm.consumed = true
-    return 0
-  }
-  drainEnergy(sim, asm.parent, amount)
-  const taken = before - asm.parent.energy
-  if (asm.parent.energy <= 0) asm.consumed = true
+// Remove up to `amount` from the assembly's scheduled energy and return what was
+// actually removed. The mother's budget is `ENERGY_MAX * (1 - m.h)` (the handover
+// schedule); a drain accrues in `m.taken` and the handover subtracts it, so the
+// mother's energy is always a pure read and two reds cannot drain past her pool.
+export function assemblyDrain(asm, amount) {
+  if (amount <= 0) return 0
+  const available = Math.max(0, ENERGY_MAX * (1 - asm.h) - asm.taken)
+  const taken = Math.min(amount, available)
+  if (taken > 0) asm.taken += taken
   return taken
 }
 

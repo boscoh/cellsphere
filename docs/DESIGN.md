@@ -50,7 +50,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   `aAura` attribute drive color and the rim marker — a latched prey at full
   brightness, an eaten dividing unit at its ramping aura.
   `renderBodies` composes each cell's matrix from `pos/quat`, scaling it by
-  `fade` for the mitosis shrink. Each bucket grows on demand in
+  `fade` (retired for the mitosis shrink, which is now the radius itself). Each bucket grows on demand in
   `BODY_CHUNK_CELLS` chunks rather than reserving `MAX_CELLS` up-front; each
   chunk clones its geometry template (its per-instance attributes must be
   independent) and is detached from the scene when it empties.
@@ -149,8 +149,8 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   at **half the parent's length** so both fit exactly inside the parent's
   outline. The two daughters face each other so their tails stream outward; see
   `NOTES.md` §1.5A for the post-division food-seeking problem. The parent
-  **shrinks to nothing** (its `fade` scales the body down via the instance
-  matrix), then its mesh is dropped but it **keeps
+  **shrinks through the ledger handover** (its length falls toward the floor as
+  the daughters grow from theirs; `fade` is retired), then its mesh is dropped but it **keeps
   colliding** until the daughters finish separating; `assemblyRelease` marks it dead
   and releases the daughters (with a `MITO_REST` coast). The exit window
   (`MITO_REST` + `MITO_FORAGE`) is a deliberate pivot: each daughter steers away
