@@ -13,4 +13,4 @@
 #   metrics.disabled: true # opt out of anonymous usage metrics
 
 sync:
-    remote: "git+https://github.com/boscoh/cellsphere.git"
+    remote: "git+ssh://git@github.com/boscoh/cellsphere.git"
