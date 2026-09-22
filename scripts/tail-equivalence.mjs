@@ -1113,6 +1113,44 @@ try {
   }
   report('ledger handover', ledgerProblems, 'daughters inherit (L0 - taken)/2, under-floor daughters die by the ordinary path, an emptied mother bursts')
 
+  // Unit envelope (cell-08r.5): a dividing unit is one indexed body sized to the
+  // union of its members' capsules; the daughters are not indexed until release.
+  const envelopeProblems = []
+  {
+    const { P, MAX_RADIUS, ENERGY_MAX, resetParams } = constants
+    const { createCell, gainEnergy, mitose, updateAssemblies } = await server.ssrLoadModule('/src/cells.js')
+    const { buildCellGrid } = await server.ssrLoadModule('/src/collision.js')
+    const BACK = new THREE.Vector3(0, 0, -1)
+    const at = (z) => new THREE.Vector3(0, 0, z)
+    const DT = 1 / 60
+    const indexed = (sim, cell) => {
+      const idx = sim.cells.indexOf(cell)
+      if (idx < 0) return false
+      for (const bucket of sim.cellGrid.values()) if (bucket.includes(idx)) return true
+      return false
+    }
+    const sim = new Simulation()
+    const green = createCell(sim, at(0), BACK.clone(), MAX_RADIUS, 0)
+    gainEnergy(sim, green, ENERGY_MAX)
+    sim.cells = [green]
+    sim.foods = []
+    sim.clumps = []
+    mitose(sim, green)
+    const asm = sim.assemblies[0]
+    for (let i = 0; i < 30 * 60; i++) updateAssemblies(sim, DT)
+    buildCellGrid(sim)
+    if (asm.parent.proxyR === undefined) envelopeProblems.push('the unit carries no envelope radius')
+    else if (asm.parent.proxyR - asm.parent.width <= asm.back.radius) envelopeProblems.push('the envelope does not reach the daughters')
+    if (!indexed(sim, asm.parent)) envelopeProblems.push('the unit is not in the index')
+    if (indexed(sim, asm.back) || indexed(sim, asm.front)) envelopeProblems.push('a daughter is indexed before release')
+    for (let i = 0; i < 60 * 60 && asm.back.rest === 0; i++) updateAssemblies(sim, DT)
+    buildCellGrid(sim)
+    if (!indexed(sim, asm.back) || !indexed(sim, asm.front)) envelopeProblems.push('the daughters did not enter the index at release')
+    if (asm.parent.proxyR !== undefined) envelopeProblems.push('the envelope was not cleared at release')
+    resetParams()
+  }
+  report('unit envelope', envelopeProblems, 'the unit is one indexed body sized to its members, and the daughters enter the index at release')
+
   // Component smoke: the chart SFCs must render to a string without touching the
   // DOM (scaleCanvas/draw only run on mount, which SSR skips).
   const componentProblems = []

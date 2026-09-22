@@ -21,7 +21,11 @@ const MAX_PREY_HALF = MAX_RADIUS - WIDTH
 
 function preyScanRadius(threshold, sensor) {
   const halfLen = Math.max(sensor.radius - sensor.width, 0)
-  return scanRadius(threshold + halfLen + MAX_PREY_HALF, CELL_GRID)
+  // A dividing unit is one indexed body whose envelope reaches the far cap of
+  // each daughter, so the widest prey capsule is that union, not a lone cell's.
+  const unitHalf = MAX_RADIUS * 0.25 * P.MITO_SEP + MAX_RADIUS * 0.5
+  const preyHalf = Math.max(MAX_PREY_HALF, unitHalf)
+  return scanRadius(threshold + halfLen + preyHalf, CELL_GRID)
 }
 
 function validPrey(d) {

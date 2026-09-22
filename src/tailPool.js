@@ -98,7 +98,6 @@ function freeTailSlot(view, d) {
 }
 
 export function releaseTail(view, d) {
-  if (d.tailTransfer) return
   clearTail(view, d)
   freeTailSlot(view, d)
 }

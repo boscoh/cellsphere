@@ -541,8 +541,8 @@ against code:
 > across a mid-run `reset()`). `cell-08r.2` landed the aura channel (`MITO_AURA`,
 > the `aAura` attribute, `max(aura, paralysed)` in render); `cell-08r.4` the
 > ledger handover (driven shrink, inheritance `max(0, ENERGY_MAX/4 - taken/2)`,
-> meal burst, `fade` retired). The envelope (`.5`) and the sweep (`.6`) are still
-> open; the prototype lives on the
+> meal burst, `fade` retired); `cell-08r.5` the unit envelope (`proxyR`). The
+> sweep (`.6`) is still open; the prototype lives on the
 > local branch `experiment/mito-vulnerable`
 > (`5a27f86`, reverted by `6a7493c`) — `main` was reset to `11f17e3`. §A and §B
 > restore that prototype's measurements, which the reset dropped; §C–§I are the

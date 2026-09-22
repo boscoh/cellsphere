@@ -356,6 +356,10 @@ export function updateAssemblies(sim, simDt) {
     const perDaughter = Math.max(0, ENERGY_MAX * 0.25 - 0.5 * m.taken) * (emptied ? 1 : m.h)
     setSize(sim, m.back, perDaughter, false)
     setSize(sim, m.front, perDaughter, false)
+    // The unit's collision envelope: the union of the three capsules, centred on
+    // the frozen mother and reaching the far cap of each daughter. It keeps the
+    // unit deflecting as one body after the mother's own length hits the floor.
+    m.parent.proxyR = m.parent.width + dist + m.back.radius
     if (m.t >= m.dur || emptied) {
       assemblyRelease(m, emptied)
       list.splice(i, 1)
@@ -366,6 +370,7 @@ export function updateAssemblies(sim, simDt) {
 function assemblyRelease(m, emptied) {
   m.state = 'released'
   m.parent.mealBurst = emptied
+  m.parent.proxyR = undefined
   m.parent.aura = 0
   m.back.aura = 0
   m.front.aura = 0

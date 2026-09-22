@@ -20,6 +20,11 @@ export function signedAngleTo(sim, d, target) {
   return Math.atan2(cross.dot(n), head.dot(t))
 }
 
+// The collision reach of a body. A dividing unit carries `proxyR`, the radius of
+// its envelope — the union of its members' capsules — so the unit deflects as one
+// body even after the mother's own length has fallen to the floor.
+const reach = (d) => (d.proxyR !== undefined ? d.proxyR : d.radius)
+
 export function deflectHeading(sim, d, awayWorld, intensity) {
   if (d.paralysed) return
   const ang = signedAngleTo(sim, d, awayWorld)
@@ -28,8 +33,8 @@ export function deflectHeading(sim, d, awayWorld, intensity) {
 }
 
 export function capsuleDist(sim, a, b) {
-  const ha = Math.max(a.radius - a.width, 0)
-  const hb = Math.max(b.radius - b.width, 0)
+  const ha = Math.max(reach(a) - a.width, 0)
+  const hb = Math.max(reach(b) - b.width, 0)
   const dhx = a.heading.x * ha
   const dhy = a.heading.y * ha
   const dhz = a.heading.z * ha
@@ -155,7 +160,7 @@ export function solveCollisions(sim, simDt) {
             const cdx = b.pos.x - a.pos.x
             const cdy = b.pos.y - a.pos.y
             const cdz = b.pos.z - a.pos.z
-            const bound = a.radius + b.radius + a.width + b.width
+            const bound = reach(a) + reach(b) + a.width + b.width
             if (cdx * cdx + cdy * cdy + cdz * cdz >= bound * bound) continue
 
             capsuleDist(sim, a, b)

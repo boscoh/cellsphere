@@ -129,6 +129,9 @@ onMounted(() => {
       let green = 0
       let red = 0
       for (const c of sim.cells) {
+        // An emptied dividing unit is replaced by its daughters, not counted as
+        // a live prey while its envelope is still indexed.
+        if (c.asm !== null && c.asm.parent === c && c.energy <= 0) continue
         if (c.breed === 0) green++
         else red++
       }
