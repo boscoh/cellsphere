@@ -166,6 +166,9 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   `h`) conserves the length handed from the mother to her daughters. A unit an
   eater is draining broadcasts a ramping `d.aura` to all three members behind
   `MITO_AURA`; render reads `max(d.aura, d.paralysed)`.
+  Behind `MITO_VULNERABLE` (off by default) an exposed mother becomes prey; the
+  gate and its two narrowings (`MITO_VULN_FRAC`, `MITO_DRAIN_SCALE`) are a large,
+  seed-dependent lever - see the sweep in `NOTES.md` §1.9 J before enabling it.
 - **Tail model (spring chain)**: `sim.advance` splits the tail into an O(1)
   **control** pass (`updateTailControl`, every cell every step) and an
   O(S²·substeps) **pose** pass (`updateTailPose`, only while tails are visible).

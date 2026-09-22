@@ -532,7 +532,7 @@ against code:
 
 ### 1.9 Predators eating dividing prey, and the assembly-transfer model (`cell-ljb`, 2026-09)
 
-> **Status:** partly implemented. `cell-08r.1` landed the assembly record
+> **Status:** implemented (`cell-08r.1`-`.5`); the `.6` sweep is recorded in §J.
 > (`sim.assemblies`, `updateAssemblies`/`assemblyRelease`, `d.asm` on all three
 > members, the length/fill ledger and the collapsed predicates); `cell-08r.3`
 > landed the exposed-mother gate (`MITO_VULNERABLE`, `MITO_VULN_FRAC`,
@@ -542,8 +542,8 @@ against code:
 > the `aAura` attribute, `max(aura, paralysed)` in render); `cell-08r.4` the
 > ledger handover (driven shrink, inheritance `max(0, ENERGY_MAX/4 - taken/2)`,
 > meal burst, `fade` retired); `cell-08r.5` the unit envelope (`proxyR`). The
-> sweep (`.6`) is still open; the prototype lives on the
-> local branch `experiment/mito-vulnerable`
+> The feature stays off by default (see §J); the prototype lives on the local
+> branch `experiment/mito-vulnerable`
 > (`5a27f86`, reverted by `6a7493c`) — `main` was reset to `11f17e3`. §A and §B
 > restore that prototype's measurements, which the reset dropped; §C–§I are the
 > systematic version. Tasks: `cell-08r` (feature) with `.1`–`.6`, and `cell-ljb`
@@ -1011,6 +1011,46 @@ whether a satiated red may hold the latch to burn the excess, are §I.4.
 - `cell-ljb` is the disposition record for this section: its variant 1 is §I.2,
   variant 2 is `MITO_VULN_FRAC`, variant 3 is `MITO_DRAIN_SCALE`, and its
   acceptance sweep is absorbed by task `cell-08r.6`.
+
+#### J. Sweep results (`cell-08r.6`, 2026-09)
+
+5 seeds x 3600 s whole-run seeded, paired same-seed deltas; the prototype arm
+re-run verbatim from `5a27f86` in a detached worktree. Ceilings are the max
+green/red count over the run; `MAX_CELLS = 500`, so a saturated run is censored.
+
+| arm | greenMax (med / range) | redMax (med / range) | latch substeps | latch events | units drained | energy taken | daughters < floor |
+|---|---|---|---|---|---|---|---|
+| baseline (`MITO_VULNERABLE = 0`) | 145 / 92-252 | 69 / 49-132 | ~0 | ~0 | 0 | 0 | 0 |
+| partial (0.2 / 0.5) | 135 / 50-500 | 24 / 17-73 | 29 084 | 35 | 42 | 4.36 | 0 |
+| strong (0.2 / 1.0) | 86 / 55-500 | 38 / 26-180 | 32 474 | 52 | 62 | 11.61 | ~0 |
+| prototype (verbatim, un-narrowed) | 157 / 62-393 | 59 / 29-222 | 106 528 | 44 | - | - | - |
+
+Paired partial - baseline deltas: red ceiling `[+4, -110, -24, -53, -45]`
+(median -45); green ceiling `[-13, +248, -38, -95, +386]` (median -13).
+2/5 partial and 1/5 strong runs saturated `MAX_CELLS`; baseline saturated none.
+
+**What the numbers say.** The narrowing cuts latch *time* hard (-73 % vs the
+prototype) but barely cuts latch *events* (-20 %), and the population response
+is dominated by seed noise: the red ceiling sinks well below the baseline's
+interquartile range and the green ceiling can saturate in either direction. The
+`.4` inheritance penalty is inert at these settings - no daughter released at or
+under its floor - because a per-unit drain stays ~0.1, far under the 0.5 that
+dooms her. The lever is the free latch time, not the meal size.
+
+**Decision (conservative).** `MITO_VULNERABLE` stays **0** by default: enabling
+it at these settings is a large, seed-dependent destabilisation, not a safe
+default, so it remains an explicit opt-in experiment. Of the two profiles,
+**partial (0.2 / 0.5) is the recommended opt-in** - strong spends ~2.7x the
+energy for no better outcome. The `.4` ledger with continuous daughters and the
+`.5` envelope ship as the model. Gang-up and surplus killing stay unaddressed
+(nothing enforces exclusivity; a full red still `beginDetach`s), and I.3 stays
+open.
+
+**Measurement gaps** (follow-up `cell-08r.7`): this harness did not capture
+per-unit relay count or latchers-per-unit robustly (relay read 0), the prototype
+kill counter was unreliable, energy-per-meal was not logged per unit, and 3 runs
+were ceiling-censored. The acceptance's full column set needs instrumentation
+inside `assemblyDrain`/`assemblyRelease`, not an external scan.
 
 #### I. Open decisions
 
