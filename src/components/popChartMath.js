@@ -1,21 +1,19 @@
-// Pure helpers for the charts: the bounded sample history, empirical regime
+// Pure helpers for the charts: the sliding sample window, empirical regime
 // classification from the prey counts, and the autocorrelation cycle test. Kept
 // out of the SFCs so they are testable without a DOM.
 
-// Halves a sample series for the history cap. The chart spans the whole run, so
-// the kept samples are spread evenly enough to preserve both endpoints (and the
-// newest sample with them), which keeps the x axis honest and the leading edge
-// current as the run goes on.
-export function halveSamples(samples) {
+// The sliding window: the samples within `spanS` of the newest one. Trimming by
+// sim time rather than by count is what keeps the span exact, because samples
+// land on sim-time thresholds that frame boundaries round (spacing is SAMPLE_DT
+// plus up to one frame of sim time). No sample is ever copied: the retained
+// array holds the same objects, so a window costs a pointer per sample.
+export function windowTail(samples, spanS) {
   const n = samples.length
-  const m = Math.ceil(n / 2)
-  const out = new Array(m)
-  if (m < 2) {
-    out[0] = samples[n - 1]
-    return out
-  }
-  for (let i = 0; i < m; i++) out[i] = samples[Math.round((i * (n - 1)) / (m - 1))]
-  return out
+  if (!n) return samples
+  const cutoff = samples[n - 1].t - spanS
+  let i = 0
+  while (i < n && samples[i].t < cutoff) i++
+  return i === 0 ? samples : samples.slice(i)
 }
 
 function smooth(values, window) {

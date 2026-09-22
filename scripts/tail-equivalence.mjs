@@ -3,8 +3,9 @@ import { createServer } from 'vite'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { mulberry32 } from '../src/util.js'
-import { classifyRegime, autocorrelation, createAcfTracker, broadMaximum, halveSamples } from '../src/components/popChartMath.js'
+import { classifyRegime, autocorrelation, createAcfTracker, broadMaximum, windowTail } from '../src/components/popChartMath.js'
 import { computeRates, lvPeriod } from '../src/components/rateModel.js'
+import { ACF_MAX_S, POP_WINDOW_S, SAMPLE_DT } from '../src/constants.js'
 
 const SEED = 1
 const DT = 1 / 60
@@ -530,40 +531,80 @@ try {
   }
   report('regime classifier', regimeProblems, 'cyclic/damped/extinct distinguished')
 
-  // The population history is capped by halving its resolution: the chart has to
-  // keep spanning the whole run, so both endpoints and the ordering must survive.
-  const historyProblems = []
+  // The sliding window is the app's only retained history, so its span has to be
+  // exact (that span is the chart's x axis) and its size bounded: it is the one
+  // place a long run could grow.
+  const windowProblems = []
   {
     const src = []
-    for (let i = 0; i < 9; i++) src.push({ t: i * 0.5, green: 10 + i, red: 5 })
-    for (const n of [3, 7, 8, 9]) {
-      const s = src.slice(0, n)
-      const h = halveSamples(s)
-      const tag = `n=${n}`
-      if (h.length !== Math.ceil(n / 2)) historyProblems.push(`${tag}: kept ${h.length} of ${n}`)
-      if (h[0] !== s[0]) historyProblems.push(`${tag}: oldest sample dropped`)
-      if (h[h.length - 1] !== s[n - 1]) historyProblems.push(`${tag}: newest sample dropped`)
-      for (let i = 1; i < h.length; i++) {
-        if (h[i].t <= h[i - 1].t) historyProblems.push(`${tag}: time went backwards`)
-        if (s.indexOf(h[i]) <= s.indexOf(h[i - 1])) historyProblems.push(`${tag}: sample repeated`)
-      }
-      for (const x of h) if (!s.includes(x)) historyProblems.push(`${tag}: sample not from the input`)
+    for (let i = 0; i < 40; i++) src.push({ t: i * 0.5, green: 10 + i, red: 5 })
+    const short = src.slice(0, 4)
+    if (windowTail(short, 10) !== short) windowProblems.push('series inside the span replaced')
+    const full = src.slice(0, 20)
+    const w = windowTail(full, 5)
+    if (w.length !== 11) windowProblems.push(`a 5 s span of 0.5 s samples kept ${w.length}, want 11`)
+    if (w[0] !== full[9]) windowProblems.push('oldest sample inside the span dropped')
+    if (w[w.length - 1] !== full[19]) windowProblems.push('newest sample dropped')
+    for (let i = 0; i < w.length; i++) {
+      if (w[i] !== full[9 + i]) windowProblems.push('window reordered or copied the samples')
     }
-    // Only the leading edge can survive a one-slot output: a stale newest sample
-    // is the one thing the chart cannot show.
-    const two = halveSamples(src.slice(0, 2))
-    if (two.length !== 1 || two[0] !== src[1]) historyProblems.push('n=2: newest sample dropped')
-    // Repeated halving is how a long run stays bounded: while more than one
-    // sample survives, it must keep the endpoints it started with, and the last
-    // step down to a single sample must keep the newest.
-    let h = src
-    for (let i = 0; i < 3; i++) h = halveSamples(h)
-    if (h.length !== 2 || h[0] !== src[0] || h[1] !== src[8]) {
-      historyProblems.push('repeated halving lost an endpoint')
+    // Ragged spacing must change the count, never the span: the app's samples land
+    // on sim-time thresholds that frame boundaries round.
+    const ragged = []
+    let t = 0
+    for (let i = 0; i < 60; i++) {
+      ragged.push({ t, green: 1, red: 1 })
+      t += i % 2 ? 0.8 : 0.3
     }
-    if (halveSamples(h)[0] !== src[8]) historyProblems.push('final halving lost the newest sample')
+    const rw = windowTail(ragged, 5)
+    const span = rw[rw.length - 1].t - rw[0].t
+    if (span > 5 + 1e-9 || span < 5 - 0.8 - 1e-9) {
+      windowProblems.push(`ragged spacing gave a ${span} s span for a 5 s window`)
+    }
+    // Samples are never closer together than SAMPLE_DT, which is what caps the
+    // window at a fixed sample count.
+    const dense = []
+    for (let i = 0; i < 4000; i++) dense.push({ t: i * SAMPLE_DT, green: 1, red: 1 })
+    const dw = windowTail(dense, POP_WINDOW_S)
+    const cap = Math.ceil(POP_WINDOW_S / SAMPLE_DT) + 1
+    if (dw.length > cap) windowProblems.push(`dense window held ${dw.length} samples, cap ${cap}`)
+    if (dw[0].t < dense[3999].t - POP_WINDOW_S) windowProblems.push('dense window spans more than its span')
   }
-  report('history decimation', historyProblems, 'halving keeps endpoints, order and every other sample')
+  report('sliding window', windowProblems, 'exact span, newest sample kept, count capped by SAMPLE_DT')
+
+  // Retention must not creep with run length: replay a long run through the window
+  // and the tracker and check that both settle at their bounds, and that the
+  // autocorrelation window still fits inside the history it is given.
+  const retentionProblems = []
+  {
+    const size = 512
+    const replay = (n) => {
+      let win = []
+      const tracker = createAcfTracker(size)
+      for (let i = 0; i < n; i++) {
+        const s = { t: i * SAMPLE_DT, green: 50 + Math.round(20 * Math.sin(i / 40)), red: 20 }
+        win.push(s)
+        win = windowTail(win, POP_WINDOW_S)
+        tracker.push(s.t, s.green)
+      }
+      return { win: win.length, count: tracker.count, cap: tracker.size, series: tracker.series() }
+    }
+    const short = replay(20000)
+    const long = replay(40000)
+    if (short.win !== long.win) retentionProblems.push(`window grew with run length: ${short.win} -> ${long.win}`)
+    if (long.win > Math.ceil(POP_WINDOW_S / SAMPLE_DT) + 1) retentionProblems.push(`window over its cap at ${long.win}`)
+    if (short.count !== size || long.count !== size) retentionProblems.push('tracker window did not settle at its size')
+    if (long.cap !== size) retentionProblems.push(`tracker resized itself to ${long.cap}`)
+    if (!short.series || !long.series) retentionProblems.push('no autocorrelation series after a long run')
+    else if (long.series.some((p) => !isFinite(p.r))) retentionProblems.push('series not finite after a long run')
+    // The panel sizes its window in samples, so the largest window it can ask for
+    // has to fit inside the retained span; otherwise it silently correlates over
+    // less history than its window claims.
+    if (ACF_MAX_S > POP_WINDOW_S) {
+      retentionProblems.push(`autocorrelation window ${ACF_MAX_S} s exceeds the retained span ${POP_WINDOW_S} s`)
+    }
+  }
+  report('retention bounds', retentionProblems, 'window and autocorrelation tracker settle, no growth with run length')
 
   // Autocorrelation is the robust cycle test: a clean sinusoid peaks at its
   // period, white noise does not.

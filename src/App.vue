@@ -6,8 +6,7 @@ import {
   FIXED_DT,
   MAX_SIM_RATE,
   SAMPLE_DT,
-  POP_HISTORY_CAP,
-  ACF_TAIL_CAP,
+  POP_WINDOW_S,
   resetParams,
 } from './constants.js'
 import Hud from './components/Hud.vue'
@@ -17,7 +16,7 @@ import Tuner from './components/Tuner.vue'
 import PopChart from './components/PopChart.vue'
 import RateChart from './components/RateChart.vue'
 import { computeRates } from './components/rateModel.js'
-import { halveSamples } from './components/popChartMath.js'
+import { windowTail } from './components/popChartMath.js'
 
 const canvasHolder = ref(null)
 const tailsActive = ref(true)
@@ -28,11 +27,11 @@ const frameMs = ref(0)
 const greenCount = ref(0)
 const redCount = ref(0)
 const foodCount = ref(0)
+// The sliding window: the only retained run history in the app. Both chart
+// panels read it — the population chart draws it, the autocorrelation panel
+// correlates over it (its window is clamped to the same span) — so there is one
+// retention policy and one place that can grow.
 const popHistory = ref([])
-// The autocorrelation panel needs full resolution over its whole window, which
-// a decimated history cannot give it, so it is fed a raw tail of its own. The
-// samples are plain data (`markRaw`) so neither array ever proxies them.
-const acfTail = ref([])
 const latestRates = ref(null)
 const perf = ref({})
 const MAX_BACKLOG = MAX_SIM_RATE * FIXED_DT
@@ -62,7 +61,6 @@ function onReset() {
   tunerRef.value?.syncValues()
   simRate.value = P.SIM_SPEED
   popHistory.value = []
-  acfTail.value = []
   latestRates.value = null
   nextSampleT = 0
   sim.reset()
@@ -71,29 +69,22 @@ function onReset() {
 function onRestart() {
   simRate.value = P.SIM_SPEED
   popHistory.value = []
-  acfTail.value = []
   latestRates.value = null
   nextSampleT = 0
   sim.reset()
 }
 
-// One sample per case, into both histories: the chart's whole run (halving its
-// resolution at the cap, so its memory and per-draw scan stay bounded) and the
-// autocorrelation panel's raw tail of the most recent samples.
+// One sample per case into the sliding window. Samples are `markRaw` plain data,
+// so no proxy is ever built for one. The window is published as a raw copy on the
+// samples that age out rather than shifted a slot per push, which would be a
+// proxy trap for every element moved.
 function pushSample(t, green, red) {
   const sample = markRaw({ t, green, red })
-  if (popHistory.value.length >= POP_HISTORY_CAP) {
-    popHistory.value = halveSamples(toRaw(popHistory.value))
-  }
-  popHistory.value.push(sample)
-  acfTail.value.push(sample)
-  // Trimmed in bulk, not one sample per push: a splice through the reactive
-  // array costs milliseconds, a rare raw copy is amortised to nothing. The tail
-  // therefore breathes between ACF_TAIL_CAP and twice it, always above the
-  // window the panel can ask for.
-  if (acfTail.value.length > 2 * ACF_TAIL_CAP) {
-    acfTail.value = toRaw(acfTail.value).slice(-ACF_TAIL_CAP)
-  }
+  const hist = popHistory.value
+  hist.push(sample)
+  const raw = toRaw(hist)
+  const kept = windowTail(raw, POP_WINDOW_S)
+  if (kept !== raw) popHistory.value = kept
 }
 
 function onSpeed(v) {
@@ -209,7 +200,7 @@ onBeforeUnmount(() => {
     <RateChart
       v-else-if="activePanel === 'cycles'"
       :rates="latestRates"
-      :pop-samples="acfTail"
+      :pop-samples="popHistory"
     />
     <PerfPanel v-else-if="activePanel === 'perf'" :frame-ms="frameMs" :perf="perf" />
   </div>

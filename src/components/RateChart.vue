@@ -9,7 +9,7 @@ import {
 } from './chartCanvas.js'
 import { classifyRegime, createAcfTracker, broadMaximum } from './popChartMath.js'
 import { lvPeriod } from './rateModel.js'
-import { SAMPLE_DT } from '../constants.js'
+import { ACF_MAX_S, ACF_MIN_S, SAMPLE_DT } from '../constants.js'
 
 const props = defineProps({
   // Latest knob-derived rates (for the textbook period).
@@ -39,35 +39,44 @@ const guessLabel = computed(() =>
 // The window is sized to span ~4x the textbook period, so the max lag is ~2x the
 // textbook period: long enough for the expected peak to appear, since the ACF
 // cannot see a period longer than half its snapshot. Clamped so a missing or
-// absurd textbook estimate still gives a usable window.
-const ACF_MIN_S = 600
-const ACF_MAX_S = 1800
-// Quantised to whole samples of a 128-sample (~64 s) grid: resizing the tracker
-// rebuilds its lag sums, and a slider drag would otherwise trigger a ~O(n^2)
-// rebuild on every step.
+// absurd textbook estimate still gives a usable window, and so it can never ask
+// for more history than the sliding window holds (ACF_MAX_S = POP_WINDOW_S).
+//
+// It is expressed in sim seconds -- the same units as the window the samples come
+// from -- and converted to a sample count from the spacing actually observed,
+// because samples land no closer than SAMPLE_DT and further apart when a frame
+// carries more sim time (at 50x, ~1.3 s). Reading the count straight off
+// SAMPLE_DT made the snapshot drift with the frame rate: the panel would
+// correlate over thousands of seconds while claiming a few hundred.
 const ACF_STEP = 128
 const acfSamples = computed(() => {
+  const samples = toRaw(props.popSamples)
+  const n = samples.length
+  if (n < 2) return 8
+  const dt = (samples[n - 1].t - samples[0].t) / (n - 1)
   const wanted = textbook.value ? 4 * textbook.value : ACF_MIN_S
   const secs = Math.max(ACF_MIN_S, Math.min(ACF_MAX_S, wanted))
-  return Math.max(8, Math.round(secs / SAMPLE_DT / ACF_STEP) * ACF_STEP)
+  const want = Math.round(secs / (dt > 0 ? dt : SAMPLE_DT))
+  // Quantised to whole samples of a 128-sample grid: resizing the tracker rebuilds
+  // its lag sums, so an unquantised count would rebuild on every sample.
+  return Math.max(8, Math.min(n, Math.round(want / ACF_STEP) * ACF_STEP))
 })
 
 // The detrended autocorrelation is maintained incrementally, so it is current on
-// every sample rather than refreshed every THROTTLE samples. The series and the
-// window slice hold plain data, so they are shallow: nothing reads them as
-// reactive, and a deep ref would proxy every element on every sample.
+// every sample rather than refreshed every THROTTLE samples. The tracker holds
+// its window in flat Float64 buffers and the series snapshot is shallow: nothing
+// reads either as reactive, and a deep ref would proxy every element.
 const tracker = createAcfTracker(acfSamples.value)
 const acf = shallowRef(null)
-const heavy = shallowRef([])
-// Samples arrive as a trimmed tail rather than an append-only log, and a restart
+// Samples arrive as a trimmed window rather than an append-only log, and a restart
 // resets the sim clock, so what has been fed to the tracker is tracked by
-// timestamp: an index would go stale the moment the tail slides.
+// timestamp: an index would go stale the moment the window slides.
 let consumedT = -Infinity
 
 function refreshAcf() {
   const samples = toRaw(props.popSamples)
   const newest = samples[samples.length - 1]
-  // A missing or older newest sample means the run restarted; the tail is
+  // A missing or older newest sample means the run restarted; the window is
   // trimmed from the front only, so time cannot otherwise go backwards.
   if (!newest || newest.t < consumedT) {
     tracker.reset()
@@ -79,7 +88,6 @@ function refreshAcf() {
     tracker.push(s.t, s.green)
     consumedT = s.t
   }
-  heavy.value = samples.slice(-acfSamples.value)
   acf.value = tracker.series()
 }
 
@@ -87,7 +95,6 @@ function refreshAcf() {
 // keeps that tail rather than replaying the run.
 function rebuildAcf() {
   tracker.setSize(acfSamples.value)
-  heavy.value = toRaw(props.popSamples).slice(-acfSamples.value)
   acf.value = tracker.series()
 }
 
@@ -96,7 +103,10 @@ watch(acfSamples, rebuildAcf)
 // A ripple in the ACF is not a cycle, so require the dome to clear r = 0.2.
 const ACF_MIN_R = 0.2
 const peak = computed(() => broadMaximum(acf.value, 'r', { minValue: ACF_MIN_R }))
-const regime = computed(() => classifyRegime(heavy.value))
+// The classifier reads the same slice of the window the tracker is sized for, on
+// demand: keeping a second retained copy just for this panel would be the second
+// retention policy the window exists to avoid.
+const regime = computed(() => classifyRegime(toRaw(props.popSamples).slice(-acfSamples.value)))
 const secondaryLines = computed(() => {
   const pk = peak.value
   if (!pk) return ['no clear repeating period']

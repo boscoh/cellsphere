@@ -16,14 +16,17 @@ export const MAX_SIM_RATE = 50
 // simRate so sample spacing stays constant when running fast.
 export const SAMPLE_DT = 0.5
 
-// Population-history retention. The chart draws the whole run, so once the
-// history reaches POP_HISTORY_CAP samples it halves the resolution instead of
-// growing: memory and the per-draw scan stay bounded however long the run is,
-// and the x axis just coarsens. The autocorrelation panel needs full
-// resolution, so it is fed its own raw tail, sized above the largest window it
-// can ask for (RateChart's ACF_MAX_S / SAMPLE_DT = 3600 samples).
-export const POP_HISTORY_CAP = 4096
-export const ACF_TAIL_CAP = 4096
+// Population-history retention: the one sliding window both chart panels read.
+// It holds the most recent POP_WINDOW_S of sim time at full SAMPLE_DT resolution
+// and drops whatever slides off the front, so the span is the same at any run
+// length and nothing is decimated or retained twice.
+export const POP_WINDOW_S = 1800
+// Autocorrelation window bounds, in sim seconds: ~4x the textbook period at the
+// top, so the maximum lag is ~2x the period the panel expects to see. Its upper
+// bound is the retained span itself, so the panel can never ask for more history
+// than the window holds.
+export const ACF_MIN_S = 600
+export const ACF_MAX_S = POP_WINDOW_S
 
 // Pools grow on demand in fixed-size chunks rather than sizing every buffer to
 // MAX_CELLS up-front, so memory/upload scale with the high-water mark of

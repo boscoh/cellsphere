@@ -195,7 +195,8 @@ _Fixed constants (not tunable at runtime)._
 
 | Parameter | Default | Role |
 |---|---|---|
-| `ACF_TAIL_CAP` | 4096 | raw samples kept for the autocorrelation panel, above its largest window (`ACF_MAX_S / SAMPLE_DT`) |
+| `ACF_MAX_S` | 1800 | largest autocorrelation window, in sim seconds: the retained span (`POP_WINDOW_S`), so the panel cannot ask for more history than the window holds |
+| `ACF_MIN_S` | 600 | smallest autocorrelation window, in sim seconds (used when no textbook period is available) |
 | `BODY_CHUNK_CELLS` | 64 | cells per body instance chunk |
 | `CELL_GRID` | 1 | cell spatial-hash cell size |
 | `CULL_COS` | 0 | cos(normal, cam) at or below which a tail is culled |
@@ -209,7 +210,7 @@ _Fixed constants (not tunable at runtime)._
 | `MAX_SIM_RATE` | 50 | speed slider cap, and the `SIM_SPEED` parameter maximum |
 | `MAX_STEPS` | 200 | per-frame substep ceiling |
 | `MIN_RADIUS` | 0.1 | radius at zero energy |
-| `POP_HISTORY_CAP` | 4096 | population-chart samples kept; past it the history halves its resolution, so the whole run stays bounded |
+| `POP_WINDOW_S` | 1800 | sim-time span of the sliding population window both chart panels read; older samples are dropped, so nothing grows with run length |
 | `SAMPLE_DT` | 0.5 | sim-time spacing between population-history samples; fixed so sample spacing stays constant at any speed |
 | `SHELL_GAP` | 0.06 | gap between the collision surface and the sphere shell mesh |
 | `START_RADIUS` | 0.13 | spawn radius |
@@ -373,33 +374,47 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 Reactive UI: single-line **HUD top-left** — `CellSphere · Fps · Cells (green/red) · Food
 | Speed slider × | Tails checkbox | Cycles checkbox | Tuner · Restart`. `simRate`
 default **10×**, min 1, max `MAX_SIM_RATE = 50`, step 1. The parameter Tuner is
-top-right, the population chart bottom-left, drag hint bottom-center. The chart
-shows prey and predator **counts vs time** (whole run, no window); its only
-footer line is `hunting effort` (the ratio-dependent attack `PRED_RATIO` applies
-at the current prey-per-predator ratio). The history is bounded by *decimation*,
-not by a sliding window: at `POP_HISTORY_CAP` samples it keeps every second one
-(spread evenly, so both endpoints and the newest sample survive), which coarsens
-the x spacing as the run lengthens while memory and the per-draw scan stay fixed.
-Samples are `markRaw` plain data and the chart reads them raw (`toRaw`), so no
-proxy is ever built per sample; the autocorrelation panel needs full resolution
-over its window, so it is fed a separate raw tail (`ACF_TAIL_CAP`) of the most
-recent samples rather than the decimated history.
+top-right, the population chart bottom-left, drag hint bottom-center. Both chart
+panels read **one sliding window** of `POP_WINDOW_S = 1800` s of sim time, which
+is the app's only retained run history: samples are dropped from the front as they
+age, so nothing grows with run length. `popChartMath.windowTail` trims by sim time
+rather than by count, which is what keeps the span exact even though frame
+boundaries round where a sample lands (spacing is `SAMPLE_DT` plus up to one
+frame of sim time); the count is capped at `POP_WINDOW_S / SAMPLE_DT + 1` by
+construction, since samples are never closer together than `SAMPLE_DT`. The
+population chart draws the window — prey and predator **counts vs time**, with
+`hunting effort` as its only footer line (the ratio-dependent attack `PRED_RATIO`
+applies at the current prey-per-predator ratio) — and the autocorrelation panel
+correlates over the same samples. Samples are `markRaw` plain data read through
+`toRaw`, so no proxy is ever built per sample, and the window is published as a
+raw copy only on the samples that age out (a shift through the reactive array
+would cost a proxy trap per element moved).
 
 A separate **autocorrelation panel**
 (`RateChart.vue`) plots the linearly-detrended **autocorrelation** of the prey
 series — the robust cycle test, since a rate derivative is swamped by small-count
 noise whereas an autocorrelation peak at lag `T` means the population really
-repeats. A flat or monotone ACF means there is no clean cycle. It is maintained
+repeats. A flat or monotone ACF means there is no clean cycle. It reads the same
+sliding window, and its window is clamped to `ACF_MAX_S = POP_WINDOW_S`: the panel
+can never ask for more history than the window holds (its largest window is 3584
+samples at 1800 s, inside the 3601 the window can hold), which is what keeps the
+regime it draws and the correlation it plots over the same span instead of
+silently truncating to a shorter one. It is maintained
 incrementally (`popChartMath.createAcfTracker`): the window's raw per-lag pair
 sums are updated O(n) per sample, so a refresh costs O(n) rather than the batch
 O(n²), and the panel is current on every sample instead of every 16th. Detrending
 survives that because the detrended lag sums expand back into raw pair sums plus
 the window's least-squares line (see the tracker's header comment). Its snapshot
-spans **4x the textbook period** (clamped 600–1800 s, quantised to ~64 s steps so
-a tuning drag does not trigger repeated O(n²) tracker rebuilds), so the maximum
+spans **4x the textbook period in sim seconds**: clamped to `ACF_MIN_S = 600` s at
+the bottom and `ACF_MAX_S` at the top, and converted to a sample count from the
+spacing actually observed (samples land no closer than `SAMPLE_DT`, and further
+apart when a frame carries more sim time, ~1.3 s at 50x), so the snapshot means the
+same at any speed and the maximum
 lag is ~2x
 the textbook period — long enough for the expected peak to appear, since the ACF
-cannot see a period longer than half its snapshot. The cycle is the widest
+cannot see a period longer than half its snapshot. The count is quantised to
+128-sample steps (~64 s at `SAMPLE_DT`) so a tuning drag does not trigger repeated
+O(n²) tracker rebuilds. The cycle is the widest
 autocorrelation dome above `r = 0.2`: `broadMaximum` takes the interior local
 maxima, keeps those whose `tol`-band plateau is at least 3 lags wide and has
 lower values on both sides (so the lag-0 lobe cannot qualify), ranks them by

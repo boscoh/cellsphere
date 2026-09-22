@@ -63,7 +63,7 @@ function draw() {
   if (!canvas) return
   const { ctx, w, h } = scaleCanvas(canvas)
   ctx.clearRect(0, 0, w, h)
-  // The whole run is scanned for the axis maximum on every draw, so it is read
+  // The window is scanned for the axis maximum on every draw, so it is read
   // raw: the samples are plain data, and going through the reactive array here
   // would cost a proxy trap per sample per frame.
   const samples = toRaw(props.samples)
