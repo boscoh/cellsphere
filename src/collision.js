@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { P, SURFACE, CELL_GRID } from './constants.js'
 import { gridKey } from './grid.js'
+import { isAssemblyParent } from './cells.js'
 
 // Cell-cell collision and surface geometry. Pure helpers over the cell data
 // objects plus the sim scratch vectors (_v3.._v6, _col) and the cell hash
@@ -111,7 +112,7 @@ export function buildCellGrid(sim) {
   const n = sim.cells.length
   for (let i = 0; i < n; i++) {
     const d = sim.cells[i]
-    if ((d.mito || d.splitting) && !d.mitoParent) continue
+    if (d.asm !== null && !isAssemblyParent(d)) continue
     const key = gridKey(
       Math.floor(d.pos.x / CELL_GRID),
       Math.floor(d.pos.y / CELL_GRID),
@@ -127,7 +128,7 @@ export function solveCollisions(sim, simDt) {
   const n = sim.cells.length
   for (let i = 0; i < n; i++) {
     const a = sim.cells[i]
-    if ((a.mito || a.splitting) && !a.mitoParent) continue
+    if (a.asm !== null && !isAssemblyParent(a)) continue
     const cx = Math.floor(a.pos.x / CELL_GRID)
     const cy = Math.floor(a.pos.y / CELL_GRID)
     const cz = Math.floor(a.pos.z / CELL_GRID)
@@ -142,7 +143,7 @@ export function solveCollisions(sim, simDt) {
             const j = bucket[k]
             if (j <= i) continue
             const b = sim.cells[j]
-            if ((b.mito || b.splitting) && !b.mitoParent) continue
+            if (b.asm !== null && !isAssemblyParent(b)) continue
             // A latched predator/prey pair is allowed to overlap while feeding;
             // the latch hold in predation owns their spacing.
             if (
@@ -164,8 +165,8 @@ export function solveCollisions(sim, simDt) {
             const nx = sim._col.x
             const ny = sim._col.y
             const nz = sim._col.z
-            const invA = a.mitoParent ? 0 : 1 / a.mass
-            const invB = b.mitoParent ? 0 : 1 / b.mass
+            const invA = isAssemblyParent(a) ? 0 : 1 / a.mass
+            const invB = isAssemblyParent(b) ? 0 : 1 / b.mass
             const invSum = invA + invB
             if (invSum <= 0) continue
 
@@ -177,7 +178,7 @@ export function solveCollisions(sim, simDt) {
             b.vel.y += ny * impulse * invB * simDt
             b.vel.z += nz * impulse * invB * simDt
 
-            if (!a.mitoParent) {
+            if (!isAssemblyParent(a)) {
               deflectHeading(
                 sim,
                 a,
@@ -185,7 +186,7 @@ export function solveCollisions(sim, simDt) {
                 Math.min(overlap * 8, 1),
               )
             }
-            if (!b.mitoParent) {
+            if (!isAssemblyParent(b)) {
               deflectHeading(
                 sim,
                 b,

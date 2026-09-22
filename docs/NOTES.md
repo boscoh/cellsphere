@@ -530,6 +530,516 @@ against code:
 
 ---
 
+### 1.9 Predators eating dividing prey, and the assembly-transfer model (`cell-ljb`, 2026-09)
+
+> **Status:** partly implemented. `cell-08r.1` landed the assembly record
+> (`sim.assemblies`, `updateAssemblies`/`assemblyRelease`, `d.asm` on all three
+> members, the length/fill ledger and the collapsed predicates); `cell-08r.3`
+> landed the exposed-mother gate (`MITO_VULNERABLE`, `MITO_VULN_FRAC`,
+> `MITO_DRAIN_SCALE`, `assemblyDrain`, and the retention re-check). With the gate
+> off the run is bit-identical (1800-step seed-1 checksum `1695095663`, unchanged
+> across a mid-run `reset()`). The aura (`.2`), the handover ledger (`.4`), the
+> envelope (`.5`) and the sweep (`.6`) are still open; the prototype lives on the
+> local branch `experiment/mito-vulnerable`
+> (`5a27f86`, reverted by `6a7493c`) — `main` was reset to `11f17e3`. §A and §B
+> restore that prototype's measurements, which the reset dropped; §C–§I are the
+> systematic version. Tasks: `cell-08r` (feature) with `.1`–`.6`, and `cell-ljb`
+> (the prototype's narrowing variants, absorbed by §I/§H). §D is the normative
+> formulation — one conserved scalar (length), one out-port, and the assembly as
+> a single flow with a scheduled sink (the daughters) and an opportunistic one
+> (a predator) — and it retires the either/or framings the earlier drafts of this
+> section carried.
+
+The question this section answers: can feeding and division be **one transfer**
+with one aura and one shrink, instead of two unrelated code paths that happen to
+share cells? Yes — provided growth and shrink are kept on separate channels (§D).
+
+#### A. As shipped, a dividing green is untouchable — three times over
+
+1. `validPrey()` excludes `mito`/`splitting`, so neither the mother nor the
+   daughters can be sensed or latched for the whole `MITO_TIME` window.
+2. `predation()` drops a latch whose target turns `splitting`.
+3. **`buildCellGrid()` omits every non-parent `mito`/`splitting` cell**, so the
+   daughters are absent from the index the predator scans
+   (`forEachNearby(sim.cellGrid, …)`) quite apart from (1). That third gate is
+   the load-bearing one and it is not obvious: the prototype's measured
+   "daughters eaten: 0" is *structural, not ecological*. It also means the
+   cheap-sounding variant "daughters only" is not cheap — it needs a change to
+   the shared cell hash, which is the collision index too.
+
+**The one index is the whole sensing surface**, and that decides what "the
+assembly is available for sensing" means. `buildCellGrid` is the only index;
+`predatorSense`, the latch scan, the green flee scan and the collision solve all
+read it; `concentration`/`eatAndRespawn` use the food grid instead. Measured, with
+a sensor parked 0.001 from each member of a fresh assembly:
+
+| parked at | member in index? | prey the red's scan can find | reds a green's flee scan can find |
+|---|---|---|---|
+| mother | **yes** (`mitoParent`) | mother, but `validPrey` still refuses her | mother |
+| back daughter | no | *(mother, if in range)* — never the daughter | *(mother, if in range)* — never the daughter |
+| front daughter | no | *(mother, if in range)* — never the daughter | *(mother, if in range)* — never the daughter |
+
+So: the assembly is reachable **only through its mother**, and only once a gate
+is lifted; the two daughters are invisible to every scan in the game until
+`finalizeMito` clears `splitting`. That cuts both ways — a red cannot eat them,
+*and* a green cannot see a dividing red's daughters, which materialise as threats
+the instant they are released. It also means the ledger's "the flow leaves the
+mother and the daughters inherit what is left" (§D) is enforced by the index
+rather than by a rule, so anyone who lifts this filter to make daughters edible
+gets greens fleeing red daughters mid-division as a side effect. Note the index stores array *indices*, but every
+scan consumer runs before the split phase's `splice`s, so no stale-index hazard
+within a substep.
+
+Measured on the protected baseline (probe: one red parked inside `PRED_RANGE` of
+a dividing mother): mother's energy flat, 0 bites, 0 `predatorSense` passes, the
+latch dropped the substep she turns `splitting`, and the red pushed off by the
+immovable parent proxy (capsule gap 0.29 → 1.5 over 50 s). The only exposure is a
+single substep — `predation` runs before `processSplits` — worth one ordinary
+bite, 1.9e-4 energy.
+
+#### B. What the full prototype measured (`MITO_VULNERABLE = 1`, local branch)
+
+Both gates lifted, whole-run seeded, 1200 s:
+
+| seed | flag | green range | red range | divisions | mothers eaten mid-window | daughters eaten | red substeps latched to a divider |
+|---|---|---|---|---|---|---|---|
+| 1 | 0 | 31..90 | 10..47 | 193 | 0 | 0 | 0 |
+| 1 | 1 | 17..54 | 11..58 | 159 | 14 | 0 | 42 879 |
+| 2 | 0 | 25..157 | 7..34 | 242 | 0 | 0 | 0 |
+| 2 | 1 | 15..59 | 12..48 | 139 | 3 | 0 | 39 032 |
+| 3 | 0 | 7..50 | 6..23 | 62 | 0 | 0 | 0 |
+| 3 | 1 | 8..50 | 9..40 | 101 | 6 | 0 | 42 992 |
+
+- Mechanically safe: no NaN, no extinction, and a division survives its mother
+  being eaten — daughters emerge ≈2 per division (314 from 159; 124 from 62; 196
+  from 101). They run off the stored `startPos`/`headBack` and only ever write to
+  the parent as a fading body.
+- **The meal is free, not bigger.** `PRED_DRAIN` 0.02/s against a mother at
+  `ENERGY_MAX` is ~50 s (≈61 s with the measured ratio factor) inside an 80 s
+  window, so a red that arrives early gets the whole `ENERGY_MAX`. What the flag
+  really buys is 80 s of `drive = 0` plus an immovable collision proxy: the
+  predator latches and drains with no chase cost and cannot be shaken off.
+  3–14 mothers per run died mid-division — and, as the table's own division
+  counts show (159 divisions and 14 eaten mothers on seed 1 → 314 daughters), a
+  mid-window kill costs the prey population **almost nothing**, because the
+  mother is discarded at `finalizeMito` either way. The harm is the energy handed
+  to the red, and the divisions that energy buys. Treat "mothers killed
+  mid-window" as a *mechanism* counter, not the harm metric.
+- **The prototype's own numbers are not directly comparable to a narrowed
+  build.** Its `validPrey` accepts every live green, so `predation`'s ratio loop
+  counts the daughters as prey for the whole window (they are in `sim.cells` but
+  not in the latch grid), inflating `ratioAttack` and lifting reds over the
+  `ratioAttack < 0.5` stop-hunting gate exactly in the scarce phase. §H requires
+  the prototype arm to be re-run verbatim, or made reproducible from the knobs.
+- **The pack, not the individual, eats the mother.** A single red's tank is
+  exactly a mother's pool (`PRED_EFF = 1`), and filling it ends the episode: the
+  red's `split` flips and `processSplits` calls `beginDetach` in the same
+  substep, so a solo red always leaves her alive with the remainder. Measured
+  relay: the satiated red detached, divided, and its two 0.25-energy daughters
+  re-latched the same green within seconds and kept draining it. That is the
+  mechanism behind the 3-14 kills per run below, and it is why the kill count is
+  a *pack* statistic, not a per-predator one. Two reds may also latch one green
+  at once (measured: 2.07 × `PRED_DRAIN`).
+- **It chains.** `gainEnergy` clamps at `ENERGY_MAX` and flips `split`, so a red
+  that finishes a divider is a full red that then divides.
+- The ecology leans predator: red ceiling up on all three seeds, prey ceiling
+  down on two of three. A real lever, and a strong one.
+
+#### C. Why the division state is not systematic today
+
+The phase record `d.mito` is attached to **one arbitrary member** (the back
+daughter), `splitting` is set on all three, and `mitoParent` on the mother, so
+every consumer has to consult up to three predicates it does not own. Full
+inventory of the 27 references across six files (collapse each to `d.asm`,
+`d.asm.parent === d`, or `d.asm !== null`):
+
+| file | sites |
+|---|---|
+| `collision.js` | `buildCellGrid`'s filter; both skip checks in `solveCollisions`; both `invA = 0` inverse-mass branches; both `deflectHeading` proxy guards |
+| `sim.js` | the `drive = 0` pin in `advance`; the death-burst suppression in the dead sweep |
+| `cells.js` | the `createCell` initialiser; `updateEnergy`'s early return; the writes in `mitose`, `updateMito`, `finalizeMito` |
+| `predator.js` | `validPrey`, `validPredator`, the latch drop in `predation` |
+| `food.js` | `eatAndRespawn`, `concentration` |
+| `scripts/tail-equivalence.mjs` | the "no tail slot" pool check (`mitoParent`) and the phase lookup (`d.mito`) |
+
+`updateMito` is called per cell and no-ops for everyone but the one daughter that
+holds the record. Three of these sites (`food.js:177`, `food.js:221`,
+`cells.js:183`) test a **fourth** flag: they are `mito || splitting || split`.
+`d.split` is a full-energy cell that has not divided *yet* — deliberately
+food-blind and metabolism-exempt — so the collapse is
+`d.asm !== null || d.split`, and dropping `d.split` would break task `.1`'s
+bit-identical requirement.
+
+Two consequences the spec has to fix rather than inherit:
+
+- **The mother's energy is a dead field.** `updateEnergy` early-returns for
+  `mito || splitting`, so her `energy` stays at the pre-division value for the
+  whole window, is never rendered (only `fade` scales her matrix in
+  `renderBodies`) and is discarded at `finalizeMito`. Probe: mother `E = 1.000`,
+  `r = 0.3000`; daughters `E = 0.250`, `r = 0.1500` each; after finalize the
+  mother is `dead` with `E` still `1.000`. That frozen `1.0` is precisely the
+  budget a predator would eat, and it is already the right number.
+- **Energy is affine in length, not linear**, so `2 × childLen = parent length`
+  exactly (the silhouette is conserved by design) while
+  `2 × E(childLen) = 0.5 × E(parent)`: half the mother's length is all of a
+  daughter's energy. Meals therefore have very different sizes — mother 1.0,
+  daughter 0.25 — and it is the fact the ledger's inheritance rule (§D) is built
+  on.
+
+Leftovers found while writing this: `tailTransfer` in `releaseTail` has no
+writer (dead read), and DESIGN's tail-slot bullet still says `createCell`/
+`makeCell` claim a tail slot (the claim is in `renderSync`).
+
+#### D. The model: one flow, two sinks — and the ledger
+
+The reason today's code needs three flags, a fade, an escape rule and a pop rule
+is that it carries **two** notions of "how much cell there is" — a length and an
+energy — and neither is conserved by the events it drives. Make one of them the
+state and the other a pure read, and the special cases dissolve.
+
+`mitose()` already builds the record; promote it to the assembly and give it one
+owner and one pass:
+
+```js
+const asm = {
+  parent, back, front,          // members, each with d.asm = asm
+  t: 0, dur: P.MITO_TIME,       // phase clock
+  L0: parent.radius * 2,        // the length being handed over (captured at mitose)
+  h: 0,                         // handover curve 0..1 (today's fadeK / tailGrow)
+  startPos, headBack, half,     // existing geometry
+  aura: 0,                      // 0..1, broadcasts to d.aura on all members
+  state: 'dividing',            // 'dividing' | 'released'
+}
+```
+
+**The invariant.** One scalar per body — its **length** — with
+
+`length = 2·MIN_RADIUS (floor) + fill`, `radius = length/2`, and the existing
+affine read `energy = (radius − MIN_RADIUS)/(MAX_RADIUS − MIN_RADIUS) × ENERGY_MAX`.
+Length is what every event conserves; fill is what a predator takes; the floor is
+what it costs a body to exist. The ledger for the only division that can occur (a
+mother at `ENERGY_MAX`, so `L0 = 2·MAX_RADIUS = 0.60`):
+
+| term | length | fill |
+|---|---|---|
+| handover `h` | mother `−L0·h`, each daughter `+(L0/2)·h` — **total constant at every instant** | leaves the mother, arrives at the daughters |
+| new floors | `+2·MIN_RADIUS` (each daughter's floor) | charged to the parent: `MIN/(MAX−MIN)` of `ENERGY_MAX` |
+| feeding | prey `−taken`, predator `+taken` | conserved at `PRED_EFF = 1` |
+| metabolism | — | destroyed |
+| death | remainder → 0 | destroyed |
+
+Checked against the shipped constants: mother `0.60 = 0.20 floor + 0.40 fill`;
+each daughter `0.30 = 0.20 floor + 0.10 fill`; total length `0.60` — **exactly
+conserved**; total floor `0.40` (one new floor created); total fill `0.20` (lost,
+and equal to that floor). So **a division costs exactly
+`MIN_RADIUS/(MAX_RADIUS−MIN_RADIUS)` = 50 % of the parent's energy**, paid into
+structure — the model's one creation term, the same one a world-build cell spends
+when it appears at `START_RADIUS`. Today that charge is real but unnamed and paid
+in one lump at `finalizeMito` (mother `E` 1.0 discarded, daughters 0.25 each);
+the ledger pays it *continuously* over the window, which is what turns the
+crossfade into state instead of decoration.
+
+- `sim.assemblies` + one `updateAssemblies(sim, dt)` pass replaces the per-cell
+  `updateMito` loop, so the phase cannot advance twice and `finalizeMito` lives
+  in one place. The `Simulation` constructor and `reset()` own the array — a
+  stale assembly would otherwise keep advancing and releasing pre-reset cells.
+- **Lifetime.** `d.asm` is set on all three members at `mitose` and cleared on
+  every member at `assemblyRelease`. That makes `d.asm !== null` exactly today's
+  in-window predicate (`mito || splitting`), so the pin, the food-blindness and
+  the metabolism exemption collapse without changing state — and a *released*
+  daughter does not keep a pointer that would freeze her for life. The guards
+  that also test `d.split` (a full cell that has not divided yet, deliberately
+  food-blind and metabolism-exempt) keep it: `d.asm !== null || d.split`.
+  `renderSync` reads no mitosis predicate at all (`noTail`/`tailHeir` are
+  render-owned).
+  As implemented in `cell-08r.1`, only the released *daughters* drop `asm` at
+  release. The dead mother keeps hers through the same substep, because the dead
+  sweep reads `isAssemblyParent` to suppress her death burst (a division replaces
+  her, it does not kill her) and she is spliced out immediately after.
+- **One mutation point.** There is no separate pool field: the budget is
+  `parent.energy`, the field `drainEnergy`/`setSize` already maintain.
+  `assemblyDrain(sim, asm, amount) -> taken` returns the energy actually removed,
+  and the predator's gain follows `taken`, not the requested amount —
+  `taken <= 0` drops the latch, otherwise `gainEnergy(red, taken × PRED_EFF)` —
+  with `taken` itself capped by the taker's room (see the satiation row below).
+  Without the follow-`taken` rule a husk at `energy = 0`, or a second red latched
+  to the same mother (which §1.1 permits), creates energy from an empty pool, the
+  one thing §1.2D forbids.
+
+**Grow and shrink are one flow with two sinks, not two animations.** The
+mother's length has a single out-port; the daughters are its scheduled sink and
+any predator is an opportunistic one. So "should the assembly grow and shrink?"
+has no answer to choose: at handover `h` the mother is `L0(1−h)`, each daughter
+`(L0/2)h`, and a bite merely diverts part of the out-flow. Everything else is a
+read of that state:
+
+| question | read |
+|---|---|
+| who shrinks | whoever the flow is leaving |
+| what the daughters inherit | `(L0 − taken)/2` each — taking **half** the mother's energy (0.20 of her 0.60 length) leaves them exactly at their floor |
+| is a divider "killed" | no: the daughters emerge smaller and starve later if they are under their floor — **delayed, not deleted**, with no kill event to special-case |
+| who is sensable | the unit's **envelope** (the union of its members) — one index entry, which is what §A's `mitoParent` exemption already approximates |
+| where the budget lives | `parent.energy`; there is no separate pool field to drift |
+| what the aura marks | a transfer in flight for this unit |
+| when the release happens | `h → 1`, or the source empties — there is no escape switch to set |
+| satiation | `taken = min(rate, room)`: a transfer that cannot be banked is not a transfer, so the latch drops and the measured `beginDetach` path takes over |
+
+Render consequence, and it is a real one: the daughters are now **born at their
+floor and grow to `L0/2`** as the handover proceeds, instead of being placed at
+full child length from `t = 0` with only their tails growing. Their radius, mass
+and tail pitch all follow, and the mother's *length* (not a display scale) is
+what shrinks. Keep the existing gotcha: **do not multiply a radius ratio
+(`length/L0`) into the instance matrix** — the bucket template already carries
+the radius, so that would scale every cell a second time (≈⅔ at
+`E = 0.5`, ≈⅓ at `E = 0`) while its collision capsule stayed full size.
+
+**The eater's tank caps the bite — and a solo red cannot finish a mother.**
+`gainEnergy` clips at `ENERGY_MAX` and flips `split`, and `processSplits` then
+sees a full feeding red (`breed === 1 && target.paralysed`) and calls
+`beginDetach`: the red releases, coasts `MITO_DETACH` and divides. Measured on a
+red with 0.1 of room: it fills at t = 5.433 s with `split`, `detach` and
+`target = null` all set in the *same substep*, is clear 0.8 s later, and the
+energy it banked in the filling substep is exactly its room (waste ≈ 0). That is
+the ledger's `taken = min(rate, room)` in the wild: a latch episode ends at
+*saturation*, not at the prey's death.
+
+A mother's pool is exactly one red tank, so no single red that arrives with any
+energy can empty her — but the pack assembles itself: measured, the satiated red
+released, divided, and its two 0.25-energy daughters re-latched the *same* green
+and kept draining it (the green kept falling after the release, 0.87 → 0.79).
+That is how the prototype's 3-14 kills per run arise (≈50 s of latched time per
+kill at `PRED_DRAIN` 0.02/s). Multiple reds may also latch one assembly at once —
+nothing in `predation` enforces exclusivity, and measured two reds on one green
+drain `0.0415/s = 2.07 × PRED_DRAIN`. So the drain criterion is
+`Σ_over latchers min(E_bite_per_red, room) ≥ taken_needed`, and the ledger turns
+`taken_needed` into a *daughter-survival* threshold rather than a kill: `taken`
+above half her pool dooms both daughters.
+
+**Derived, not chosen.** An earlier draft of this section made "who shrinks" a
+three-way choice (A mother-only / B pool-proportional / C whole-assembly fatal),
+plus an escape switch and a consumed-husk exemption. The ledger retires all
+three, and with them the accident where a lens of "the assembly" was really a
+choice about *which body the flow leaves*. The two things it does **not** decide
+are policy, and they stay open in §I: whether several reds may gang up on one
+unit, and whether a satiated red may hold the latch and burn the excess (surplus
+killing) rather than release.
+
+**When.** `updateAssemblies` writes `parent.mitoExposed = asm.t / asm.dur >=
+MITO_VULN_FRAC`, and it must gate **both** the acquisition scan (`validPrey`)
+and the *retained* latch, because the retained latch is the dominant measured
+path: a green above `MITO_SLOW_FRAC` has `drive` ramped to zero, so it is the
+easiest target in the world, and the red is already in contact when it turns
+`splitting`. Gated on acquisition only, the predicate leaves the whole 80 s
+window open for exactly the reds that cause §B's 39 000-43 000 substeps. So the
+retention check becomes: drop the target when it is dead, or when it is in an
+assembly that is not yet exposed (and always, when `MITO_VULNERABLE = 0`).
+
+**The gate must open before the parent fades.** `fade` reaches exactly 0 at
+`MITO_HOLD + MITO_FADE` = 0.6 of the window, so the natural-looking default
+`MITO_VULN_FRAC = 0.6` exposes a body that is already invisible: the shrink is
+unobservable, and the aura has nothing to sit on. `MITO_HOLD` (0.2) is the
+latest sensible gate — it is also where the parent's own silhouette stops
+reading as "one cell about to divide".
+
+**The proxy is the unit's envelope.** The indexed body should be the *union* of
+the members' capsules, not the mother's own — which is exactly what `mitoParent`
+approximates today by holding a full-length immovable proxy (`invA = 0`) in
+`sim.cellGrid` while her own body fades. Under the ledger that union is readable
+at any instant, so the proxy follows it: it never disappears mid-window (which is
+what happens now when the mother is spliced out — `buildCellGrid` drops her and
+the red sails through the daughters' space), and it needs no "consumed husk" flag,
+because the mother's length reaching zero is simply the flow having left her. The
+union also keeps §A's sensing invariant exact: one entry while the members
+overlap, and the daughters enter the index on their own when they separate.
+
+**The release is the flow ending**, not a switch. `assemblyRelease` fires when
+`h → 1` or the source empties, so `MITO_ESCAPE` is not a parameter to set — a
+short-circuited handover *is* the same event. The daughters always emerge (the
+"2 per division" invariant §B measured holds regardless) and what varies is their
+inheritance, `(L0 − taken)/2`.
+
+#### E. Visual contract
+
+- **Aura** reuses the existing fresnel rim: `bodyMat`'s `instanceParalysed` hook
+  already mixes `vec3(0.89, 0.18, 0.11)` at the rim. Widen it to a float,
+  `aAura` (0..1), so the marker can ramp rather than snap. **The ordinary latched
+  prey must not regress**: `renderBodies` writes `aAura = max(d.aura, d.paralysed
+  ? 1 : 0)`, so a latched non-dividing green still glows exactly as it does
+  today. The assembly broadcasts its ramp to every member (`d.aura = asm.aura`),
+  because "the whole assembly is being eaten" is the read. Do not reuse
+  `d.paralysed` itself for the assembly: `predation` clears it for every cell at
+  the top of each substep and `updateAssemblies` runs afterwards, so the marker
+  would depend on substep ordering. `paralysed` keeps its physics meaning (drive
+  pin, collision exclusion of the latched pair).
+- **Shrink** needs no render change and no `fade`: the handover writes each
+  member's *length* (mother `L0(1−h)`, daughters `(L0/2)h`), `radius`/`mass` and
+  the tail pitch follow, and `renderSync` rehomes the body bucket. The
+  instance-matrix scale stays 1 for the assembly (see §D: multiplying a radius
+  ratio in as well double-counts it). `fade` becomes redundant for the mother —
+  her length already carries the shrink — so drop it rather than stacking a
+  second display term on top of the state.
+- **Burst** marks a body whose length reached its floor and which is then
+  removed: the mother when a drain empties her (the meal feedback, which does
+  not exist today — her ordinary exit at `finalizeMito` is a replacement, not a
+  death, and stays silent), and any daughter that emerges under its floor (the
+  ordinary zero-energy death path already covers those). So the sweep's
+  `mitoParent` suppression stays as it is, and there is no second flag on the
+  cell.
+- Optional, if the rim reads too small at zoom: reuse the `glow.js` billboard
+  (its shader already aligns the ellipse with the capsule) with `aAlpha` driven
+  by the drain rate; ≤3 instances, no new pipeline.
+
+#### F. Change list
+
+| file | change |
+|---|---|
+| `cells.js` (`createCell`, `mitose`, `updateMito`, `finalizeMito`) | `asm` record with `L0`/`h`; `d.asm` on all three members and the clearing rule; `sim.assemblies` (constructor + `reset`); `updateAssemblies`; the handover writes each member's length; `assemblyDrain`/`assemblyRelease`; `parent.mitoExposed`; keep `|| d.split` in `updateEnergy`'s early return |
+| `sim.js` (`advance`, dead sweep) | one assembly pass; pin via `d.asm`; the burst rule of §E |
+| `predator.js` (`validPrey`, `predation`) | mother-only edibility, gating **acquisition and retention**, behind `MITO_VULNERABLE` + `mitoExposed`; `MITO_DRAIN_SCALE` on the bite; `taken = min(rate, room)`; gain bounded by `taken`; exclude the emptied unit from the ratio numerator |
+| `collision.js` (`buildCellGrid`, `solveCollisions`) | the predicate rewrite of §C (7 references), and the proxy sized to the **unit's envelope** rather than the mother's body. The `buildCellGrid` *filter semantics* stay as they are for the default cut: daughters keep their exemption, and it remains the real gate if they are ever made edible — split the grid or accept the collision behaviour |
+| `bodyPool.js`, `materials.js` | `aAura` float replaces the boolean upload, written as `max(d.aura, d.paralysed)`; the rim hook reads the float; no matrix-scale change (`fade` retired for the mother) |
+| `App.vue` / HUD counts, `predation` ratio | an emptied unit is not a live prey even while its envelope is still indexed |
+| `constants.js`, `docs/DESIGN.md` | the four knobs of §G, and the generated param table (`node scripts/gen-params-table.mjs --write`; `npm run build` fails on a stale table) |
+
+#### G. Knobs (all under the Mitosis group)
+
+| key | def | purpose |
+|---|---|---|
+| `MITO_VULNERABLE` | 0 | master gate (the name the prototype branch already uses); `0` must stay bit-identical |
+| `MITO_VULN_FRAC` | 0.2 | phase fraction at which the unit becomes exposed. Default it at `MITO_HOLD`: the handover curve retires the mother's body by `MITO_HOLD + MITO_FADE` = 0.6, so a later gate exposes a mother who has already handed over her length — nothing to see, nothing to take |
+| `MITO_DRAIN_SCALE` | 0.5 | bite multiplier while the target is a unit. This is the narrowing lever: the gate alone cannot narrow much |
+| `MITO_AURA` | 1 | cosmetic gate on the aura channel |
+
+**The two narrowings multiply, so only one may be spent.** What one red can take
+from a division is
+
+`E_bite = PRED_DRAIN × ratioAttack × MITO_DRAIN_SCALE × MITO_TIME × (1 − MITO_VULN_FRAC)`
+
+capped by its tank (§D), and shared with every other red on the same unit. The
+ledger turns the outcome into a **daughter-survival** threshold rather than a
+kill: the daughters inherit `(L0 − taken)/2` each, so `taken` above **half** the
+mother's pool (0.5 of `ENERGY_MAX`, i.e. 0.20 of her 0.60 length) leaves them at
+or under their floor and they are dead on arrival — delayed death, not a deletion.
+At `PRED_RATIO 0.75` and a 50:15 standing population, `ratioAttack = 0.816`:
+
+| profile | `MITO_VULN_FRAC` | `MITO_DRAIN_SCALE` | `E_bite` per red | outcome |
+|---|---|---|---|---|
+| prototype (§B, verbatim gates) | 0 | 1.0 | 1.31 | far past the threshold; relays finish units |
+| strong | 0.2 | 1.0 | 1.05 | an early arrival alone dooms the daughters |
+| **partial (default here)** | 0.2 | 0.5 | 0.52 | one red that holds the window just crosses 0.5 — the daughters are born at their floor |
+| both levers at once | 0.6 | 0.25 | 0.13 | a nibble: the daughters keep most of their inheritance |
+
+`cell-ljb` listed the gate and the drain as *alternatives*; adopting both at
+0.6/0.25 multiplies them into a no-op, which is why the earlier draft's defaults
+were incoherent. The default ships the **partial** row, and the strong row is a
+documented parameter set rather than the shipped default. `ratioAttack` is the
+free variable: it falls toward the `ratioAttack < 0.5` stop-hunting gate exactly
+when prey are scarce, so every row weakens in the phase where the effect matters
+most.
+
+Put together, the unit's loss over one window is
+`taken = Σ_over latchers min(E_bite, ENERGY_MAX − E_red_at_arrival)` — one red
+cannot empty a mother alone, because she is exactly one tank, so the reachable
+outcomes are a **pair** of hungry reds on one unit (nothing in `predation`
+enforces exclusivity) or a **relay**: a satiated red detaches, divides, and its
+two 0.25-energy daughters re-latch. Whether the pack may gang up on one unit, and
+whether a satiated red may hold the latch to burn the excess, are §I.4.
+
+#### H. Verification
+
+- `npm run test:tail` — its mitosis assertions (division separation, and the pool
+  check `cell i has no tail slot` which keys off `mitoParent`) must stay green,
+  and must still pass with an early release.
+- `npm run test:headless` — the boundary it enforces is the *import graph*:
+  `d.aura` is physics state, only `aAura` is render.
+- Seeded whole-run checksum probe (§1.7 method): the §F refactor alone must be
+  bit-identical, and `MITO_VULNERABLE = 0` must stay bit-identical after the
+  whole feature lands.
+- Probe suite (throwaway script, per-case parameter overrides):
+  1. **acquired after the gate** — a red parked inside `PRED_RANGE` of a
+     divider: 0 latch substeps before `mitoExposed`, latch held after.
+  2. **retained across the split** — a red latched *before* the division begins:
+     with the gate closed it must let go, with the gate open it keeps the latch.
+     This is the dominant path and the case the first probe cannot see.
+  3. **the handover ledger** — through an undisturbed division, at every substep,
+     `mother.length + back.length + front.length = L0` to within float error, the
+     fill destroyed equals the floor created, and at release each daughter is at
+     `L0/2` (`E` 0.25). With `MITO_DRAIN_SCALE` forced to 1.0 the same identity
+     holds with `taken` subtracted and the daughters emerge at `(L0 − taken)/2`.
+  4. **satiety and the relay** — a red with 0.1 of room: it fills, `split`,
+     `detach` and `target = null` land in the same substep, the bite it banks
+     equals its room and never more, it is clear after `MITO_DETACH`, and its two
+     daughters re-latch the *same* unit (the relay). Separately: two hungry reds
+     latch one mother and drain at ≈2 × `PRED_DRAIN`.
+  5. **the inheritance threshold** — a drain past half the pool leaves the
+     daughters at or under their floor: they release on schedule and die through
+     the ordinary zero-energy path (two bursts), never by being deleted; a drain
+     under half leaves them alive and thinner. This replaces the old
+     consumption/escape cases — there is no kill event to test.
+  6. **the envelope** — the unit stays in `buildCellGrid` as one union-sized
+     entry for the whole window (a third cell is still deflected by it after the
+     mother's own length has reached 0), and the daughters enter the index only
+     at release.
+  7. no NaN anywhere; tail-slot handover intact when the handover short-circuits.
+- Acceptance: **≥5 seeds × ≥3600 s** whole-run seeded, baseline vs narrowed, with
+  **paired same-seed deltas and medians, not min/max ranges** (a cycle is a few
+  hundred seconds, so a 1200 s run is ~4 periods and its ranges are cycle phase).
+  Log the causal quantities, not only the outcome: energy delivered per assembly
+  meal, **latchers per assembly, per-episode arrival energy and the room it left
+  (the tank cap), the relay count (a red dividing off an assembly and its
+  daughters re-latching it)**, red divisions within one window of a meal, latch
+  *events* as well as substeps, and the concurrent `ratioAttack`. Without the
+  tank and team columns a kill-count change cannot be attributed to the gate, the
+  drain scale, or the number of reds that happened to be nearby.
+  Thresholds must be falsifiable: "narrowed must cut
+  energy delivered per meal and latch events by ≥50 % against the prototype arm,
+  with the red-ceiling median within the baseline's interquartile range and no
+  NaN or extinction" — and, because the harm now lands as inheritance, also
+  **the daughters' released-energy distribution** (median and lower quartile,
+  with the fraction under their floor counted separately): a change that looks
+  small in the ceilings but moves that distribution has moved the lever.
+- The **prototype arm must be reproduced verbatim** from the branch, or made
+  reproducible from the knobs. The branch's `validPrey` returns true for every
+  live green, and `predation`'s ratio loop iterates `sim.cells`, so the prototype
+  counts the *daughters* as prey for the whole window (≈3 per division, ~13
+  concurrent assemblies on seed 1) while the narrowed build counts only the
+  exposed mother: part of any ceiling difference would be a ratio-response
+  change, not a gating change.
+- `cell-ljb` is the disposition record for this section: its variant 1 is §I.2,
+  variant 2 is `MITO_VULN_FRAC`, variant 3 is `MITO_DRAIN_SCALE`, and its
+  acceptance sweep is absorbed by task `cell-08r.6`.
+
+#### I. Open decisions
+
+1. **Settled by the ledger**: the length invariant, the single out-port, the
+   daughters' inheritance `(L0 − taken)/2`, the unit-envelope proxy and the
+   release rule. This retires the old A/B/C choice, `MITO_ESCAPE` and the
+   consumed-husk exemption, which are kept above only as the earlier draft's
+   options.
+2. **The one behaviour change the ledger forces**: the daughters now grow
+   continuously through the window instead of being placed at their full child
+   length at `t = 0` with only their tails growing. Ship it, or keep today's
+   crossfade as a fallback (daughters placed immediately at `L0/2`, `fade`
+   carrying the mother)? The ledger's version is the consistent one; the fallback
+   preserves the shipped mitosis look and the measurements in §B are against it.
+3. Do the daughters ever become edible — i.e. do we lift the shared
+   `buildCellGrid` filter? Out of scope for the default cut (they are invisible
+   to the latch scan today), and the measured answer to "what happens if we do"
+   does not exist yet.
+4. Satiety and ganging up. The tank already caps one red's intake, so the live
+   levers are: **may several reds latch one unit at once** (§B's prototype
+   allowed it — nothing in `predation` enforces exclusivity, and a pair drains at
+   2.07 × `PRED_DRAIN`), and **may a satiated red hold the latch past
+   `ENERGY_MAX`** to take more than it can bank? The second is surplus killing:
+   it needs an explicit "don't `beginDetach` while draining a unit" rule, and the
+   excess is destroyed rather than banked — a third ledger term that would have
+   to be named.
+5. The parent task's priority: `cell-08r` is P3 to match `cell-ljb`, but this
+   moves the balance the way `cell-k2g` (P2) and `cell-dmd` (P1) did. Raise it if
+   the work should outrank them.
+
+---
+
 ## 2. Cell–cell collision
 
 > **Status:** exploration (`cell-dy6`, `cell-b0t`). **No Tier-1 change was

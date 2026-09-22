@@ -174,7 +174,7 @@ export function eatAndRespawn(sim, simDt) {
 
   for (const cell of sim.cells) {
     const d = cell
-    if (d.mito || d.splitting || d.split) continue
+    if (d.asm !== null || d.split) continue
     if (d.breed === 1) continue // predators don't graze food
     // Food is consumed on contact, but only P.ENERGY_PER_FOOD banks get absorbed:
     // a cell stores a budget at P.ABSORB_RATE/s and converts a particle only once
@@ -218,7 +218,7 @@ export function eatAndRespawn(sim, simDt) {
 export function concentration(sim) {
   for (const cell of sim.cells) {
     const d = cell
-    if (d.mito || d.splitting || d.split) continue
+    if (d.asm !== null || d.split) continue
     if (d.breed === 1) continue // predators don't sense/graze food
     let sum = 0
     let near = 0

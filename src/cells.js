@@ -122,8 +122,8 @@ export function createCell(sim, pos, heading, length, breed = Math.random() < 0.
     detachFrom: null,
     split: false,
     splitPending: false,
-    mito: null,
-    splitting: false,
+    asm: null,
+    mitoExposed: false,
     dead: false,
     sideHidden: false,
     tailGrow: 1,
@@ -180,7 +180,7 @@ export function drainEnergy(sim, d, amount) {
 
 export function updateEnergy(sim, d, dt) {
   if (P.METABOLISM <= 0 && P.MOVE_COST <= 0 && P.TURN_COST <= 0 && P.PRED_METABOLISM <= 0) return
-  if (d.mito || d.splitting || d.split) return
+  if (d.asm !== null || d.split) return
   if (d.energy > 0) {
     // Locomotion costs: swimming scales with drive (thrust), turning with the
     // heading rate normalised by P.MAX_SPIN, so effort drains energy on top of
@@ -216,6 +216,18 @@ export function updateDetach(sim, d, dt) {
   }
 }
 
+// The division ledger (NOTES 1.9 D). `L0 = parent.radius * 2` is the length
+// handed over, captured at mitose. Shipped placement creates both daughters at
+// `L0/4` and freezes the mother at `L0/2`, so
+//     parent.radius + back.radius + front.radius === L0
+// at every substep: the three lengths sum to a constant. The one creation term
+// is the daughters' shared floor — two daughters at 0.25 energy sum to 0.5
+// where the mother held 1.0, so the fill destroyed equals the floor created,
+// `MIN_RADIUS/(MAX_RADIUS-MIN_RADIUS)` = 0.5 of `ENERGY_MAX`, the same charge a
+// world-build cell pays appearing at `START_RADIUS`. `m.h` records how far the
+// handover has run; when the daughters grow continuously (§D's separate change)
+// the same identity holds with the mother at `L0/2*(1-h)` and each daughter at
+// `L0/4*h`.
 export function mitose(sim, parent) {
   const d = parent
   if (sim.cells.length + 2 > MAX_CELLS) {
@@ -248,62 +260,85 @@ export function mitose(sim, parent) {
   // so the tail does not jump; the fading parent is left slotless.
   front.tailHeir = d
   d.noTail = true
-  back.splitting = true
-  front.splitting = true
-  back.tailGrow = 0
-  front.mito = {
-    t: 0,
-    dur: P.MITO_TIME,
-    parent,
+  const asm = {
+    parent: d,
     back,
     front,
+    t: 0,
+    dur: P.MITO_TIME,
+    L0: d.radius * 2,
+    h: 0,
     startPos,
     headBack,
     half,
+    aura: 0,
+    state: 'dividing',
+    consumed: false,
   }
-  d.splitting = true
-  d.mitoParent = true
+  back.asm = asm
+  front.asm = asm
+  d.asm = asm
+  back.tailGrow = 0
+  sim.assemblies.push(asm)
   sim.cells.push(back)
   sim.cells.push(front)
 }
 
-export function updateMito(sim, d, simDt) {
-  const m = d.mito
-  if (!m) return
-  m.t += simDt
-  const frac = THREE.MathUtils.clamp(m.t / m.dur, 0, 1)
-  const fadeEnd = P.MITO_HOLD + P.MITO_FADE
-  const fadeK = smoothstep(
-    THREE.MathUtils.clamp((frac - P.MITO_HOLD) / P.MITO_FADE, 0, 1),
-  )
-  // The drift-apart is MITO_DRIFT_FOLD x quicker than the fade-relative window
-  // it used to take; the matching shorter travel is in MITO_SEP (MITO_NEAR kept).
-  const sepSpan = (1 - fadeEnd) / MITO_DRIFT_FOLD
-  const sep = smoothstep(
-    THREE.MathUtils.clamp((frac - (1 - sepSpan)) / sepSpan, 0, 1),
-  )
-  const spread = P.MITO_NEAR + (P.MITO_SEP - P.MITO_NEAR) * sep
-  const dist = m.half * spread
-
-  const pd = m.parent
-  pd.pos.copy(m.startPos)
-  placeMitoChild(sim, m, m.back, -dist)
-  placeMitoChild(sim, m, m.front, dist)
-
-  m.back.tailGrow = fadeK
-  m.back.drive = 0
-  m.front.drive = 0
-
-  const opac = 1 - fadeK
-  pd.fade = Math.max(opac, 0)
-
-  if (m.t >= m.dur) finalizeMito(d, m)
+// True only for the mother of an in-flight (or just-released) assembly. The dead
+// sweep reads it to suppress the ordinary death burst: a division replaces the
+// mother with her daughters, it does not kill her.
+export function isAssemblyParent(d) {
+  return d.asm !== null && d.asm.parent === d
 }
 
-function finalizeMito(d, m) {
-  d.mito = null
-  m.back.splitting = false
-  m.front.splitting = false
+export function updateAssemblies(sim, simDt) {
+  const list = sim.assemblies
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i]
+    m.t += simDt
+    const frac = THREE.MathUtils.clamp(m.t / m.dur, 0, 1)
+    const fadeEnd = P.MITO_HOLD + P.MITO_FADE
+    const fadeK = smoothstep(
+      THREE.MathUtils.clamp((frac - P.MITO_HOLD) / P.MITO_FADE, 0, 1),
+    )
+    // The drift-apart is MITO_DRIFT_FOLD x quicker than the fade-relative window
+    // it used to take; the matching shorter travel is in MITO_SEP (MITO_NEAR kept).
+    const sepSpan = (1 - fadeEnd) / MITO_DRIFT_FOLD
+    const sep = smoothstep(
+      THREE.MathUtils.clamp((frac - (1 - sepSpan)) / sepSpan, 0, 1),
+    )
+    const spread = P.MITO_NEAR + (P.MITO_SEP - P.MITO_NEAR) * sep
+    const dist = m.half * spread
+
+    const pd = m.parent
+    pd.pos.copy(m.startPos)
+    placeMitoChild(sim, m, m.back, -dist)
+    placeMitoChild(sim, m, m.front, dist)
+
+    m.h = fadeK
+    m.parent.mitoExposed = m.t / m.dur >= P.MITO_VULN_FRAC
+    m.back.tailGrow = fadeK
+    m.back.drive = 0
+    m.front.drive = 0
+
+    const opac = 1 - fadeK
+    pd.fade = Math.max(opac, 0)
+
+    if (m.t >= m.dur) {
+      assemblyRelease(m)
+      list.splice(i, 1)
+    }
+  }
+}
+
+function assemblyRelease(m) {
+  m.state = 'released'
+  // The daughters drop the pointer at release so it cannot keep them in the
+  // mitosis window (food-blind, metabolism-exempt) for life. The mother keeps
+  // hers: she is dead and spliced out in the same substep, and the dead sweep
+  // reads `isAssemblyParent` to suppress the ordinary death burst.
+  m.back.asm = null
+  m.front.asm = null
   m.back.rest = P.MITO_REST
   m.front.rest = P.MITO_REST
   m.back.forageT = P.MITO_FORAGE
@@ -315,6 +350,26 @@ function finalizeMito(d, m) {
   m.back.sibling = m.front
   m.front.sibling = m.back
   m.parent.dead = true
+}
+
+// Remove up to `amount` of energy from the assembly's budget — the mother's
+// energy, which is the field `drainEnergy`/`setSize` already maintain — and
+// return what was actually removed. A predator's gain must follow this return
+// value, not the requested amount: a husk at zero, or a second red on the same
+// mother, would otherwise create energy from an empty pool (NOTES 1.2D). Once
+// the mother empties, the unit is `consumed`: the latch drops and she is
+// excluded from the ratio numerator.
+export function assemblyDrain(sim, asm, amount) {
+  if (amount <= 0 || asm.consumed) return 0
+  const before = asm.parent.energy
+  if (before <= 0) {
+    asm.consumed = true
+    return 0
+  }
+  drainEnergy(sim, asm.parent, amount)
+  const taken = before - asm.parent.energy
+  if (asm.parent.energy <= 0) asm.consumed = true
+  return taken
 }
 
 function placeMitoChild(sim, m, cell, dist) {

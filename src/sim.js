@@ -20,7 +20,8 @@ import {
   mitose,
   beginDetach,
   updateDetach,
-  updateMito,
+  updateAssemblies,
+  isAssemblyParent,
   updateEnergy,
 } from './cells.js'
 import { updateTailControl, updateTailPose } from './tail.js'
@@ -49,6 +50,7 @@ export class Simulation {
     this.cellGrid = new Map()
     this.clumps = []
     this.pops = []
+    this.assemblies = []
     this.simTime = 0
     this.poseEnabled = true
     this.respawning = []
@@ -116,6 +118,7 @@ export class Simulation {
     this.poseEnabled = true
     this.senseAccum = 0
     this.pops = []
+    this.assemblies = []
     if (this.view) {
       this.view.resetResources()
       this.view.resizeShell()
@@ -160,7 +163,7 @@ export class Simulation {
     this.perf.begin('cells')
     for (const cell of this.cells) {
       const d = cell
-      if (d.mito || d.splitting) {
+      if (d.asm !== null) {
         d.drive = 0
         continue
       }
@@ -398,13 +401,13 @@ export class Simulation {
     this.perf.begin('split')
     for (const cell of this.cells) updateDetach(this, cell, dt)
     this.processSplits()
-    for (const cell of this.cells) updateMito(this, cell, dt)
+    updateAssemblies(this, dt)
     for (const cell of this.cells) updateEnergy(this, cell, dt)
     for (let i = this.cells.length - 1; i >= 0; i--) {
       const d = this.cells[i]
       if (d.dead) {
         // Mito parents are replaced by their daughters, not a real death.
-        if (!d.mitoParent) spawnPop(this, d)
+        if (!isAssemblyParent(d)) spawnPop(this, d)
         this.removeCell(d)
         this.cells.splice(i, 1)
       }

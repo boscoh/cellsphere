@@ -4,9 +4,10 @@ import {
   CELL_GRID,
   MAX_RADIUS,
   WIDTH,
+  ENERGY_MAX,
 } from './constants.js'
 import { forEachNearby, scanRadius } from './grid.js'
-import { drainEnergy, gainEnergy } from './cells.js'
+import { drainEnergy, gainEnergy, isAssemblyParent, assemblyDrain } from './cells.js'
 import { capsuleDist } from './collision.js'
 
 // How fast a feeding predator closes the last gap to sink into its prey.
@@ -24,11 +25,16 @@ function preyScanRadius(threshold, sensor) {
 }
 
 function validPrey(d) {
-  return d.breed === 0 && !d.mito && !d.splitting && !d.dead
+  if (d.breed !== 0 || d.dead) return false
+  if (d.asm === null) return true
+  // A dividing mother is the assembly's only sensable body (the daughters are
+  // not in the cell grid), and only once MITO_VULNERABLE is on and her phase has
+  // passed MITO_VULN_FRAC. A consumed husk is not prey.
+  return P.MITO_VULNERABLE > 0 && d.mitoExposed === true && isAssemblyParent(d) && !d.asm.consumed
 }
 
 function validPredator(d) {
-  return d.breed === 1 && !d.mito && !d.splitting && !d.detach && !d.dead
+  return d.breed === 1 && d.asm === null && !d.detach && !d.dead
 }
 
 // Holling Type III (sigmoid, exponent 2) in local prey density: the bite is near
@@ -166,7 +172,10 @@ export function predation(sim, simDt) {
     if (prey) red.target = prey
 
     const t = red.target
-    if (t == null || t.dead || t.splitting) {
+    // Retention must re-check validity, not just death: a red latched before the
+    // division turned splitting is the dominant path, so an unexposed (or
+    // MITO_VULNERABLE = 0) assembly drops the latch here.
+    if (t == null || !validPrey(t)) {
       red.target = null
     } else {
       capsuleDist(sim, red, t)
@@ -197,15 +206,27 @@ export function predation(sim, simDt) {
         const crowd = 1 + P.PRED_CROWD * Math.max(0, nearby - 1)
         // Type III: smooth sigmoid in local prey density (rare-prey refuge).
         const t3 = P.PRED_T3_HALF > 0 ? type3Factor(red.preyCount, P.PRED_T3_HALF) : 1
-        const rate = P.PRED_DRAIN * simDt * ratioAttack * crowd * t3
-        drainEnergy(sim, latch, rate)
-        if (latch.energy <= 0) {
-          latch.dead = true
-          // Meal over: a red may briefly reorient onto the nearest prey
-          // instead of following the shoal gradient (cell-erd).
-          red.reorientT = P.PRED_REORIENT
+        const unit = latch.asm
+        const rate = P.PRED_DRAIN * simDt * ratioAttack * crowd * t3 * (unit ? P.MITO_DRAIN_SCALE : 1)
+        if (unit) {
+          // A bite on a dividing unit removes from the mother's budget and is
+          // capped by the eater's room; the gain follows what was removed, so a
+          // second red (or an emptied husk) cannot create energy from an empty
+          // pool. The tank cap is what already ends a latch episode: gainEnergy
+          // flips split and processSplits calls beginDetach in the same substep.
+          const taken = assemblyDrain(sim, unit, Math.min(rate, ENERGY_MAX - red.energy))
+          if (taken <= 0) red.target = null
+          else gainEnergy(sim, red, taken * P.PRED_EFF)
+        } else {
+          drainEnergy(sim, latch, rate)
+          if (latch.energy <= 0) {
+            latch.dead = true
+            // Meal over: a red may briefly reorient onto the nearest prey
+            // instead of following the shoal gradient (cell-erd).
+            red.reorientT = P.PRED_REORIENT
+          }
+          gainEnergy(sim, red, rate * P.PRED_EFF)
         }
-        gainEnergy(sim, red, rate * P.PRED_EFF)
       }
     }
   }

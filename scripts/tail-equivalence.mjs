@@ -392,8 +392,8 @@ try {
       const d = sim.cells[i]
       if (!d.tailChunk || d.tailSlot < 0) {
         // A dividing parent hands its slot to the front daughter and stays
-        // slotless until it finishes fading (mitoParent), so that is valid.
-        if (!d.mitoParent) poolProblems.push(`cell ${i} has no tail slot`)
+        // slotless until it finishes fading (the assembly parent), so that is valid.
+        if (!(d.asm !== null && d.asm.parent === d)) poolProblems.push(`cell ${i} has no tail slot`)
         continue
       }
       const ci = sim.view.tailChunks.indexOf(d.tailChunk)
@@ -735,7 +735,7 @@ try {
     const { gainEnergy } = await server.ssrLoadModule('/src/cells.js')
     const { capsuleDist } = await server.ssrLoadModule('/src/collision.js')
     const { buildFoodGrid } = await server.ssrLoadModule('/src/food.js')
-    const { P, ENERGY_MAX, resetParams } = constants
+    const { P, ENERGY_MAX, MIN_RADIUS, MAX_RADIUS, resetParams } = constants
     const sim = new Simulation()
     sim.buildWorld()
     const green = sim.cells.find((c) => c.breed === 0)
@@ -748,14 +748,34 @@ try {
     let m = null
     for (let i = 0; i < 30000 && !m; i++) {
       sim.step(1 / 60)
-      for (const d of sim.cells) if (d.mito) m = d.mito
+      if (sim.assemblies.length) m = sim.assemblies[0]
     }
     if (!m) {
       sisterProblems.push('a lone max-energy cell never divided')
     } else {
       // The release is the end of the MITO_TIME window: the daughters are held
-      // kinematic and collision-excluded until then (finalizeMito sets `rest`).
-      for (let i = 0; i < 30000 && !(m.back.rest > 0); i++) sim.step(1 / 60)
+      // kinematic and collision-excluded until then (assemblyRelease sets `rest`).
+      // The ledger (NOTES 1.9 D): the three members' lengths sum to the captured
+      // L0 at every substep — the daughters are placed at L0/4 and the mother's
+      // radius is frozen at L0/2, so the sum is constant.
+      // The one creation term: two daughters hold half the mother's fill, so the
+      // fill destroyed equals the floor created — asserted while the window is
+      // still open, because the release substep re-enables metabolism.
+      const floorCharge = (MIN_RADIUS / (MAX_RADIUS - MIN_RADIUS)) * ENERGY_MAX
+      const wantInherited = ENERGY_MAX - floorCharge
+      let lengthConserved = true
+      let fillConserved = true
+      let lengthSample = null
+      let fillSample = null
+      for (let i = 0; i < 30000 && m.back.rest === 0; i++) {
+        const sum = m.parent.radius + m.back.radius + m.front.radius
+        if (Math.abs(sum - m.L0) > 1e-9) { lengthConserved = false; lengthSample = sum - m.L0 }
+        const inherited = m.back.energy + m.front.energy
+        if (Math.abs(inherited - wantInherited) > 1e-9) { fillConserved = false; fillSample = inherited - wantInherited }
+        sim.step(1 / 60)
+      }
+      if (!lengthConserved) sisterProblems.push(`division did not conserve length (delta ${lengthSample.toExponential(3)})`)
+      if (!fillConserved) sisterProblems.push(`division did not conserve fill (delta ${fillSample.toExponential(3)})`)
       let minGap = Infinity
       for (let i = 0; i < 8 * 60; i++) {
         sim.step(1 / 60)
@@ -778,7 +798,128 @@ try {
     }
     resetParams()
   }
-  report('division separation', sisterProblems, 'released sisters turn apart, never overlap, and part')
+  report('division separation + ledger', sisterProblems, 'released sisters turn apart, never overlap, and the division conserves length')
+
+  // Mitosis vulnerability gate (cell-08r.3): a dividing mother is prey only
+  // through her index entry, only while MITO_VULNERABLE is on and her phase has
+  // passed MITO_VULN_FRAC; the daughters are never sensable.
+  const vulnProblems = []
+  {
+    const { P, MAX_RADIUS, ENERGY_MAX, SURFACE, resetParams } = constants
+    const { createCell, gainEnergy, mitose, radiusFromEnergy } = await server.ssrLoadModule('/src/cells.js')
+    const { predation } = await server.ssrLoadModule('/src/predator.js')
+    const { buildCellGrid } = await server.ssrLoadModule('/src/collision.js')
+    const { buildFoodGrid } = await server.ssrLoadModule('/src/food.js')
+    const FWD = new THREE.Vector3(0, 0, 1)
+    const BACK = new THREE.Vector3(0, 0, -1)
+    const at = (z) => new THREE.Vector3(0, 0, z)
+    const half = (d) => Math.max(d.radius - d.width, 0)
+    const UP = new THREE.Vector3(0, 0, 1)
+    const TAN = new THREE.Vector3(0, 1, 0)
+    const anchor = UP.clone().multiplyScalar(SURFACE)
+    const DT = 1 / 60
+
+    // (a)+(b) A red latched to a green BEFORE it divides: with the gate closed
+    // the latch must drop and never return; with it open the mother is
+    // re-acquired only once `mitoExposed`. No daughter is ever a target.
+    const scenario = (gateOn) => {
+      P.MITO_VULNERABLE = gateOn ? 1 : 0
+      P.MITO_VULN_FRAC = 0.2
+      P.PRED_RATIO = 0
+      P.PRED_SENSE = 0
+      P.THRUST = 0
+      const sim = new Simulation()
+      const green = createCell(sim, anchor.clone(), TAN.clone(), MAX_RADIUS, 0)
+      gainEnergy(sim, green, ENERGY_MAX)
+      const red = createCell(sim, anchor.clone(), TAN.clone().negate(), radiusFromEnergy(0.3, 1), 1)
+      red.pos.copy(green.pos).addScaledVector(TAN, P.PRED_RANGE * 0.8 + half(red) + half(green)).setLength(SURFACE)
+      sim.cells = [green, red]
+      sim.foods = []
+      sim.clumps = []
+      buildFoodGrid(sim)
+      let latchedBefore = false
+      let asm = null
+      for (let i = 0; i < 30000 && !asm; i++) {
+        sim.advance(DT)
+        if (red.target === green) latchedBefore = true
+        if (sim.assemblies.length) asm = sim.assemblies[0]
+      }
+      if (!asm) return { failed: 'the latched green never divided' }
+      const mother = asm.parent
+      let targetBeforeExposed = false
+      let targetAfterExposed = false
+      let daughterTarget = false
+      for (let i = 0; i < 30000 && asm.back.rest === 0; i++) {
+        sim.advance(DT)
+        if (red.target === asm.back || red.target === asm.front) daughterTarget = true
+        // Skip the division substep: the pre-division latch still points at the
+        // green object until the next predation pass re-validates it.
+        if (red.target === mother && asm.t >= 2 * DT) {
+          if (mother.mitoExposed) targetAfterExposed = true
+          else targetBeforeExposed = true
+        }
+      }
+      return { latchedBefore, targetBeforeExposed, targetAfterExposed, daughterTarget }
+    }
+
+    const off = scenario(false)
+    if (off.failed) vulnProblems.push(`gate off: ${off.failed}`)
+    else {
+      if (!off.latchedBefore) vulnProblems.push('gate off: the red never latched the green before division')
+      if (off.targetBeforeExposed) vulnProblems.push('gate off: the red held the dividing mother')
+      if (off.targetAfterExposed) vulnProblems.push('gate off: the red acquired the dividing mother')
+      if (off.daughterTarget) vulnProblems.push('gate off: a daughter was latched')
+    }
+    const on = scenario(true)
+    if (on.failed) vulnProblems.push(`gate on: ${on.failed}`)
+    else {
+      if (!on.latchedBefore) vulnProblems.push('gate on: the red never latched the green before division')
+      if (on.targetBeforeExposed) vulnProblems.push('gate on: the red acquired the mother before mitoExposed')
+      if (!on.targetAfterExposed) vulnProblems.push('gate on: the red never acquired the exposed mother')
+      if (on.daughterTarget) vulnProblems.push('gate on: a daughter was latched')
+    }
+
+    // (c) Capacity and conservation: the gain follows the energy actually
+    // removed, is capped by the eater's room, and a full red (no room) drops
+    // the latch and takes nothing.
+    {
+      P.MITO_VULNERABLE = 1
+      P.MITO_VULN_FRAC = 0
+      P.PRED_RATIO = 0
+      P.PRED_SENSE = 0
+      const sim = new Simulation()
+      const mother = createCell(sim, at(0), BACK.clone(), MAX_RADIUS, 0)
+      gainEnergy(sim, mother, ENERGY_MAX)
+      sim.cells = [mother]
+      sim.foods = []
+      sim.clumps = []
+      buildFoodGrid(sim)
+      mitose(sim, mother)
+      const asm = sim.assemblies[0]
+      asm.parent.mitoExposed = true
+      const redA = createCell(sim, at(0), FWD.clone(), MAX_RADIUS * P.RED_SIZE, 1)
+      redA.pos.copy(mother.pos).addScaledVector(FWD, P.PRED_BITE * 0.5 + half(redA) + half(mother))
+      const redB = createCell(sim, at(0), FWD.clone(), MAX_RADIUS * P.RED_SIZE, 1)
+      redB.pos.copy(mother.pos).addScaledVector(FWD, -(P.PRED_BITE * 0.5 + half(redB) + half(mother)))
+      redA.energy = 0.1
+      redB.energy = ENERGY_MAX
+      sim.cells.push(redA, redB)
+      const roomA = ENERGY_MAX - redA.energy
+      const before = asm.parent.energy
+      buildCellGrid(sim)
+      predation(sim, DT)
+      const removed = before - asm.parent.energy
+      const gainA = redA.energy - 0.1
+      const gainB = redB.energy - ENERGY_MAX
+      if (removed <= 0) vulnProblems.push('capacity: the mother was not drained')
+      if (Math.abs(gainA - P.PRED_EFF * removed) > 1e-12) vulnProblems.push(`capacity: gain ${gainA} != PRED_EFF x removed ${P.PRED_EFF * removed}`)
+      if (gainA > roomA + 1e-12) vulnProblems.push(`capacity: gain ${gainA} exceeded room ${roomA}`)
+      if (gainB > 1e-12) vulnProblems.push(`capacity: a full red gained ${gainB}`)
+      if (redB.target !== null) vulnProblems.push('capacity: a full red kept the latch')
+    }
+    resetParams()
+  }
+  report('mitosis vulnerability gate', vulnProblems, 'mother edible only when exposed, daughters invisible, gain follows the drain and the eater room')
 
   // Component smoke: the chart SFCs must render to a string without touching the
   // DOM (scaleCanvas/draw only run on mount, which SSR skips).
