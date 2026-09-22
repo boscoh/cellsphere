@@ -15,26 +15,50 @@ finite world.
 The [Lotka–Volterra equations](https://en.wikipedia.org/wiki/Lotka%E2%80%93Volterra_equations)
 are the simplest model of a predator–prey cycle: two populations, one feeding on
 the other, oscillating around an equilibrium. That structure is far more general
-than the ecology it came from — [Steve
-Keen](https://en.wikipedia.org/wiki/Steve_Keen) builds economic dynamics on it,
-with workers and capital in place of predators and prey, and [Peter
-Turchin](https://en.wikipedia.org/wiki/Peter_Turchin)'s dynastic-cycle models are
-the same shape: two coupled populations that boom, overshoot, and crash.
+than the ecology it came from, and it keeps turning up under other names. [Steve
+Keen](https://en.wikipedia.org/wiki/Steve_Keen)'s Minsky model is Goodwin's
+growth cycle — the wage share in the predator role, employment as its prey —
+extended with private debt, so a long calm plateau ends in a debt crisis instead
+of an equilibrium. [Peter
+Turchin](https://en.wikipedia.org/wiki/Peter_Turchin)'s structural-demographic
+theory puts elites and commoners in those same two slots: commoners multiply
+and are immiserated, elites overproduce, and the populations drift out of step
+until the state breaks down. An economy, a dynastic cycle, a food web — one
+two-population oscillator, differently dressed. The elite–commoner cycle is the
+one we care about most: it is the version that decides how societies go wrong,
+and the hardest to see actually happening.
 
-But the equations are boring to look at — two smooth curves and a fixed point —
-when the thing they describe moves, chases, eats, and dies, and most attempts to
-animate them are just as lifeless. The usual substitute is **cellular
-automata**: Conway's Game of Life, Wolfram's Rule 110, Schelling's segregation
-model, Sugarscape, lattice Lotka–Volterra, and even the lattice-based Cellular
-Potts models. The world is a grid of pixels updated by a rule, and nothing ever
-swims, senses a gradient, or chases.
+Any picture of that cycle, though, is usually as inert as the equations
+themselves: two smooth curves and a fixed point, with nothing in it that could
+eat or be eaten. The standard substitute is cellular automata — Conway's
+Game of Life, Wolfram's Rule 110, Schelling's segregation model, Sugarscape,
+lattice Lotka–Volterra, even lattice Cellular Potts models — but the world is a
+grid of pixels updated by a rule, and no agent there ever swims, senses a
+gradient or chases. NetLogo's *[Wolf Sheep
+Predation](https://ccl.northwestern.edu/netlogo/models/WolfSheepPredation)* is
+the notable exception, a direct descendant of the animal-population studies the
+equations were invented for: agents that wander a landscape, graze and hunt.
 
-The classic counter-example is NetLogo's *[Wolf Sheep
-Predation](https://ccl.northwestern.edu/netlogo/models/WolfSheepPredation)*, a
-direct descendant of the animal-population studies the equations were invented
-for. CellSphere is the bacterial version: autonomous cells with bodies and
-flagella, sensing gradients and spending energy — so the cycle is something you
-watch happen, and, as it turns out, something that emerges on its own.
+CellSphere is that idea carried down to bacteria on a sphere, where the
+population curves are traced by bodies with flagella and an energy budget — the
+cycle is not plotted beside the model, it is what the model does. What we wanted
+to see was that link made concrete: autonomous agents with a bit of
+personality, or at least an animation worth watching. You can follow one green
+from grazing to dividing to starving, and one red through the ambush, the lunge
+and the kill.
+
+Geography is the other half of it. The sphere is a landscape with distances,
+directions and no shortcuts, and where a cell happens to be decides what happens
+to it. Food arrives in clumps, so some regions are rich and others are empty,
+and a cell senses only a short reach around its own body — nothing here knows
+where the food is. Autonomous agents have to search for things, and searching
+means getting lost: drifting through an empty quarter, turning on a weak
+gradient that leads nowhere, and then having to be lucky — to be in the right
+place when a clump of prey goes past, and to reach it while there is still
+something left to eat. In a lattice model distance is free and patchiness is a
+local update rule; on a sphere it is a cost an agent pays in energy, and the
+pattern on the screen is the sum of all those separate, badly informed
+journeys.
 
 ## Design goals
 
