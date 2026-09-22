@@ -166,7 +166,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   `h`) conserves the length handed from the mother to her daughters. A unit an
   eater is draining broadcasts a ramping `d.aura` to all three members behind
   `MITO_AURA`; render reads `max(d.aura, d.paralysed)`.
-  Behind `MITO_VULNERABLE` (off by default) an exposed mother becomes prey; the
+  Behind `MITO_VULNERABLE` (on by default) an exposed mother becomes prey; the
   gate and its two narrowings (`MITO_VULN_FRAC`, `MITO_DRAIN_SCALE`) are a large,
   seed-dependent lever - see the sweep in `NOTES.md` §1.9 J before enabling it.
 - **Tail model (spring chain)**: `sim.advance` splits the tail into an O(1)
@@ -312,7 +312,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `MITO_FORAGE` | 6 | Seconds after division during which a daughter ignores the grazing slowdown and turns hard toward sensed food, so it can leave the parent spot on its own heading (cell-x93). |
 | `MITO_AWAY_TURN` | 20 | Heading-rate gain for turning away from the sibling while a daughter coasts through MITO_REST. Daughters are born facing each other (their tails stream outward), so without it both drive straight into each other the moment drive resumes (cell-jyg). 0 = old behaviour. |
 | `MITO_TURN_CAP` | 0.5 | Heading-rate ceiling (rad/s) for a daughter through her post-division exit window (MITO_REST + MITO_FORAGE). The post-division re-aim and any collision kick otherwise pin her at MAX_SPIN, which reads as thrashing and whips the tail through tailBend; a gentler cap turns the exit into a smooth pivot (cell-jyg). 0 = no turn at all. |
-| `MITO_VULNERABLE` | 0 | Master gate (0 = off and bit-identical): an exposed dividing mother becomes valid prey, so a red can latch and drain her for the rest of the window. The daughters stay invisible — they are not in the cell grid — so only the mother is reachable. |
+| `MITO_VULNERABLE` | 1 | Master gate: an exposed dividing mother becomes valid prey, so a red can latch and drain her for the rest of the window. The daughters stay invisible — they are not in the cell grid — so only the mother is reachable. Default 1 = on; the 3600 s sweep in NOTES 1.9 J found it a large, seed-dependent lever (reds can collapse, prey can saturate), so 0 is the conservative setting. |
 | `MITO_VULN_FRAC` | 0.2 | Fraction of the mitosis window after which the mother is exposed. Default MITO_HOLD: the handover curve retires her body by MITO_HOLD + MITO_FADE = 0.6, so a later gate would expose an already-invisible parent. |
 | `MITO_DRAIN_SCALE` | 0.5 | Bite-rate multiplier while the target is a dividing unit. It multiplies with the MITO_VULN_FRAC gate, so only one of the two narrowings may be spent — see the bite-budget table in docs/NOTES.md 1.9 G before re-tightening both. |
 | `MITO_AURA` | 1 | Cosmetic gate on the assembly aura channel: 1 ramps the rim marker in while a dividing unit is being eaten and out when the bites stop, 0 forces it off. The predator-latched rim glow is unaffected. |

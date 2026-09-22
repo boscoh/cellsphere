@@ -532,7 +532,7 @@ against code:
 
 ### 1.9 Predators eating dividing prey, and the assembly-transfer model (`cell-ljb`, 2026-09)
 
-> **Status:** implemented (`cell-08r.1`-`.5`); the `.6` sweep is recorded in §J.
+> **Status:** implemented (`cell-08r.1`-`.5`); the `.6` sweep is recorded in §J, and
 > (`sim.assemblies`, `updateAssemblies`/`assemblyRelease`, `d.asm` on all three
 > members, the length/fill ledger and the collapsed predicates); `cell-08r.3`
 > landed the exposed-mother gate (`MITO_VULNERABLE`, `MITO_VULN_FRAC`,
@@ -542,8 +542,7 @@ against code:
 > the `aAura` attribute, `max(aura, paralysed)` in render); `cell-08r.4` the
 > ledger handover (driven shrink, inheritance `max(0, ENERGY_MAX/4 - taken/2)`,
 > meal burst, `fade` retired); `cell-08r.5` the unit envelope (`proxyR`). The
-> The feature stays off by default (see §J); the prototype lives on the local
-> branch `experiment/mito-vulnerable`
+> The gate is on by default (see §J); the prototype lives on the local
 > (`5a27f86`, reverted by `6a7493c`) — `main` was reset to `11f17e3`. §A and §B
 > restore that prototype's measurements, which the reset dropped; §C–§I are the
 > systematic version. Tasks: `cell-08r` (feature) with `.1`–`.6`, and `cell-ljb`
@@ -1037,14 +1036,14 @@ interquartile range and the green ceiling can saturate in either direction. The
 under its floor - because a per-unit drain stays ~0.1, far under the 0.5 that
 dooms her. The lever is the free latch time, not the meal size.
 
-**Decision (conservative).** `MITO_VULNERABLE` stays **0** by default: enabling
-it at these settings is a large, seed-dependent destabilisation, not a safe
-default, so it remains an explicit opt-in experiment. Of the two profiles,
-**partial (0.2 / 0.5) is the recommended opt-in** - strong spends ~2.7x the
-energy for no better outcome. The `.4` ledger with continuous daughters and the
-`.5` envelope ship as the model. Gang-up and surplus killing stay unaddressed
-(nothing enforces exclusivity; a full red still `beginDetach`s), and I.3 stays
-open.
+**Decision.** The conservative reading of the sweep is `MITO_VULNERABLE = 0` —
+enabling it at these settings is a large, seed-dependent destabilisation (reds
+collapse, prey saturate), not a safe default. The owner turned it **on by
+default** after seeing these numbers, to observe the interaction live: partial
+(0.2 / 0.5) is the shipped profile, strong rejected (2.7x energy for no better
+outcome). The `.4` ledger with continuous daughters and the `.5` envelope ship as
+the model. Gang-up and surplus killing stay unaddressed (nothing enforces
+exclusivity; a full red still `beginDetach`s), and I.3 stays open.
 
 **Measurement gaps** (follow-up `cell-08r.7`): this harness did not capture
 per-unit relay count or latchers-per-unit robustly (relay read 0), the prototype
