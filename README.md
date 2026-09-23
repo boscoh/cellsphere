@@ -23,42 +23,43 @@ of an equilibrium. [Peter
 Turchin](https://en.wikipedia.org/wiki/Peter_Turchin)'s structural-demographic
 theory puts elites and commoners in those same two slots: commoners multiply
 and are immiserated, elites overproduce, and the populations drift out of step
-until the state breaks down. An economy, a dynastic cycle, a food web — one
-two-population oscillator, differently dressed. The elite–commoner cycle is the
-one we care about most: it is the version that decides how societies go wrong,
-and the hardest to see actually happening.
+until the state breaks down.
 
-Any picture of that cycle, though, is usually as inert as the equations
+Any picture of such cycles, though, is usually as inert as the equations
 themselves: two smooth curves and a fixed point, with nothing in it that could
 eat or be eaten. The standard substitute is cellular automata — Conway's
 Game of Life, Wolfram's Rule 110, Schelling's segregation model, Sugarscape,
-lattice Lotka–Volterra, even lattice Cellular Potts models — but the world is a
-grid of pixels updated by a rule, and no agent there ever swims, senses a
-gradient or chases. NetLogo's *[Wolf Sheep
-Predation](https://ccl.northwestern.edu/netlogo/models/WolfSheepPredation)* is
-the notable exception, a direct descendant of the animal-population studies the
-equations were invented for: agents that wander a landscape, graze and hunt.
+lattice Lotka–Volterra, even lattice Cellular Potts models — but the world is
+typically represented as an abstract grid of pixels. Another notable cellular
+automaton is NetLogo's *[Wolf Sheep
+Predation](https://ccl.northwestern.edu/netlogo/models/WolfSheepPredation)*,
+which models animals that wander a landscape, graze, and hunt — but in the end
+those animals are only icons moving through a grid-like environment.
 
-CellSphere is that idea carried down to bacteria on a sphere, where the
-population curves are traced by bodies with flagella and an energy budget — the
-cycle is not plotted beside the model, it is what the model does. What we wanted
-to see was that link made concrete: autonomous agents with a bit of
-personality, or at least an animation worth watching. You can follow one green
-from grazing to dividing to starving, and one red through the ambush, the lunge
-and the kill.
+What we wanted to see was autonomous agents that move through a physical
+landscape with physical motion and logic. In CellSphere, the focus is on a
+simplified representation of bacteria living on the surface of a sphere. Why
+bacteria? Every motion and action you see is based on real observed behavior of
+bacterial cells — motion driven by flagellar tails, chemotaxis, tumbling, and
+predation on other cells. CellSphere is the first autonomous-agent predator–prey
+model to use realistic-looking motion rather than an artificial grid-like pixel
+representation.
+
+To let the system move autonomously, we introduce an energy budget that carries
+energy from food to prey bacteria and then to predator bacteria. That budget
+dictates the lifespan, actions, and activity of the autonomous agents. In Keen's
+and Turchin's systems, money plays the part of this energy.
 
 Geography is the other half of it. The sphere is a landscape with distances,
-directions and no shortcuts, and where a cell happens to be decides what happens
+directions, and no shortcuts, and where a cell happens to be decides what happens
 to it. Food arrives in clumps, so some regions are rich and others are empty,
 and a cell senses only a short reach around its own body — nothing here knows
 where the food is. Autonomous agents have to search for things, and searching
 means getting lost: drifting through an empty quarter, turning on a weak
 gradient that leads nowhere, and then having to be lucky — to be in the right
 place when a clump of prey goes past, and to reach it while there is still
-something left to eat. In a lattice model distance is free and patchiness is a
-local update rule; on a sphere it is a cost an agent pays in energy, and the
-pattern on the screen is the sum of all those separate, badly informed
-journeys.
+something left to eat. This opens an interesting variety of behavior leading to 
+different kinds of predator-prey cycles.
 
 ## Design goals
 
@@ -96,8 +97,8 @@ rather than a chart drawn beside it.
   distance, so elongated bodies repel without phantom contact
 - **Chunked instanced rendering** — body/tail `InstancedMesh`es grow on demand,
   tracking the high-water mark of concurrent cells instead of a hard ceiling
-- **Live tuning** — every runtime parameter is exposed in a grouped slider panel
-  (`src/constants.js` registry)
+- **Live tuning** — every runtime parameter is exposed in a grouped slider
+  panel driven by the `src/constants.js` registry
 
 ## Tech stack & architecture
 
@@ -125,8 +126,8 @@ Full details — tuning values, invariants, and gotchas — are in
 
 ## Getting started
 
-Needs Node.js. Install the dependencies (Vue, Vite, and Three.js), then start
-the Vite dev server:
+Requires Node.js. Install the dependencies (Vue, Vite, and Three.js), then
+start the Vite dev server:
 
 ```bash
 npm install   # fetch dependencies
