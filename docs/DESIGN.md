@@ -50,7 +50,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   `aAura` attribute drive color and the rim marker — a latched prey at full
   brightness, an eaten dividing unit at its ramping aura.
   `renderBodies` composes each cell's matrix from `pos/quat`, scaling it by
-  `fade` (retired for the mitosis shrink, which is now the radius itself). Each bucket grows on demand in
+  `fade` (mitosis uses it to shrink the fading mother to nothing). Each bucket grows on demand in
   `BODY_CHUNK_CELLS` chunks rather than reserving `MAX_CELLS` up-front; each
   chunk clones its geometry template (its per-instance attributes must be
   independent) and is detached from the scene when it empties.
@@ -150,7 +150,7 @@ helpers (seeded `mulberry32`) in `src/util.js`.
   outline. The two daughters face each other so their tails stream outward; see
   `NOTES.md` §1.5A for the post-division food-seeking problem. The parent
   **shrinks through the ledger handover** (its length falls toward the floor as
-  the daughters grow from theirs; `fade` is retired), then its mesh is dropped but it **keeps
+  the daughters grow from theirs, and `fade` scales the last of it to nothing), then its mesh is dropped but it **keeps
   colliding** until the daughters finish separating; `assemblyRelease` marks it dead
   and releases the daughters (with a `MITO_REST` coast). The exit window
   (`MITO_REST` + `MITO_FORAGE`) is a deliberate pivot: each daughter steers away
@@ -306,7 +306,8 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `MITO_HOLD` | 0.2 | Fraction of mitosis before the parent starts fading. |
 | `MITO_FADE` | 0.4 | Fraction of mitosis over which the parent fades out. |
 | `MITO_NEAR` | 2.1 | Starting separation (x half child length) as daughters form. |
-| `MITO_SEP` | 2.275 | Final separation (x half child length) at division release. Kept close to MITO_NEAR so the daughters drift only a short way apart. |
+| `MITO_SEP` | 2.45 | Final separation (x half child length) at division release. The daughters ease from MITO_NEAR to MITO_SEP over MITO_DRIFT. |
+| `MITO_DRIFT` | 0.2 | Fraction of MITO_TIME the daughters spend easing from MITO_NEAR to MITO_SEP, starting when the handover ends (MITO_HOLD + MITO_FADE). The division releases at the end of the drift, so there is no frozen daughter time; 0 releases right at the end of the handover. |
 | `MITO_DETACH` | 0.8 | Seconds a feeding predator spends separating from its prey before it can divide. |
 | `MITO_REST` | 4 | Coast (no-drive) seconds for daughters right after division. |
 | `MITO_FORAGE` | 6 | Seconds after division during which a daughter ignores the grazing slowdown and turns hard toward sensed food, so it can leave the parent spot on its own heading (cell-x93). |
@@ -473,15 +474,20 @@ also tints its background in the regime colour.
   grid, sized to `proxyR` (the union of the mother's and both daughters'
   capsules) rather than to the mother's own length. Neighbours therefore still
   deflect off the unit after the mother's own radius has fallen to the floor, and
-  the daughters are not indexed separately until release. `fade` is retired — the
-  radius carries the shrink.
+  the daughters are not indexed separately until release. The radius carries most
+  of the shrink and `fade` scales the mother to nothing over the handover, so she
+  does not linger at the `MIN_RADIUS` floor.
 - **Tail slots** live in `tailPool.js`, chunk-local and packed; a freed slot is
   filled by moving the last live slot into it (`freeTailSlot`), keeping
   `chunk.live` a contiguous high-water so `mesh.count` is exact. Cell code never
   touches `chunk.owners`: `renderSync` calls `claimTailSlot`, and a
   dividing cell calls `inheritTailSlot` so the front daughter takes the parent's
   slot and the fading parent is left slotless. That makes `releaseTail` and
-  `clearTail` no-ops for the parent, so no transfer flag is needed.
+  `clearTail` no-ops for the parent, so no transfer flag is needed. The front
+  daughter also copies the parent's chain pose and, while the ledger hands the
+  length over, its pitch (`radius * tailGrow`) is blended from the mother's to
+  the daughter's, so the inherited tail shrinks into the daughter's instead of
+  snapping to her half length on the split frame (cell-5xd).
 - **Tail ordering**: after `updateAssemblies`, `advance()` runs `updateTailControl`
   unconditionally (so `tailBend`→`headingRate` is preserved even when tails are
   hidden), then `updateTailPose` only when visible. `renderTails` runs later and

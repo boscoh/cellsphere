@@ -19,10 +19,6 @@ import { randomSurfacePoint, randomTangent, smoothstep } from './math.js'
 const BREED_GREEN = 0
 const BREED_RED = 1
 
-// The mitosis daughters' drift-apart completes in 1/MITO_DRIFT_FOLD of its
-// previous share of the mitosis window, and travels 1/MITO_DRIFT_FOLD as far.
-const MITO_DRIFT_FOLD = 4
-
 // The assembly aura: ramps in over AURA_RAMP seconds while a bite is applied,
 // holds for AURA_HOLD after the last bite, then ramps out. Driven by sim time
 // (`sim.simTime`), so the value is independent of frame rate and substep order.
@@ -267,6 +263,16 @@ export function mitose(sim, parent) {
   // so the tail does not jump; the fading parent is left slotless.
   front.tailHeir = d
   d.noTail = true
+  // The front daughter also takes the mother's chain pose and starts at the
+  // mother's drawn pitch (radius × tailGrow, blended in updateAssemblies): the
+  // inherited slot would otherwise snap the tail from the mother's length to the
+  // daughter's on the first frame of the divide (cell-5xd).
+  front.tailPhase = d.tailPhase
+  front.tailCarrier.copy(d.tailCarrier)
+  for (let i = 1; i <= TAIL_SEGMENTS; i++) {
+    front.tailPts[i].copy(d.tailPts[i])
+    front.tailVel[i].copy(d.tailVel[i])
+  }
   const asm = {
     parent: d,
     back,
@@ -310,12 +316,15 @@ export function updateAssemblies(sim, simDt) {
     const fadeK = smoothstep(
       THREE.MathUtils.clamp((frac - P.MITO_HOLD) / P.MITO_FADE, 0, 1),
     )
-    // The drift-apart is MITO_DRIFT_FOLD x quicker than the fade-relative window
-    // it used to take; the matching shorter travel is in MITO_SEP (MITO_NEAR kept).
-    const sepSpan = (1 - fadeEnd) / MITO_DRIFT_FOLD
-    const sep = smoothstep(
-      THREE.MathUtils.clamp((frac - (1 - sepSpan)) / sepSpan, 0, 1),
-    )
+    // The daughters drift apart for MITO_DRIFT of the window once the handover
+    // ends, then the division releases: the drift is the whole visible tail, so
+    // there is no frozen daughter time. MITO_DRIFT = 0 releases at fadeEnd.
+    const endT = Math.min(fadeEnd + P.MITO_DRIFT, 1)
+    const sepSpan = endT - fadeEnd
+    const sep =
+      sepSpan > 1e-6
+        ? smoothstep(THREE.MathUtils.clamp((frac - fadeEnd) / sepSpan, 0, 1))
+        : 1
     const spread = P.MITO_NEAR + (P.MITO_SEP - P.MITO_NEAR) * sep
     const dist = m.half * spread
 
@@ -346,21 +355,32 @@ export function updateAssemblies(sim, simDt) {
 
     // The ledger handover: the mother's scheduled energy leaves her for the
     // daughters as `h` runs 0..1, and a predator's drain (`m.taken`) comes off
-    // her share first. Length, radius, mass and tail pitch all follow, so `fade`
-    // is retired — nothing writes a display scale. The daughters are born at
-    // their floor (energy 0 -> MIN_RADIUS) and grow to their inheritance.
+    // her share first. Length, radius, mass and tail pitch all follow. The radius
+    // mapping floors at MIN_RADIUS, so it alone left the mother parked as a small
+    // ghost through the daughter drift; her display scale fades with `h` too, so
+    // she is gone by the end of the handover. The daughters are born at their
+    // floor (energy 0 -> MIN_RADIUS) and grow to their inheritance.
     const scheduled = ENERGY_MAX * (1 - m.h)
     const motherEnergy = Math.max(0, scheduled - m.taken)
     const emptied = m.taken > 0 && motherEnergy <= 0
     setSize(sim, m.parent, motherEnergy, false)
+    // Render-owned display scale (bodyPool reads `fade`): the mother shrinks away
+    // to nothing with the handover instead of parking at the radius floor.
+    m.parent.fade = Math.max(0, 1 - fadeK)
     const perDaughter = Math.max(0, ENERGY_MAX * 0.25 - 0.5 * m.taken) * (emptied ? 1 : m.h)
     setSize(sim, m.back, perDaughter, false)
     setSize(sim, m.front, perDaughter, false)
+    // The front daughter holds the inherited tail at the mother's pitch and
+    // morphs it to its own as the ledger hands the length over, so radius ×
+    // tailGrow is continuous across the divide. Reads the radii the ledger just
+    // wrote, since the daughter is drawn at her floor on the split frame.
+    const carry = m.parent.radius / Math.max(m.front.radius, 1e-6)
+    m.front.tailGrow = 1 + (carry - 1) * (1 - fadeK)
     // The unit's collision envelope: the union of the three capsules, centred on
     // the frozen mother and reaching the far cap of each daughter. It keeps the
     // unit deflecting as one body after the mother's own length hits the floor.
     m.parent.proxyR = m.parent.width + dist + m.back.radius
-    if (m.t >= m.dur || emptied) {
+    if (frac >= endT || emptied) {
       assemblyRelease(m, emptied)
       list.splice(i, 1)
     }
@@ -380,6 +400,10 @@ function assemblyRelease(m, emptied) {
   // reads `isAssemblyParent` to suppress the ordinary death burst.
   m.back.asm = null
   m.front.asm = null
+  // An out-of-range MITO_HOLD + MITO_FADE would leave the fade short of 1 and the
+  // front tail over-long at release, so pin both daughters to their own length.
+  m.back.tailGrow = 1
+  m.front.tailGrow = 1
   m.back.rest = P.MITO_REST
   m.front.rest = P.MITO_REST
   m.back.forageT = P.MITO_FORAGE

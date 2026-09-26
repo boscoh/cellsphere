@@ -839,6 +839,56 @@ try {
   }
   report('division separation + ledger', sisterProblems, 'released sisters turn apart, never overlap, and the division conserves length')
 
+  // The front daughter takes the mother's tail slot, so the drawn pitch
+  // (TAIL_BODY * 2 * radius * tailGrow) must match hers on the split frame — a
+  // daughter at her floor radius with tailGrow 1 snaps the inherited tail to a
+  // fraction of its length (cell-5xd) — and must reach her own length by
+  // release.
+  const pitchProblems = []
+  {
+    const { gainEnergy } = await server.ssrLoadModule('/src/cells.js')
+    const { ENERGY_MAX, resetParams } = constants
+    const sim = new Simulation()
+    sim.buildWorld()
+    const green = sim.cells.find((c) => c.breed === 0)
+    gainEnergy(sim, green, ENERGY_MAX)
+    sim.cells = [green]
+    sim.foods = []
+    sim.clumps = []
+
+    let m = null
+    for (let i = 0; i < 30000 && !m; i++) {
+      sim.step(DT)
+      if (sim.assemblies.length) m = sim.assemblies[0]
+    }
+    if (!m) {
+      pitchProblems.push('a lone max-energy cell never divided')
+    } else {
+      const pitch = (d) => d.radius * d.tailGrow
+      const motherPitch = pitch(m.parent)
+      const frontPitch = pitch(m.front)
+      if (motherPitch <= 0) pitchProblems.push('the mother has no tail pitch at the split')
+      else if (Math.abs(frontPitch / motherPitch - 1) > 0.02) {
+        pitchProblems.push(
+          `inherited tail pitch jumped at the split (${motherPitch.toFixed(4)} -> ${frontPitch.toFixed(4)})`,
+        )
+      }
+      let maxPoseGap = 0
+      for (let i = 1; i <= TAIL_SEGMENTS; i++) {
+        maxPoseGap = Math.max(maxPoseGap, m.front.tailPts[i].distanceTo(m.parent.tailPts[i]))
+      }
+      if (maxPoseGap > 0.1) {
+        pitchProblems.push(`inherited tail pose is ${maxPoseGap.toFixed(3)} off the mother's`)
+      }
+      for (let i = 0; i < 30000 && m.back.rest === 0; i++) sim.advance(DT)
+      if (Math.abs(m.front.tailGrow - 1) > 1e-9) {
+        pitchProblems.push(`front tailGrow ${m.front.tailGrow} at release, want 1`)
+      }
+    }
+    resetParams()
+  }
+  report('mitosis tail pitch', pitchProblems, 'inherited tail starts at the mother pitch, ends at the daughter length')
+
   // Mitosis vulnerability gate (cell-08r.3): a dividing mother is prey only
   // through her index entry, only while MITO_VULNERABLE is on and her phase has
   // passed MITO_VULN_FRAC; the daughters are never sensable.
