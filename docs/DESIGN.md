@@ -302,7 +302,7 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 
 | Parameter | Default | Role |
 |---|---|---|
-| `MITO_TIME` | 80 | Duration (sim seconds) of the full division sequence — the mitosis animation. Also the physics window: during it the parent is an immovable collision proxy and the daughters are inactive, invulnerable and food-blind. Raised 5 → 10 → 20 → 80 (16x the original) for a slow, legible division; very large values freeze a big fraction of the population in mitosis. |
+| `MITO_TIME` | 100 | Window (sim seconds) the mitosis stage fractions scale against. The division releases at MITO_HOLD + MITO_FADE + MITO_DRIFT = 0.8 of this (80 s at the default 100), which is the time the parent is an immovable collision proxy and the daughters are inactive, invulnerable and food-blind. Raised 5 → 10 → 20 → 80 (16x the original) for a slow, legible division; very large values freeze a big fraction of the population in mitosis. |
 | `MITO_HOLD` | 0.2 | Fraction of mitosis before the parent starts fading. |
 | `MITO_FADE` | 0.4 | Fraction of mitosis over which the parent fades out. |
 | `MITO_NEAR` | 2.1 | Starting separation (x half child length) as daughters form. |
