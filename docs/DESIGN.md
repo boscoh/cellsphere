@@ -237,12 +237,12 @@ _Editable at runtime in the Tuner (`PARAM_DEFS`)._
 | `SPHERE_RADIUS` | 5 | Radius of the sphere cells live on (rebuilds). Larger = more surface area, so a fixed-size cell looks smaller relative to the world. |
 | `PREY_COUNT` | 50 | Number of prey (green) cells spawned when the world is (re)built. |
 | `PRED_COUNT` | 15 | Number of predator (red) cells spawned when the world is (re)built. |
-| `SIM_SPEED` | 10 | Simulation speed applied on startup and whenever the world is restarted or Default is pressed (1x = real time). The HUD time slider changes the live speed only; this startup speed is not touched by it. |
+| `SIM_SPEED` | 25 | Simulation speed applied on startup and whenever the world is restarted or Default is pressed (1x = real time). The HUD time slider changes the live speed only; this startup speed is not touched by it. |
 | `FOOD_COUNT` | 3000 | Total food particles spawned when the world is (re)built. |
 | `FOOD_CLUMPS` | 12 | Number of food clusters (0 = none; rebuilds). |
 | `FOOD_SCATTER` | 0.15 | Share of food placed uniformly instead of in clumps (rebuilds). |
 | `FOOD_CLUMP_WIDE` | 1 | Angular spread of each clump (rebuilds). |
-| `FOOD_RESPAWN` | 40 | Base seconds before an eaten food particle reappears. |
+| `FOOD_RESPAWN` | 100 | Base seconds before an eaten food particle reappears. |
 
 **Movement**
 

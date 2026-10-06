@@ -62,11 +62,13 @@ export const PARAM_DEFS = [
   { key: 'SPHERE_RADIUS', group: 'world', label: 'Sphere radius', desc: 'Radius of the sphere cells live on (rebuilds). Larger = more surface area, so a fixed-size cell looks smaller relative to the world.', def: 5, min: 3, max: 12, step: 0.5, rebuild: true },
   { key: 'PREY_COUNT', group: 'world', label: 'Prey (start)', desc: 'Number of prey (green) cells spawned when the world is (re)built.', def: 50, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
   { key: 'PRED_COUNT', group: 'world', label: 'Predators (start)', desc: 'Number of predator (red) cells spawned when the world is (re)built.', def: 15, min: 0, max: MAX_CELLS, step: 1, rebuild: true },
-  { key: 'SIM_SPEED', group: 'world', label: 'Startup speed', desc: 'Simulation speed applied on startup and whenever the world is restarted or Default is pressed (1x = real time). The HUD time slider changes the live speed only; this startup speed is not touched by it.', def: 10, min: 1, max: MAX_SIM_RATE, step: 1 },
+  { key: 'SIM_SPEED', group: 'world', label: 'Startup speed', desc: 'Simulation speed applied on startup and whenever the world is restarted or Default is pressed (1x = real time). The HUD time slider changes the live speed only; this startup speed is not touched by it.', def: 25, min: 1, max: MAX_SIM_RATE, step: 1 },
   { key: 'FOOD_COUNT', group: 'world', label: 'Initial food', desc: 'Total food particles spawned when the world is (re)built.', def: 3000, min: 500, max: 40000, step: 500, rebuild: true },
   { key: 'FOOD_CLUMPS', group: 'world', label: 'Food clumps', desc: 'Number of food clusters (0 = none; rebuilds).', def: 12, min: 0, max: 80, step: 1, rebuild: true },
   { key: 'FOOD_SCATTER', group: 'world', label: 'Food scatter', desc: 'Share of food placed uniformly instead of in clumps (rebuilds).', def: 0.15, min: 0, max: 1, step: 0.05, rebuild: true },
   { key: 'FOOD_CLUMP_WIDE', group: 'world', label: 'Clump spread', desc: 'Angular spread of each clump (rebuilds).', def: 1, min: 0.2, max: 4, step: 0.1, rebuild: true },
+  { key: 'FOOD_RESPAWN', group: 'world', label: 'Food respawn', desc: 'Base seconds before an eaten food particle reappears.', def: 100, min: 0, max: 180, step: 0.5 },
+
   { key: 'THRUST', group: 'movement', label: 'Thrust', desc: 'Forward acceleration along the heading, scaled by drive (0..1).', def: 12, min: 0, max: 40, step: 0.5 },
   { key: 'DRAG', group: 'movement', label: 'Drag', desc: 'Velocity damping rate (1/s) resisting cell motion.', def: 22, min: 0, max: 60, step: 0.5 },
   { key: 'ANG_DRAG', group: 'movement', label: 'Angular drag', desc: 'Heading-rate damping (1/s); matches linear DRAG so turns stop as fast as translation.', def: 22, min: 0, max: 60, step: 0.5 },
@@ -104,7 +106,6 @@ export const PARAM_DEFS = [
   { key: 'FORAGE_TURN', group: 'sensing', label: 'Forage turn', desc: 'Extra heading-rate gain toward the food gradient during the post-division forage window (cell-x93).', def: 20, min: 0, max: 60, step: 1 },
   { key: 'ENERGY_PER_FOOD', group: 'sensing', label: 'Energy / food', desc: 'Energy gained per food particle absorbed.', def: 0.05, min: 0.005, max: 0.4, step: 0.005 },
   { key: 'ABSORB_RATE', group: 'sensing', label: 'Absorb rate', desc: 'Max energy a cell can absorb per second (absorption is always rate-limited).', def: 0.1, min: 0.005, max: 1, step: 0.005 },
-  { key: 'FOOD_RESPAWN', group: 'world', label: 'Food respawn', desc: 'Base seconds before an eaten food particle reappears.', def: 40, min: 0, max: 180, step: 0.5 },
 
   { key: 'MITO_TIME', group: 'mitosis', label: 'Mito time', desc: 'Window (sim seconds) the mitosis stage fractions scale against. The division releases at MITO_HOLD + MITO_FADE + MITO_DRIFT = 0.8 of this (80 s at the default 100), which is the time the parent is an immovable collision proxy and the daughters are inactive, invulnerable and food-blind. Raised 5 → 10 → 20 → 80 (16x the original) for a slow, legible division; very large values freeze a big fraction of the population in mitosis.', def: 100, min: 1, max: 300, step: 1 },
   { key: 'MITO_HOLD', group: 'mitosis', label: 'Mito hold', desc: 'Fraction of mitosis before the parent starts fading.', def: 0.2, min: 0, max: 1, step: 0.05 },
